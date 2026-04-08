@@ -87,8 +87,8 @@ async function parseMsg(text){
   var d=await r.json(),t=(d.content&&d.content[0]&&d.content[0].text)||"{}";
   try{return JSON.parse(t.replace(/```json|```/g,"").trim());}catch(e){return null;}
 }
-async function stoSet(k,v){try{await window.storage.set(k,JSON.stringify(v));}catch(e){}}
-async function stoGet(k,def){try{var r=await window.storage.get(k);return r?JSON.parse(r.value):def;}catch(e){return def;}}
+async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
 var DEF_USERS=[
   {email:"admin@astrobalkan.com",password:"admin2024",role:"admin",name:"Admin",country:"sr",verified:true},
