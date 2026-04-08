@@ -83,7 +83,7 @@ var PR_HR_DS="Na osnovu analize napisi TOCNE PERIODE u narednih 12 mjeseci. Foku
 
 // API ----------------------------------------------------------------------
 async function parseMsg(text){
-  var r=await fetch((window.BACKEND_URL||"https://astrobalkan-backend.onrender.com")+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,system:'Izvuci podatke i vrati SAMO JSON: {"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}',messages:[{role:"user",content:"Izvuci:\n"+text}]})});
+  var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,system:'Izvuci podatke i vrati SAMO JSON: {"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}',messages:[{role:"user",content:"Izvuci:\n"+text}]})});
   var d=await r.json(),t=(d.content&&d.content[0]&&d.content[0].text)||"{}";
   try{return JSON.parse(t.replace(/```json|```/g,"").trim());}catch(e){return null;}
 }
@@ -252,9 +252,9 @@ export default function App(){
   }
 
   async function astroPost(endpoint,body){
-    var resp=await fetch((window.BACKEND_URL||"https://astrobalkan-backend.onrender.com")+"/api/astro"+endpoint,{
+    var resp=await fetch("https://api.astrology-api.io"+endpoint,{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"application/json","X-API-Key":ASTRO_KEY},
       body:JSON.stringify(body)
     });
     if(!resp.ok){console.warn("AstroAPI "+endpoint+" => HTTP "+resp.status);return null;}
@@ -384,7 +384,7 @@ export default function App(){
     active.current+=1;
     var fullText="";
     try{
-      var BACKEND=window.BACKEND_URL||"https://astrobalkan-backend.onrender.com";var resp=await fetch(BACKEND+"/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:7000,stream:true,system:sys,messages:[{role:"user",content:usr}]})});
+      var resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:7000,stream:true,system:sys,messages:[{role:"user",content:usr}]})});
       if(!resp.ok)throw new Error("HTTP "+resp.status);
       var reader=resp.body.getReader(),dec=new TextDecoder();
       while(true){
@@ -415,7 +415,7 @@ export default function App(){
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
     try{
-      var BACKEND=window.BACKEND_URL||"https://astrobalkan-backend.onrender.com";var resp=await fetch(BACKEND+"/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:7000,stream:true,system:sys,messages:[{role:"user",content:pr+"\n\nANALIZA KLIJENTA:\n"+snap}]})});
+      var resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:7000,stream:true,system:sys,messages:[{role:"user",content:pr+"\n\nANALIZA KLIJENTA:\n"+snap}]})});
       if(!resp.ok)throw new Error("HTTP "+resp.status);
       var reader=resp.body.getReader(),dec=new TextDecoder();var full="";
       while(true){
