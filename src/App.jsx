@@ -289,10 +289,13 @@ export default function App(){
   var SMAP={Aries:"Ovan",Taurus:"Bik",Gemini:"Blizanci",Cancer:"Rak",Leo:"Lav",Virgo:"Devica",Libra:"Vaga",Scorpio:"Skorpija",Sagittarius:"Strelac",Capricorn:"Jarac",Aquarius:"Vodolija",Pisces:"Ribe"};
   var AMAP={Conjunction:"Konjunkcija",Opposition:"Opozicija",Trine:"Trigon",Square:"Kvadrat",Sextile:"Sekstil",Quincunx:"Kvinkunks","Semi-sextile":"Polusekstil"};
 
+  var TZ_MAP={london:"Europe/London",paris:"Europe/Paris","new york":"America/New_York",dubai:"Asia/Dubai"};
+  function getTimezone(cityName){if(!cityName)return"Europe/Belgrade";var k=cityName.toLowerCase().trim();var tzKeys=Object.keys(TZ_MAP);for(var i=0;i<tzKeys.length;i++){if(k.indexOf(tzKeys[i])>=0||tzKeys[i].indexOf(k)>=0)return TZ_MAP[tzKeys[i]];}return"Europe/Belgrade";}
+
   function makeBirthData(dateStr,timeStr,cityName){
     var p=dateStr.split("-"),dt=(timeStr||"12:00").split(":");
     var coords=getCoords(cityName);
-    return{year:parseInt(p[0]),month:parseInt(p[1]),day:parseInt(p[2]),hour:parseInt(dt[0]),minute:parseInt(dt[1]),latitude:coords[0],longitude:coords[1],timezone:Math.round(coords[1]/15)};
+    return{year:parseInt(p[0]),month:parseInt(p[1]),day:parseInt(p[2]),hour:parseInt(dt[0]),minute:parseInt(dt[1]),latitude:coords[0],longitude:coords[1],timezone:getTimezone(cityName)};
   }
 
   async function astroPost(endpoint,body){
