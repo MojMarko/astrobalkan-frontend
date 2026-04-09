@@ -28,7 +28,26 @@ function plLon(J,pl){
   return norm(L+C);
 }
 function ascLon(J,lat,lon){var T=(J-2451545)/36525,RAMC=norm(280.46061837+360.98564736629*(J-2451545)+lon),eps=23.439291111-0.013004167*T,r=d2r(RAMC),e=d2r(eps),la=d2r(lat);return norm(r2d(Math.atan2(Math.cos(r),-(Math.sin(r)*Math.cos(e)+Math.tan(la)*Math.sin(e)))));}
-function getHouses(a){var h=[];for(var i=0;i<12;i++)h.push(norm(a+i*30));return h;}
+function mcLon(J,lon){var T=(J-2451545)/36525,RAMC=norm(280.46061837+360.98564736629*(J-2451545)+lon),eps=23.439291111-0.013004167*T;return norm(r2d(Math.atan2(Math.sin(d2r(RAMC)),Math.cos(d2r(RAMC))*Math.cos(d2r(eps)))));}
+function getHouses(asc,mc,lat){
+  if(typeof mc==="undefined")return getHousesEqual(asc);
+  var h=[];h[0]=asc;h[9]=mc;h[6]=norm(asc+180);h[3]=norm(mc+180);
+  var eps=23.4393,e=d2r(eps),la=d2r(lat);
+  function placCusp(f){
+    var ramc=d2r(norm(r2d(Math.atan2(Math.sin(d2r(mc))*Math.cos(e),Math.cos(d2r(mc))))));
+    var off=[0,0,0,0,0,0,0,0,0,0,0,0];off[10]=30;off[11]=60;off[1]=120;off[2]=150;
+    var ra=norm(r2d(ramc)+off[f]);
+    var rr=d2r(ra);
+    var D=1+2*Math.tan(la)*Math.tan(e)*Math.cos(rr);
+    if(Math.abs(D)<0.001)return norm(asc+((f-1+12)%12)*30);
+    var tanL=Math.sin(rr)/(Math.cos(rr)*Math.cos(e)-Math.sin(e)*Math.tan(la)*((f===11||f===2)?1/3:(f===10||f===1)?2/3:1));
+    return norm(r2d(Math.atan(tanL))+(Math.cos(rr)<0?180:0));
+  }
+  [10,11,1,2].forEach(function(i){h[i]=placCusp(i);});
+  h[4]=norm(h[10]+180);h[5]=norm(h[11]+180);h[7]=norm(h[1]+180);h[8]=norm(h[2]+180);
+  return h;
+}
+function getHousesEqual(a){var h=[];for(var i=0;i<12;i++)h.push(norm(a+i*30));return h;}
 function inHouse(deg,cusps){for(var i=0;i<12;i++){var s=cusps[i],e=cusps[(i+1)%12];if(s<=e){if(deg>=s&&deg<e)return i+1;}else if(deg>=s||deg<e)return i+1;}return 1;}
 function signOf(deg){return SIGNS[Math.floor(norm(deg)/30)];}
 function degIn(deg){return(norm(deg)%30).toFixed(1);}
@@ -37,7 +56,7 @@ function calcChart(dateStr,timeStr,lat,lon){
   var tparts=(timeStr||"12:00").split(":"),h=parseInt(tparts[0]),mn=parseInt(tparts[1]);
   var J=jd(y,m,d,h+mn/60-lon/15);
   var pos={Sunce:sunLon(J),Mesec:moonLon(J),Merkur:plLon(J,"Mercury"),Venera:plLon(J,"Venus"),Mars:plLon(J,"Mars"),Jupiter:plLon(J,"Jupiter"),Saturn:plLon(J,"Saturn"),Uran:plLon(J,"Uranus"),Neptun:plLon(J,"Neptune"),Pluton:plLon(J,"Pluto")};
-  var ad=timeStr?ascLon(J,lat,lon):null,hs=ad!=null?getHouses(ad):null;
+  var ad=timeStr?ascLon(J,lat,lon):null,mc=timeStr?mcLon(J,lon):null,hs=ad!=null?getHouses(ad,mc,lat):null;
   var planets=[];
   var pnames=Object.keys(pos);
   for(var i=0;i<pnames.length;i++){var n=pnames[i],deg=pos[n];planets.push({name:n,sign:signOf(deg),degInSign:degIn(deg),house:hs?inHouse(deg,hs):null});}
@@ -289,7 +308,7 @@ export default function App(){
   var ASTRO_KEY=""; // handled by backend
   var PMAP={sun:"Sunce",moon:"Mesec",mercury:"Merkur",venus:"Venera",mars:"Mars",jupiter:"Jupiter",saturn:"Saturn",uranus:"Uran",neptune:"Neptun",pluto:"Pluton",north_node:"Sev.Cvor",south_node:"Juz.Cvor",lilith:"Lilit",chiron:"Hiron",pars_fortunae:"Tocka Srece","part_of_fortune":"Tocka Srece",mean_node:"Sev.Cvor",true_node:"Sev.Cvor"};
   var SMAP={Aries:"Ovan",Taurus:"Bik",Gemini:"Blizanci",Cancer:"Rak",Leo:"Lav",Virgo:"Devica",Libra:"Vaga",Scorpio:"Skorpija",Sagittarius:"Strelac",Capricorn:"Jarac",Aquarius:"Vodolija",Pisces:"Ribe",Ari:"Ovan",Tau:"Bik",Gem:"Blizanci",Can:"Rak",Leo:"Lav",Vir:"Devica",Lib:"Vaga",Sco:"Skorpija",Sag:"Strelac",Cap:"Jarac",Aqu:"Vodolija",Pis:"Ribe"};
-  var AMAP={Conjunction:"Konjunkcija",Opposition:"Opozicija",Trine:"Trigon",Square:"Kvadrat",Sextile:"Sekstil",Quincunx:"Kvinkunks","Semi-sextile":"Polusekstil"};
+  var AMAP={Conjunction:"Konjunkcija",Opposition:"Opozicija",Trine:"Trigon",Square:"Kvadrat",Sextile:"Sekstil",Quincunx:"Kvinkunks","Semi-sextile":"Polusekstil","Semi-square":"Polukvadratura",Sesquiquadrate:"Seskvikvadratura",conjunction:"Konjunkcija",opposition:"Opozicija",trine:"Trigon",square:"Kvadrat",sextile:"Sekstil",quincunx:"Kvinkunks","semi-sextile":"Polusekstil","semi-square":"Polukvadratura",sesquiquadrate:"Seskvikvadratura",sesquisquare:"Seskvikvadratura"};
 
   var TZ_MAP={london:"Europe/London",paris:"Europe/Paris","new york":"America/New_York",dubai:"Asia/Dubai"};
   function getTimezone(cityName){if(!cityName)return"Europe/Belgrade";var k=cityName.toLowerCase().trim();var tzKeys=Object.keys(TZ_MAP);for(var i=0;i<tzKeys.length;i++){if(k.indexOf(tzKeys[i])>=0||tzKeys[i].indexOf(k)>=0)return TZ_MAP[tzKeys[i]];}return"Europe/Belgrade";}
@@ -396,8 +415,9 @@ export default function App(){
       var J=jd(parseInt(dp[0]),parseInt(dp[1]),parseInt(dp[2]),parseInt(tp[0])+parseInt(tp[1])/60-coords[1]/15);
       if(timeStr){
         var ad=ascLon(J,coords[0],coords[1]);
+        var mc=mcLon(J,coords[1]);
         chart.ascSign=signOf(ad);chart.ascDeg=degIn(ad);
-        var hs=getHouses(ad);
+        var hs=getHouses(ad,mc,coords[0]);
         chart.houses=hs.map(function(h,i){return{num:i+1,sign:signOf(h),deg:degIn(h)};});
         // Also assign houses to planets based on cusps
         chart.planets.forEach(function(p){if(!p.house&&p.absDeg){p.house=inHouse(p.absDeg,hs);}});
@@ -544,7 +564,7 @@ export default function App(){
   var ELEM={Ovan:"Vatra",Lav:"Vatra",Strelac:"Vatra",Bik:"Zemlja",Devica:"Zemlja",Jarac:"Zemlja",Blizanci:"Vazduh",Vaga:"Vazduh",Vodolija:"Vazduh",Rak:"Voda",Skorpija:"Voda",Ribe:"Voda"};
   var QUAL={Ovan:"Kardinalni",Rak:"Kardinalni",Vaga:"Kardinalni",Jarac:"Kardinalni",Bik:"Fiksni",Lav:"Fiksni",Skorpija:"Fiksni",Vodolija:"Fiksni",Blizanci:"Promjenljivi",Devica:"Promjenljivi",Strelac:"Promjenljivi",Ribe:"Promjenljivi"};
   var ELEM_CLR={Vatra:"#e87070",Zemlja:"#90b060",Vazduh:"#7090d0",Voda:"#60a0b0"};
-  var POSITIVE_ASP=["Konjunkcija","Trigon","Sekstil"];
+  var POSITIVE_ASP=["Konjunkcija","Trigon","Sekstil","Polusekstil"];
 
   function calcElements(planets){
     var cnt={Vatra:0,Zemlja:0,Vazduh:0,Voda:0};
