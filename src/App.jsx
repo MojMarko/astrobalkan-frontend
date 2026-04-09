@@ -472,16 +472,18 @@ export default function App(){
   async function fetchTransits(idx,dateStr,timeStr,cityName){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName);
+      console.log("TRANSITS calling:",API+"/api/astro/transits","body:",JSON.stringify({birth_data:bd}).slice(0,200));
       var resp=await fetch(API+"/api/astro/transits",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd})});
-      if(!resp.ok){console.warn("Transits API =>",resp.status);return;}
+      console.log("TRANSITS status:",resp.status);
+      if(!resp.ok){var errText=await resp.text();console.error("TRANSITS error response:",errText.slice(0,300));return;}
       var data=await resp.json();
-      console.log("TRANSITS response:",JSON.stringify(data).slice(0,500));
+      console.log("TRANSITS full response:",JSON.stringify(data).slice(0,800));
       var transits=parseTransits(data);
+      console.log("TRANSITS parsed:",transits.length,"items",transits.length>0?JSON.stringify(transits[0]):"(empty)");
       if(transits&&transits.length>0){
         upSlot(idx,function(s){return Object.assign({},s,{transits:transits});});
-        console.log("Transits loaded:",transits.length,"aspects");
       }
-    }catch(e){console.warn("Transits error:",e.message);}
+    }catch(e){console.error("TRANSITS fetch error:",e.message,e);}
   }
 
   function parseTransits(data){
