@@ -395,38 +395,37 @@ export default function App(){
   async function callAstroAPI(dateStr,timeStr,cityName){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName);
-      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}};
-      
-      // Call positions and aspects in parallel
+      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Chiron","Lilith","True_Node"]}};
+
+      // Call positions, aspects and houses in parallel
       var results=await Promise.all([
         astroPost("/api/v3/data/positions/enhanced",body),
-        astroPost("/api/v3/data/aspects/enhanced",body)
+        astroPost("/api/v3/data/aspects/enhanced",body),
+        astroPost("/api/v3/data/houses",body)
       ]);
 
-      var posData=results[0],aspData=results[1];
+      var posData=results[0],aspData=results[1],housesData=results[2];
       console.log("POS response:",JSON.stringify(posData).slice(0,500));
       console.log("ASP response:",JSON.stringify(aspData).slice(0,500));
+      console.log("HOUSES response:",JSON.stringify(housesData).slice(0,300));
       var chart=parsePositions(posData);
       if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
-      // Try API houses first, fallback to local calculation
+      // Parse houses from API response
       var coords=getCoords(cityName);
       var dp=dateStr.split("-"),tp=(timeStr||"12:00").split(":");
       var J=jd(parseInt(dp[0]),parseInt(dp[1]),parseInt(dp[2]),parseInt(tp[0])+parseInt(tp[1])/60-coords[1]/15);
-      try{
-        var housesResp=await astroPost("/houses",body);
-        console.log("HOUSES API response:",JSON.stringify(housesResp).slice(0,500));
-        if(housesResp){
-          var hRaw=(housesResp.data||housesResp);
-          var hArr=hRaw.houses||[];
-          if(Array.isArray(hArr)&&hArr.length>0){
-            chart.houses=hArr.map(function(h,i){return{num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)};});
-            chart.ascSign=chart.houses[0].sign;chart.ascDeg=chart.houses[0].deg;
-            console.log("HOUSES from API:",chart.houses.length,"houses, asc="+chart.ascSign);
-          }
-          if(hRaw.ascendant&&hRaw.ascendant.sign){chart.ascSign=SMAP[hRaw.ascendant.sign||""]||hRaw.ascendant.sign;chart.ascDeg=parseFloat(hRaw.ascendant.degree_in_sign||hRaw.ascendant.degree||0).toFixed(1);}
+      if(housesData){
+        var hRaw=(housesData.data||housesData);
+        var hArr=hRaw.houses||[];
+        if(Array.isArray(hArr)&&hArr.length>0){
+          chart.houses=hArr.map(function(h,i){return{num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.cusp||h.degree_in_sign||h.degree||0).toFixed(1)};});
+          chart.ascSign=SMAP[hArr[0].sign||""]||hArr[0].sign||chart.ascSign;
+          chart.ascDeg=parseFloat(hArr[0].cusp||hArr[0].degree_in_sign||hArr[0].degree||0).toFixed(1);
+          console.log("HOUSES from API:",chart.houses.length,"houses, asc="+chart.ascSign+" "+chart.ascDeg+"°");
         }
-      }catch(e){console.warn("Houses API failed:",e.message);}
+        if(hRaw.ascendant&&hRaw.ascendant.sign){chart.ascSign=SMAP[hRaw.ascendant.sign||""]||hRaw.ascendant.sign;chart.ascDeg=parseFloat(hRaw.ascendant.cusp||hRaw.ascendant.degree_in_sign||hRaw.ascendant.degree||0).toFixed(1);}
+      }
       // Local fallback if API didn't return houses
       if(chart.houses.length===0&&timeStr){
         var ad=ascLon(J,coords[0],coords[1]);
