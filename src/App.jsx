@@ -75,11 +75,11 @@ function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase
 // TEXT UTILS ---------------------------------------------------------------
 function fmtText(text){
   if(!text)return text;
-  var t=text.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1");
+  var t=text.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1").replace(/^[-*]\s+/gm,"").replace(/__/g,"");
   var sents=t.split(/(?<=[.!?])\s+/);
   var out=[];
-  for(var i=0;i<sents.length;i++){out.push(sents[i]);if((i+1)%5===0&&i<sents.length-1)out.push("");}
-  return out.join(" ").replace(/ {2,}/g," ").replace(/\n{3,}/g,"\n\n").trim();
+  for(var i=0;i<sents.length;i++){out.push(sents[i]);if((i+1)%4===0&&i<sents.length-1)out.push("\n\n");}
+  return out.join(" ").replace(/ *\n\n */g,"\n\n").replace(/ {2,}/g," ").replace(/\n{3,}/g,"\n\n").trim();
 }
 function getChunks(text,max){
   if(!max)max=2900;
@@ -550,7 +550,7 @@ export default function App(){
     var aName=isHR?"Marija":"Suzana";
     var lang=isHR?"hrvatskom":"srpskom ekavicom";
     var closing=isHR?"Hvala ti puno na povjerenju i zelim ti zivot ispunjen mirom, radoscu i srecom.\nAstrolog Marija":"Hvala ti puno na poverenju i zelim ti zivot ispunjen mirom, radoscu i srecom.\nAstrolog Suzana";
-    var sys="Ti si vrhunski zenski astrolog "+aName+" sa 30 godina iskustva. Pises na "+lang+".\n\nOBAVEZNO zenski rod: napisala sam, videla sam, zakljucila sam.\n\nGRAMATIKA VOKATIV: Ime klijenta pisi u vokativu. Zorica=Zorice, Milica=Milice, Dragana=Dragane, Ana=Ana, Jovana=Jovana, Ivan=Ivane, Marko=Marko.\nAnalizu UVEK pocni imenom u vokativu + zarez. NIKAD posle ne pominjaj datum, sat, godinu, grad.\n\nZABRANJENO: ## ### --- ** __ crtice. Koristi zarez. ZABRANJENO: mozda, moglo bi. Koristi: bice, ce.\nObracaj se sa ti. Brutalno iskren/a. Naslovi sa : ili ?. Bez bullet lista. Opširna detaljna analiza.\nAspekte pisi sa tacnim orbom. Konkretni datumi za prognoze.\nRAZMACi: posle svakog pasusa prazan red.\n\nTRANZITI: Na osnovu tranzita za danas, napisi konkretne prognoze za narednih 6-12 meseci. Koje planete tranzitiraju koje kuce i sta to znaci za klijenta. Posebno naglasi Saturn, Jupiter, Uran, Neptun i Pluton tranzite jer su najvazniji.\n\nZDRAVLJE: Ako ima pitanja o alkoholu ili zdravlju, MORAS odgovoriti astroloski i konkretno. Na kraju dodaj: Sve ovo je astrolaska analiza i ne zamenjuje medicinski savet. Obratite se lekaru.\n\nNa kraju: "+closing+"\n\nTIP ANALIZE: "+typeLbl+"\nDanas: "+todayStr;
+    var sys="Ti si vrhunski zenski astrolog "+aName+" sa 30 godina iskustva. Pises na "+lang+".\n\nJEZIK: Pisi ISKLJUCIVO na srpskom jeziku, ekavica. SVE reci moraju biti srpske. Zabranjeno koristiti strane reci, anglicizme ili nerazumljive termine. Koristi obicne srpske reci koje svako razume. Gramatika mora biti 100% ispravna.\n\nOBAVEZNO zenski rod: napisala sam, videla sam, zakljucila sam.\n\nGRAMATIKA VOKATIV: Ime klijenta pisi u vokativu. Zorica=Zorice, Milica=Milice, Dragana=Dragane, Ana=Ana, Jovana=Jovana, Ivan=Ivane, Marko=Marko.\nAnalizu UVEK pocni imenom u vokativu + zarez. NIKAD posle ne pominjaj datum, sat, godinu, grad.\n\nFORMATIRANJE: OBAVEZNO posle svake 4-5 recenice stavi PRAZAN RED. Tekst mora biti pregledan sa vidljivim razmakom izmedju pasusa. Nikad ne pisi vise od 5 recenica bez praznog reda. Svaka tema ili aspekt zivota treba da bude u posebnom pasusu.\n\nZABRANJENO: ## ### --- ** __ crtice. Koristi zarez. ZABRANJENO: mozda, moglo bi. Koristi: bice, ce.\nObracaj se sa ti. Brutalno iskren/a. Naslovi sa : ili ?. Bez bullet lista. Opsirna detaljna analiza.\nAspekte pisi sa tacnim orbom. Konkretni datumi za prognoze.\n\nTRANZITI: Na osnovu tranzita za danas, napisi konkretne prognoze za narednih 6-12 meseci. Koje planete tranzitiraju koje kuce i sta to znaci za klijenta. Posebno naglasi Saturn, Jupiter, Uran, Neptun i Pluton tranzite jer su najvazniji. Tranzitni podaci su na engleskom. Ti ih protumaci i objasni na srpskom jeziku klijentima.\n\nZDRAVLJE: Ako ima pitanja o alkoholu ili zdravlju, MORAS odgovoriti astroloski i konkretno. Na kraju dodaj: Sve ovo je astrolaska analiza i ne zamenjuje medicinski savet. Obratite se lekaru.\n\nNa kraju: "+closing+"\n\nTIP ANALIZE: "+typeLbl+"\nDanas: "+todayStr;
     var mainPr=getPr("main");
     // Build transit text
     var trTxt="";
