@@ -339,15 +339,18 @@ export default function App(){
         planets.push({name:nm,sign:sg,degInSign:deg,absDeg:absDeg,house:hs,retrograde:pd.is_retrograde||pd.retrograde||false});
       });
     }
-    var asc=raw.ascendant||data.ascendant||raw.rising||{};
-    var ascSign=SMAP[asc.sign||""]||asc.sign||"Nepoznato";
-    var ascDeg=parseFloat(asc.degree_in_sign||asc.degree||0).toFixed(1);
+    // Ascendant: try raw.ascendant, or first house
+    var asc=raw.ascendant||data.ascendant||raw.rising||null;
+    var ascSign="Nepoznato",ascDeg="0";
+    if(asc&&typeof asc==="object"){ascSign=SMAP[asc.sign||""]||asc.sign||"Nepoznato";ascDeg=parseFloat(asc.degree_in_sign||asc.degree||0).toFixed(1);}
     // Parse houses
     var houses=[];
     var hs=raw.houses||data.houses||raw.cusps||{};
     if(Array.isArray(hs)){hs.forEach(function(h,i){houses.push({num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
     else if(typeof hs==="object"&&Object.keys(hs).length>0){Object.keys(hs).forEach(function(k){var h=hs[k];var num=parseInt(k.replace(/\D/g,""))||houses.length+1;houses.push({num:num,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
     houses.sort(function(a,b){return a.num-b.num;});
+    // Fallback: ascendant from first house
+    if(ascSign==="Nepoznato"&&houses.length>0){ascSign=houses[0].sign;ascDeg=houses[0].deg;}
     var sunPl=planets.find(function(p){return p.name==="Sunce";});
     var moonPl=planets.find(function(p){return p.name==="Mesec";});
     return{sunSign:sunPl?sunPl.sign:"",moonSign:moonPl?moonPl.sign:"",ascSign:ascSign,ascDeg:ascDeg,planets:planets,houses:houses};
@@ -355,14 +358,16 @@ export default function App(){
 
   function parseAspects(data){
     if(!data)return[];
-    var asp=data.aspects||[];
+    var raw=data.data||data;
+    var asp=raw.aspects||data.aspects||[];
     var result=[];
     if(Array.isArray(asp)){
       asp.forEach(function(a){
         var p1=PMAP[(a.planet1||a.body1||"").toLowerCase()]||(a.planet1||"");
         var p2=PMAP[(a.planet2||a.body2||"").toLowerCase()]||(a.planet2||"");
-        var type=AMAP[a.type||a.aspect||""]||(a.type||"");
-        if(p1&&p2&&type)result.push({p1:p1,p2:p2,aspect:type,orb:parseFloat(a.orb||0).toFixed(2)});
+        var type=AMAP[a.type||a.aspect||""]||(a.type||a.aspect||"");
+        var orb=parseFloat(a.orb||0).toFixed(2);
+        if(p1&&p2&&type)result.push({p1:p1,p2:p2,aspect:type,orb:orb});
       });
     }
     return result.sort(function(a,b){return parseFloat(a.orb)-parseFloat(b.orb);});
@@ -383,8 +388,18 @@ export default function App(){
       var chart=parsePositions(posData);
       if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
+      // Merge houses/ascendant from aspects response if missing
+      if(chart.houses.length===0&&aspData){
+        var aspRaw=(aspData.data||aspData);
+        var aspHouses=aspRaw.houses||aspRaw.cusps;
+        if(aspHouses){
+          var extra=parsePositions(aspData);
+          if(extra&&extra.houses.length>0)chart.houses=extra.houses;
+          if(chart.ascSign==="Nepoznato"&&extra&&extra.ascSign!=="Nepoznato"){chart.ascSign=extra.ascSign;chart.ascDeg=extra.ascDeg;}
+        }
+      }
       chart.source="astrology-api-v3";
-      console.log("AstroAPI v3 OK - "+chart.planets.length+" planets, "+chart.aspects.length+" aspects");
+      console.log("AstroAPI v3 OK - "+chart.planets.length+" planets, "+chart.aspects.length+" aspects, "+chart.houses.length+" houses, asc="+chart.ascSign);
       return chart;
     }catch(e){console.warn("AstroAPI v3 failed:",e.message);return null;}
   }
