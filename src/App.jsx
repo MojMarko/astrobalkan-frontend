@@ -151,7 +151,7 @@ var TYPES=[
   {id:"tranziti",label:"Tranziti",icon:"♄",color:"#60a090"}
 ];
 
-function emptySlot(){return{mode:"messenger",paste:"",parsed:null,client:{ime:"",datum:"",vreme:"",mesto:"",pitanja:""},partner:{ime:"",datum:"",vreme:"",mesto:""},hasPart:false,ch:null,pch:null,types:["ljubav"],status:"idle",analysis:"",copyIdx:0};}
+function emptySlot(){return{mode:"messenger",paste:"",parsed:null,client:{ime:"",datum:"",vreme:"",mesto:"",pitanja:""},partner:{ime:"",datum:"",vreme:"",mesto:""},hasPart:false,ch:null,pch:null,transits:null,types:["ljubav"],status:"idle",analysis:"",copyIdx:0};}
 
 // CSS ----------------------------------------------------------------------
 var CSS="@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Jost:wght@300;400;500&display=swap');\n*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}\n:root{--bg:#02000d;--sf:rgba(15,10,28,.9);--sf2:rgba(22,15,38,.92);--bd:rgba(180,140,60,.18);--bd2:rgba(180,140,60,.35);--gd:#c9a84c;--gd2:#e8c96d;--tx:#ede5ff;--mt:#9080b0;--ac:#9b6fd4;--ac2:#7c4fc0;--red:#c06060;--grn:#60b060;}\nbody{font-family:'Jost',sans-serif;color:var(--tx);min-height:100vh;background:var(--bg);overflow-x:hidden;}\nbody::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 15% 25%,rgba(100,30,180,.5) 0%,transparent 50%),radial-gradient(ellipse at 85% 15%,rgba(40,15,100,.6) 0%,transparent 45%),linear-gradient(170deg,#05010f 0%,#090320 35%,#0d0525 65%,#060115 100%);}\nbody::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:radial-gradient(1.5px 1.5px at 8% 5%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1px 1px at 20% 10%,rgba(255,255,220,.9) 0%,transparent 100%),radial-gradient(2px 2px at 33% 4%,rgba(220,230,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 47% 8%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 60% 3%,rgba(255,240,200,.9) 0%,transparent 100%),radial-gradient(2px 2px at 75% 7%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(2.5px 2.5px at 22% 40%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 48% 44%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(2px 2px at 46% 60%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 25% 75%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(2px 2px at 70% 78%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 50% 87%,rgba(255,255,255,.9) 0%,transparent 100%);animation:tw 7s ease-in-out infinite alternate;}\n@keyframes tw{0%{opacity:.5}50%{opacity:1}100%{opacity:.6}}\n.app{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:0 0 100px;}\n.lwrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;position:relative;z-index:1;}\n.lcard{width:100%;max-width:420px;background:linear-gradient(145deg,rgba(18,10,36,.97),rgba(10,5,24,.99));border:1px solid var(--bd2);border-radius:22px;padding:36px 26px;box-shadow:0 0 80px rgba(100,50,200,.2);}\n.llogo{text-align:center;margin-bottom:22px;}\n.llogo h1{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:600;color:var(--gd2);letter-spacing:3px;text-shadow:0 0 30px rgba(201,168,76,.5);}\n.llogo p{font-size:10px;color:var(--mt);letter-spacing:3px;text-transform:uppercase;margin-top:4px;}\n.ldiv{height:1px;background:linear-gradient(90deg,transparent,var(--bd2),transparent);margin:18px 0;}\n.lfld{margin-bottom:13px;}\n.lfld label{display:block;font-size:11px;color:var(--mt);letter-spacing:.5px;margin-bottom:5px;}\n.lfld input{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--bd);border-radius:8px;padding:11px 14px;color:var(--tx);font-family:'Jost',sans-serif;font-size:14px;outline:none;transition:border-color .2s;}\n.lfld input:focus{border-color:var(--gd);}\n.lbtn{width:100%;padding:13px;background:linear-gradient(135deg,#b8922a,#c9a84c,#e8c96d);color:#1a0e00;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;letter-spacing:1.5px;border:none;border-radius:9px;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(201,168,76,.3);margin-top:4px;}\n.lbtn:hover{transform:translateY(-1px);}\n.lerr{color:#e07070;font-size:12px;text-align:center;margin:10px 0 0;}\n.lsuc{color:#70e070;font-size:12px;text-align:center;margin:10px 0 0;}\n.ltabs{display:flex;gap:6px;margin-bottom:18px;}\n.ltab{flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--mt);font-family:'Jost',sans-serif;font-size:12px;cursor:pointer;transition:all .2s;}\n.ltab.on{border-color:var(--gd);background:rgba(201,168,76,.1);color:var(--gd2);}\n.llink{display:block;margin:12px auto 0;background:none;border:none;color:var(--mt);font-size:12px;cursor:pointer;font-family:'Jost',sans-serif;text-decoration:underline;}\n.csel{display:flex;gap:10px;margin-bottom:18px;}\n.cbtn{flex:1;padding:14px 8px;border-radius:12px;border:2px solid var(--bd);background:transparent;cursor:pointer;transition:all .2s;text-align:center;}\n.cbtn:hover,.cbtn.on{border-color:var(--gd);background:rgba(201,168,76,.1);}\n.cflag{font-size:28px;display:block;margin-bottom:5px;}\n.cname{font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--gd2);font-weight:600;}\n.csub{font-size:10px;color:var(--mt);margin-top:2px;}\n.vcode{font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;color:var(--gd2);font-family:'Cormorant Garamond',serif;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:16px;margin:14px 0;}\n.hdr{padding:0;background:linear-gradient(180deg,rgba(12,6,28,.98) 0%,rgba(8,4,20,.85) 100%);backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100;}\n.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;}\n.hbrand{display:flex;align-items:center;gap:11px;}\n.hname{font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--gd2);letter-spacing:2.5px;}\n.hsub{font-size:9px;color:var(--mt);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}\n.huser{display:flex;align-items:center;gap:7px;}\n.huser span{font-size:11px;color:var(--mt);}\n.hlout{background:transparent;border:1px solid var(--bd);color:var(--mt);font-size:10px;padding:4px 10px;border-radius:12px;cursor:pointer;font-family:'Jost',sans-serif;transition:all .2s;}\n.hlout:hover{border-color:var(--red);color:var(--red);}\n.abadge{background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.35);color:var(--gd);font-size:9px;padding:2px 8px;border-radius:10px;}\n.nav{display:flex;overflow-x:auto;scrollbar-width:none;border-top:1px solid rgba(255,255,255,.04);}\n.nav::-webkit-scrollbar{display:none;}\n.nav button{flex:1;min-width:68px;padding:9px 4px;background:none;border:none;color:var(--mt);font-family:'Jost',sans-serif;font-size:10px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;}\n.nav button.on{color:var(--gd2);border-bottom-color:var(--gd);}\n.nav button:hover{color:var(--tx);}\n.ndot{display:inline-block;width:5px;height:5px;background:var(--ac);border-radius:50%;margin-left:3px;vertical-align:middle;}\n.sec{padding:16px 14px;}\n.stitle{font-family:'Cormorant Garamond',serif;font-size:19px;color:var(--gd2);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:9px;}\n.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:10px;}\n.card-hi{border-color:rgba(201,168,76,.3);background:linear-gradient(145deg,rgba(20,14,35,.95),rgba(15,10,28,.98));}\n.ct{font-size:10px;font-weight:500;color:var(--gd);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:9px;}\n.fld{margin-bottom:8px;}\n.fld label{display:block;font-size:10.5px;color:var(--mt);margin-bottom:3px;}\n.fld input,.fld textarea{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:8px 11px;color:var(--tx);font-family:'Jost',sans-serif;font-size:13px;outline:none;transition:border-color .2s;}\n.fld input:focus,.fld textarea:focus{border-color:var(--gd);}\n.fld textarea{resize:vertical;min-height:72px;}\n.r2{display:grid;grid-template-columns:1fr 1fr;gap:7px;}\n.div1{height:1px;background:var(--bd);margin:9px 0;}\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:9px 16px;border-radius:7px;font-family:'Jost',sans-serif;font-size:12.5px;font-weight:500;cursor:pointer;border:none;transition:all .2s;}\n.bgd{background:linear-gradient(135deg,#b8922a,#c9a84c);color:#1a0e00;font-weight:600;box-shadow:0 2px 12px rgba(201,168,76,.25);}\n.bgd:hover{opacity:.9;transform:translateY(-1px);}\n.bpu{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff;}\n.bpu:hover{opacity:.9;transform:translateY(-1px);}\n.bol{background:transparent;border:1px solid var(--bd);color:var(--mt);}\n.bol:hover{border-color:var(--gd);color:var(--tx);}\n.brd{background:transparent;border:1px solid var(--red);color:var(--red);}\n.bsm{padding:5px 10px;font-size:11px;}\n.bfull{width:100%;}\n.btn:disabled{opacity:.4;cursor:not-allowed;}\n.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:11px;}\n.tab{padding:5px 12px;border-radius:16px;font-size:11px;border:1px solid var(--bd);background:transparent;color:var(--mt);cursor:pointer;font-family:'Jost',sans-serif;transition:all .2s;}\n.tab.on{background:var(--ac2);border-color:var(--ac);color:#fff;}\n.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px;}\n.tbtn{padding:11px 5px;border-radius:8px;border:1px solid var(--bd);background:var(--sf2);color:var(--mt);cursor:pointer;text-align:center;font-family:'Jost',sans-serif;font-size:10.5px;transition:all .2s;position:relative;}\n.tbtn.on{border-color:var(--gd);background:rgba(201,168,76,.1);color:var(--gd2);}\n.tico{font-size:18px;display:block;margin-bottom:4px;line-height:1;}\n.srow{display:flex;align-items:center;gap:7px;padding:7px 10px;background:var(--sf2);border-radius:5px;font-size:11px;margin-bottom:7px;}\n.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}\n.dot-w{background:var(--gd);}\n.slhdr{display:flex;align-items:center;gap:7px;margin-bottom:9px;}\n.slbadge{background:linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.08));color:var(--gd2);border:1px solid rgba(201,168,76,.28);border-radius:5px;padding:2px 9px;font-size:10px;font-weight:600;font-family:'Cormorant Garamond',serif;}\n.slst{font-size:10px;padding:2px 8px;border-radius:10px;margin-left:auto;}\n.stidl{background:rgba(138,122,170,.12);color:var(--mt);}\n.strun{background:rgba(155,111,212,.2);color:var(--ac);}\n.stdone{background:rgba(96,176,96,.18);color:var(--grn);}\n.aout{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:15px;font-size:13px;line-height:2.05;white-space:pre-wrap;color:var(--tx);min-height:160px;max-height:55vh;overflow-y:auto;font-family:'Jost',sans-serif;}\n.aout::-webkit-scrollbar{width:3px;}\n.aout::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px;}\n.cur::after{content:'|';animation:bl 1s infinite;color:var(--gd);}\n@keyframes bl{0%,100%{opacity:1}50%{opacity:0}}\n.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}\n.prow{display:flex;justify-content:space-between;padding:4px 8px;background:var(--sf2);border-radius:4px;font-size:11px;}\n.pn{color:var(--mt)}.pv{color:var(--gd2);font-weight:500;}\n.sgnrow{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px;}\n.sgni{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;text-align:center;}\n.sgnl{font-size:9px;color:var(--mt);margin-bottom:2px;}\n.sgnv{font-size:14px;color:var(--gd2);font-family:'Cormorant Garamond',serif;font-weight:600;}\n.asplist{font-size:10.5px;color:var(--mt);line-height:1.9;}\n.ac0{color:#e8c96d}.ao{color:#c06060}.at{color:#60a090}.aq{color:#c07840}.as{color:#7090d0}.ax{color:#8a7aaa}\n.ctrack{background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:10px 12px;margin-bottom:9px;}\n.cdots{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}\n.cdot{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;cursor:pointer;transition:all .15s;}\n.abar{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;}\n.urow{display:flex;align-items:center;gap:9px;padding:10px 13px;background:var(--sf);border:1px solid var(--bd);border-radius:8px;margin-bottom:7px;}\n.uav{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--ac2),var(--gd));display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0;}\n.acard{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:border-color .2s;}\n.acard:hover{border-color:var(--gd);}\n.acard-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}\n.acard-name{font-size:13.5px;font-weight:500;font-family:'Cormorant Garamond',serif;color:var(--gd2);}\n.acard-date{font-size:10px;color:var(--mt);}\n.acard-prev{font-size:11.5px;color:var(--mt);line-height:1.5;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}\n.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;}\n.modal{background:var(--sf);border:1px solid var(--bd);border-radius:16px 16px 0 0;padding:20px 16px;width:100%;max-height:88vh;overflow-y:auto;}\n.modal-title{font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--gd2);margin-bottom:14px;}\n.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(20,12,38,.97);border:1px solid var(--gd);color:var(--tx);padding:10px 20px;border-radius:20px;font-size:12px;z-index:999;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:tIn .3s ease;}\n@keyframes tIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}\n.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--gd);border-radius:50%;animation:sp .7s linear infinite;display:inline-block;}\n@keyframes sp{to{transform:rotate(360deg)}}\n.empty{text-align:center;padding:36px 20px;color:var(--mt);}\n.empty .ico{font-size:30px;margin-bottom:10px;opacity:.4;}\n.sel-input{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:8px 11px;color:var(--tx);font-family:'Jost',sans-serif;font-size:13px;outline:none;}\n";
@@ -461,10 +461,60 @@ export default function App(){
         if(!pc){var pc2=getCoords(sl.partner.mesto);pc=calcChart(sl.partner.datum,sl.partner.vreme,pc2[0],pc2[1]);}
       }
       upSlot(idx,function(s){return Object.assign({},s,{ch:c,pch:pc,status:"idle"});});
+      // Fetch transits in background
+      fetchTransits(idx,sl.client.datum,sl.client.vreme,sl.client.mesto);
     }catch(e){
       console.error("doCalc error:",e);
       upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
     }
+  }
+
+  async function fetchTransits(idx,dateStr,timeStr,cityName){
+    try{
+      var bd=makeBirthData(dateStr,timeStr,cityName);
+      var resp=await fetch(API+"/api/astro/transits",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd})});
+      if(!resp.ok){console.warn("Transits API =>",resp.status);return;}
+      var data=await resp.json();
+      console.log("TRANSITS response:",JSON.stringify(data).slice(0,500));
+      var transits=parseTransits(data);
+      if(transits&&transits.length>0){
+        upSlot(idx,function(s){return Object.assign({},s,{transits:transits});});
+        console.log("Transits loaded:",transits.length,"aspects");
+      }
+    }catch(e){console.warn("Transits error:",e.message);}
+  }
+
+  function parseTransits(data){
+    if(!data)return[];
+    var raw=data.data||data;
+    // If fallback, parse transit positions into aspects with natal
+    if(data.fallback&&data.transit_positions){
+      var tRaw=(data.transit_positions.data||data.transit_positions);
+      var tPos=tRaw.positions||[];
+      var result=[];
+      if(Array.isArray(tPos)){
+        tPos.forEach(function(p){
+          var nm=PMAP[(p.name||"").toLowerCase()]||p.name||"";
+          var sg=SMAP[p.sign||""]||p.sign||"";
+          var deg=parseFloat(p.degree_in_sign||p.degree||0).toFixed(1);
+          result.push({planet:"T."+nm,sign:sg,deg:deg,retrograde:p.is_retrograde||false});
+        });
+      }
+      return result;
+    }
+    // Parse transit report aspects
+    var aspects=raw.aspects||raw.transit_aspects||[];
+    var result=[];
+    if(Array.isArray(aspects)){
+      aspects.forEach(function(a){
+        var tp=PMAP[(a.transit_planet||a.point1||"").toLowerCase()]||(a.transit_planet||a.point1||"");
+        var np=PMAP[(a.natal_planet||a.point2||"").toLowerCase()]||(a.natal_planet||a.point2||"");
+        var type=AMAP[a.aspect_type||a.type||""]||(a.aspect_type||a.type||"");
+        var orb=parseFloat(a.orb||0).toFixed(2);
+        if(tp&&np)result.push({planet:"T."+tp,natalPlanet:np,aspect:type,orb:orb});
+      });
+    }
+    return result;
   }
 
   // GENERATE
@@ -486,9 +536,15 @@ export default function App(){
     var aName=isHR?"Marija":"Suzana";
     var lang=isHR?"hrvatskom":"srpskom ekavicom";
     var closing=isHR?"Hvala ti puno na povjerenju i zelim ti zivot ispunjen mirom, radoscu i srecom.\nAstrolog Marija":"Hvala ti puno na poverenju i zelim ti zivot ispunjen mirom, radoscu i srecom.\nAstrolog Suzana";
-    var sys="Ti si vrhunski zenski astrolog "+aName+" sa 30 godina iskustva. Pises na "+lang+".\n\nOBAVEZNO zenski rod: napisala sam, videla sam, zakljucila sam.\n\nGRAMATIKA VOKATIV: Ime klijenta pisi u vokativu. Zorica=Zorice, Milica=Milice, Dragana=Dragane, Ana=Ana, Jovana=Jovana, Ivan=Ivane, Marko=Marko.\nAnalizu UVEK pocni imenom u vokativu + zarez. NIKAD posle ne pominjaj datum, sat, godinu, grad.\n\nZABRANJENO: ## ### --- ** __ crtice. Koristi zarez. ZABRANJENO: mozda, moglo bi. Koristi: bice, ce.\nObracaj se sa ti. Brutalno iskren/a. Naslovi sa : ili ?. Bez bullet lista. Opširna detaljna analiza.\nAspekte pisi sa tacnim orbom. Konkretni datumi za prognoze.\nRAZMACi: posle svakog pasusa prazan red.\n\nZDRAVLJE: Ako ima pitanja o alkoholu ili zdravlju, MORAS odgovoriti astroloski i konkretno. Na kraju dodaj: Sve ovo je astrolaska analiza i ne zamenjuje medicinski savet. Obratite se lekaru.\n\nNa kraju: "+closing+"\n\nTIP ANALIZE: "+typeLbl+"\nDanas: "+todayStr;
+    var sys="Ti si vrhunski zenski astrolog "+aName+" sa 30 godina iskustva. Pises na "+lang+".\n\nOBAVEZNO zenski rod: napisala sam, videla sam, zakljucila sam.\n\nGRAMATIKA VOKATIV: Ime klijenta pisi u vokativu. Zorica=Zorice, Milica=Milice, Dragana=Dragane, Ana=Ana, Jovana=Jovana, Ivan=Ivane, Marko=Marko.\nAnalizu UVEK pocni imenom u vokativu + zarez. NIKAD posle ne pominjaj datum, sat, godinu, grad.\n\nZABRANJENO: ## ### --- ** __ crtice. Koristi zarez. ZABRANJENO: mozda, moglo bi. Koristi: bice, ce.\nObracaj se sa ti. Brutalno iskren/a. Naslovi sa : ili ?. Bez bullet lista. Opširna detaljna analiza.\nAspekte pisi sa tacnim orbom. Konkretni datumi za prognoze.\nRAZMACi: posle svakog pasusa prazan red.\n\nTRANZITI: Na osnovu tranzita za danas, napisi konkretne prognoze za narednih 6-12 meseci. Koje planete tranzitiraju koje kuce i sta to znaci za klijenta. Posebno naglasi Saturn, Jupiter, Uran, Neptun i Pluton tranzite jer su najvazniji.\n\nZDRAVLJE: Ako ima pitanja o alkoholu ili zdravlju, MORAS odgovoriti astroloski i konkretno. Na kraju dodaj: Sve ovo je astrolaska analiza i ne zamenjuje medicinski savet. Obratite se lekaru.\n\nNa kraju: "+closing+"\n\nTIP ANALIZE: "+typeLbl+"\nDanas: "+todayStr;
     var mainPr=getPr("main");
-    var usr=mainPr+"\n\nPODACI:\nIme: "+(sl.client.ime||"")+"\nDatum: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Asc: "+sl.ch.ascSign+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+"\n\nPITANJA: "+(sl.client.pitanja||"Bez pitanja.");
+    // Build transit text
+    var trTxt="";
+    if(sl.transits&&sl.transits.length>0){
+      if(sl.transits[0].natalPlanet){trTxt="\n\nTRANZITI ZA DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+" (orb "+t.orb+"°)";}).join("\n");}
+      else{trTxt="\n\nTRANZITNE POZICIJE DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n");}
+    }
+    var usr=mainPr+"\n\nPODACI:\nIme: "+(sl.client.ime||"")+"\nDatum: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Asc: "+sl.ch.ascSign+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+"\n\nPITANJA: "+(sl.client.pitanja||"Bez pitanja.");
     var ri=idx;
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
@@ -727,6 +783,28 @@ export default function App(){
                 })
               )
             )
+          ),
+          // TRANSITS
+          s.transits&&s.transits.length>0&&React.createElement("div",{className:"card",style:{marginTop:"8px"}},
+            React.createElement("div",{className:"ct"},"Trenutni Tranziti"),
+            s.transits[0].natalPlanet
+              ?React.createElement("div",{className:"asplist"},
+                s.transits.map(function(t,i){
+                  var isOuter=["T.Saturn","T.Jupiter","T.Uran","T.Neptun","T.Pluton"].indexOf(t.planet)>=0;
+                  return React.createElement("div",{key:i,style:{color:isOuter?"var(--gd2)":"var(--mt)",fontWeight:isOuter?500:400}},
+                    t.planet+" "+t.aspect+" "+t.natalPlanet+" ",React.createElement("span",{style:{opacity:.5}},"(orb "+t.orb+"\u00B0)")
+                  );
+                })
+              )
+              :React.createElement("div",{className:"pgrid"},
+                s.transits.map(function(t,i){
+                  var isOuter=["T.Saturn","T.Jupiter","T.Uran","T.Neptun","T.Pluton"].indexOf(t.planet)>=0;
+                  return React.createElement("div",{key:i,className:"prow",style:{borderLeft:isOuter?"2px solid var(--gd)":"none"}},
+                    React.createElement("span",{className:"pn"},t.planet+(t.retrograde?" \u211E":"")),
+                    React.createElement("span",{className:"pv"},t.sign+" "+t.deg+"\u00B0")
+                  );
+                })
+              )
           ),
           React.createElement("button",{className:"btn bgd bfull",onClick:function(){doGen(idx);},disabled:busy},
             s.status==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem u pozadini..."):"Generiši Analizu"
