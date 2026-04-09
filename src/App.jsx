@@ -840,7 +840,7 @@ export default function App(){
       // SLOTS
       ["a1","a2","a3"].indexOf(tab)>=0&&React.createElement("div",{className:"sec"},
         React.createElement("div",{className:"stitle"},React.createElement(Logo,{size:19})," Analiza "+tab[1]),
-        React.createElement(SlotView,{idx:parseInt(tab[1])-1,key:tab})
+        SlotView({idx:parseInt(tab[1])-1})
       ),
 
       // DOWNSELL
