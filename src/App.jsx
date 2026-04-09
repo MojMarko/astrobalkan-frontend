@@ -385,6 +385,8 @@ export default function App(){
       ]);
       
       var posData=results[0],aspData=results[1];
+      console.log("POS response:",JSON.stringify(posData).slice(0,500));
+      console.log("ASP response:",JSON.stringify(aspData).slice(0,500));
       var chart=parsePositions(posData);
       if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
