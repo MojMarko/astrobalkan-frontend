@@ -356,7 +356,7 @@ export default function App(){
   async function callAstroAPI(dateStr,timeStr,cityName){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName);
-      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","North Node","Chiron","Lilith","Part of Fortune"]}};
+      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}};
       
       // Call positions and aspects in parallel
       var results=await Promise.all([
