@@ -616,7 +616,7 @@ export default function App(){
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
     try{
-      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:7000,stream:true,system:sys,messages:[{role:"user",content:pr+"\n\nANALIZA KLIJENTA:\n"+snap}]})});
+      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:pr+"\n\nANALIZA KLIJENTA:\n"+snap}]})});
       if(!resp.ok)throw new Error("HTTP "+resp.status);
       var reader=resp.body.getReader(),dec=new TextDecoder();var full="";
       while(true){
