@@ -409,18 +409,37 @@ export default function App(){
       var chart=parsePositions(posData);
       if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
-      // Compute ascendant and houses locally from birth data
+      // Try API houses first, fallback to local calculation
       var coords=getCoords(cityName);
       var dp=dateStr.split("-"),tp=(timeStr||"12:00").split(":");
       var J=jd(parseInt(dp[0]),parseInt(dp[1]),parseInt(dp[2]),parseInt(tp[0])+parseInt(tp[1])/60-coords[1]/15);
-      if(timeStr){
+      try{
+        var housesResp=await astroPost("/houses",body);
+        console.log("HOUSES API response:",JSON.stringify(housesResp).slice(0,500));
+        if(housesResp){
+          var hRaw=(housesResp.data||housesResp);
+          var hArr=hRaw.houses||[];
+          if(Array.isArray(hArr)&&hArr.length>0){
+            chart.houses=hArr.map(function(h,i){return{num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)};});
+            chart.ascSign=chart.houses[0].sign;chart.ascDeg=chart.houses[0].deg;
+            console.log("HOUSES from API:",chart.houses.length,"houses, asc="+chart.ascSign);
+          }
+          if(hRaw.ascendant&&hRaw.ascendant.sign){chart.ascSign=SMAP[hRaw.ascendant.sign||""]||hRaw.ascendant.sign;chart.ascDeg=parseFloat(hRaw.ascendant.degree_in_sign||hRaw.ascendant.degree||0).toFixed(1);}
+        }
+      }catch(e){console.warn("Houses API failed:",e.message);}
+      // Local fallback if API didn't return houses
+      if(chart.houses.length===0&&timeStr){
         var ad=ascLon(J,coords[0],coords[1]);
         var mc=mcLon(J,coords[1]);
         chart.ascSign=signOf(ad);chart.ascDeg=degIn(ad);
         var hs=getHouses(ad,mc,coords[0]);
         chart.houses=hs.map(function(h,i){return{num:i+1,sign:signOf(h),deg:degIn(h)};});
-        // Also assign houses to planets based on cusps
-        chart.planets.forEach(function(p){if(!p.house&&p.absDeg){p.house=inHouse(p.absDeg,hs);}});
+        console.log("HOUSES from local calc, asc="+chart.ascSign);
+      }
+      // Assign houses to planets if missing
+      if(chart.houses.length>0){
+        var cusps=chart.houses.map(function(h){var idx=SIGNS.indexOf(h.sign);return idx*30+parseFloat(h.deg);});
+        chart.planets.forEach(function(p){if(!p.house&&p.absDeg){p.house=inHouse(p.absDeg,cusps);}});
       }
       chart.source="astrology-api-v3";
       console.log("AstroAPI v3 OK - "+chart.planets.length+" planets, "+chart.aspects.length+" aspects, "+chart.houses.length+" houses, asc="+chart.ascSign);
