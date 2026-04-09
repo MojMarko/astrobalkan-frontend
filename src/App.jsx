@@ -158,6 +158,9 @@ var CSS="@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamon
 
 // MAIN APP -----------------------------------------------------------------
 export default function App(){
+  var [siteAccess,setSiteAccess]=useState(function(){try{return localStorage.getItem("site_access")==="true";}catch(e){return false;}});
+  var [sitePw,setSitePw]=useState("");
+  var [sitePwErr,setSitePwErr]=useState("");
   var [user,setUser]=useState(null);
   var [adminUsers,setAdminUsers]=useState([]);
   var [lm,setLm]=useState("login");
@@ -855,6 +858,31 @@ export default function App(){
           React.createElement("button",{className:"btn bol bsm",disabled:s.copyIdx>=ch.length-1,onClick:function(){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.min(ch.length-1,sl.copyIdx+1)});});}},">" ),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(s.analysis);toast2("Sve kopirano!");}},"\u0041ll"),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){doGen(idx);},disabled:busy},"\u21BA")
+        )
+      )
+    );
+  }
+
+  // SITE PASSWORD ------------------------------------------------------------
+  if(!siteAccess){
+    return React.createElement(React.Fragment,null,
+      React.createElement("style",null,CSS),
+      React.createElement("div",{className:"lwrap"},
+        React.createElement("div",{className:"lcard"},
+          React.createElement("div",{className:"llogo"},
+            React.createElement(Logo,{size:56}),
+            React.createElement("h1",{style:{marginTop:"10px"}},"Astro Balkan"),
+            React.createElement("p",null,"Profesionalni Astrološki Alat")
+          ),
+          React.createElement("div",{className:"ldiv"}),
+          React.createElement("div",{style:{textAlign:"center",marginBottom:"14px",fontSize:"12px",color:"var(--mt)"}},"Unesite pristupnu lozinku"),
+          React.createElement("div",{className:"lfld"},
+            React.createElement("label",null,"Lozinka"),
+            React.createElement("input",{type:"password",value:sitePw,onChange:function(e){setSitePw(e.target.value);setSitePwErr("");},placeholder:"\u2022\u2022\u2022\u2022",style:{textAlign:"center",fontSize:"18px",letterSpacing:"4px"},onKeyDown:function(e){if(e.key==="Enter"){if(sitePw==="2026"){localStorage.setItem("site_access","true");setSiteAccess(true);}else{setSitePwErr("Pogresna lozinka.");}}}})
+          ),
+          sitePwErr&&React.createElement("div",{className:"lerr"},sitePwErr),
+          React.createElement("button",{className:"lbtn",onClick:function(){if(sitePw==="2026"){localStorage.setItem("site_access","true");setSiteAccess(true);}else{setSitePwErr("Pogresna lozinka.");}}},"Pristupi"),
+          React.createElement("div",{style:{textAlign:"center",marginTop:"14px",fontSize:"11px",color:"var(--mt)",letterSpacing:"2px",opacity:".6"}},"\u2726 \u2727 \u2726")
         )
       )
     );
