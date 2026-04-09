@@ -490,7 +490,6 @@ export default function App(){
     if(!data)return[];
     var raw=data.data||data;
     var SLOW=["saturn","jupiter","uranus","neptune","pluto","mars"];
-    // Primary format: events array
     var events=raw.events||raw.aspects||raw.transit_aspects||[];
     var result=[];
     if(Array.isArray(events)&&events.length>0){
@@ -501,10 +500,19 @@ export default function App(){
         var npRaw=e.stationed_planet||e.natal_planet||e.point2||"";
         var np=PMAP[npRaw.toLowerCase()]||npRaw;
         var type=AMAP[e.aspect_type||e.type||""]||(e.aspect_type||e.type||"");
-        var orb=parseFloat(e.orb||0).toFixed(2);
-        result.push({planet:"T."+tp,natalPlanet:np,aspect:type,orb:orb,house:e.natal_house||e.house||null,interpretation:e.interpretation||""});
+        var orb=Math.abs(parseFloat(e.orb||0));
+        result.push({planet:"T."+tp,natalPlanet:np,aspect:type,orb:orb.toFixed(2),orbNum:orb,house:e.natal_house||e.house||null,interpretation:e.interpretation||""});
       });
-      return result;
+      // Deduplicate: keep smallest orb per planet+natal+aspect combo
+      var seen={};
+      result.forEach(function(t){
+        var key=t.planet+"|"+t.natalPlanet+"|"+t.aspect;
+        if(!seen[key]||t.orbNum<seen[key].orbNum)seen[key]=t;
+      });
+      result=Object.keys(seen).map(function(k){return seen[k];});
+      // Sort by orb ascending, limit to 20
+      result.sort(function(a,b){return a.orbNum-b.orbNum;});
+      return result.slice(0,20);
     }
     // Fallback: transit positions
     if(data.fallback&&data.transit_positions){
@@ -794,15 +802,15 @@ export default function App(){
           s.transits&&s.transits.length>0&&React.createElement("div",{className:"card",style:{marginTop:"8px"}},
             React.createElement("div",{className:"ct"},"Trenutni Tranziti ("+s.transits.length+")"),
             s.transits[0].natalPlanet
-              ?s.transits.map(function(t,i){
-                  return React.createElement("div",{key:i,style:{padding:"6px 0",borderBottom:"1px solid var(--bd)"}},
-                    React.createElement("div",{style:{fontSize:"12px",color:"var(--gd2)",fontWeight:500}},
-                      t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" ",
-                      React.createElement("span",{style:{opacity:.5,fontWeight:400}},"orb "+t.orb+"\u00B0")
-                    ),
-                    t.interpretation&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"3px",lineHeight:"1.5"}},t.interpretation)
+              ?React.createElement("div",{className:"asplist"},
+                s.transits.map(function(t,i){
+                  var isPoz=POSITIVE_ASP.indexOf(t.aspect)>=0;
+                  return React.createElement("div",{key:i,className:isPoz?"at":"ao",style:{padding:"3px 0"}},
+                    t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" ",
+                    React.createElement("span",{style:{opacity:.5}},"orb "+t.orb+"\u00B0")
                   );
                 })
+              )
               :React.createElement("div",{className:"pgrid"},
                 s.transits.map(function(t,i){
                   return React.createElement("div",{key:i,className:"prow",style:{borderLeft:"2px solid var(--gd)"}},
