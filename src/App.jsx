@@ -288,7 +288,7 @@ export default function App(){
   // ASTROLOGY API v3 - Swiss Ephemeris (nasa.gov preciznost)
   var ASTRO_KEY=""; // handled by backend
   var PMAP={sun:"Sunce",moon:"Mesec",mercury:"Merkur",venus:"Venera",mars:"Mars",jupiter:"Jupiter",saturn:"Saturn",uranus:"Uran",neptune:"Neptun",pluto:"Pluton",north_node:"Sev.Cvor",south_node:"Juz.Cvor",lilith:"Lilit",chiron:"Hiron",pars_fortunae:"Tocka Srece","part_of_fortune":"Tocka Srece",mean_node:"Sev.Cvor",true_node:"Sev.Cvor"};
-  var SMAP={Aries:"Ovan",Taurus:"Bik",Gemini:"Blizanci",Cancer:"Rak",Leo:"Lav",Virgo:"Devica",Libra:"Vaga",Scorpio:"Skorpija",Sagittarius:"Strelac",Capricorn:"Jarac",Aquarius:"Vodolija",Pisces:"Ribe"};
+  var SMAP={Aries:"Ovan",Taurus:"Bik",Gemini:"Blizanci",Cancer:"Rak",Leo:"Lav",Virgo:"Devica",Libra:"Vaga",Scorpio:"Skorpija",Sagittarius:"Strelac",Capricorn:"Jarac",Aquarius:"Vodolija",Pisces:"Ribe",Ari:"Ovan",Tau:"Bik",Gem:"Blizanci",Can:"Rak",Leo:"Lav",Vir:"Devica",Lib:"Vaga",Sco:"Skorpija",Sag:"Strelac",Cap:"Jarac",Aqu:"Vodolija",Pis:"Ribe"};
   var AMAP={Conjunction:"Konjunkcija",Opposition:"Opozicija",Trine:"Trigon",Square:"Kvadrat",Sextile:"Sekstil",Quincunx:"Kvinkunks","Semi-sextile":"Polusekstil"};
 
   var TZ_MAP={london:"Europe/London",paris:"Europe/Paris","new york":"America/New_York",dubai:"Asia/Dubai"};
@@ -312,26 +312,41 @@ export default function App(){
 
   function parsePositions(data){
     if(!data)return null;
-    var pl=data.planets||data.positions||{};
+    var raw=data.data||data;
+    var src=raw.positions||raw.planets||{};
     var planets=[];
-    Object.keys(pl).forEach(function(k){
-      var pd=pl[k];
-      if(!pd)return;
-      var nm=PMAP[k.toLowerCase()]||k;
-      var sg=SMAP[pd.sign||""]||pd.sign||"";
-      var deg=parseFloat(pd.degree_in_sign||pd.degree||0).toFixed(1);
-      var absDeg=parseFloat(pd.absolute_degree||pd.longitude||0);
-      var hs=pd.house||null;
-      planets.push({name:nm,sign:sg,degInSign:deg,absDeg:absDeg,house:hs,retrograde:pd.retrograde||false});
-    });
-    var asc=data.ascendant||data.rising||{};
+    // Handle array format: [{name:"Sun",sign:"Sag",degree:25.3,house:4,is_retrograde:false}, ...]
+    if(Array.isArray(src)){
+      src.forEach(function(pd){
+        if(!pd)return;
+        var nm=PMAP[(pd.name||"").toLowerCase()]||pd.name||"";
+        var sg=SMAP[pd.sign||""]||pd.sign||"";
+        var deg=parseFloat(pd.degree_in_sign||pd.degree||0).toFixed(1);
+        var absDeg=parseFloat(pd.absolute_degree||pd.longitude||0);
+        var hs=pd.house||null;
+        planets.push({name:nm,sign:sg,degInSign:deg,absDeg:absDeg,house:hs,retrograde:pd.is_retrograde||pd.retrograde||false});
+      });
+    } else {
+      // Handle object format: {sun:{sign,degree_in_sign,house,retrograde}, ...}
+      Object.keys(src).forEach(function(k){
+        var pd=src[k];
+        if(!pd)return;
+        var nm=PMAP[k.toLowerCase()]||k;
+        var sg=SMAP[pd.sign||""]||pd.sign||"";
+        var deg=parseFloat(pd.degree_in_sign||pd.degree||0).toFixed(1);
+        var absDeg=parseFloat(pd.absolute_degree||pd.longitude||0);
+        var hs=pd.house||null;
+        planets.push({name:nm,sign:sg,degInSign:deg,absDeg:absDeg,house:hs,retrograde:pd.is_retrograde||pd.retrograde||false});
+      });
+    }
+    var asc=raw.ascendant||data.ascendant||raw.rising||{};
     var ascSign=SMAP[asc.sign||""]||asc.sign||"Nepoznato";
     var ascDeg=parseFloat(asc.degree_in_sign||asc.degree||0).toFixed(1);
     // Parse houses
     var houses=[];
-    var hs=data.houses||data.cusps||{};
-    if(Array.isArray(hs)){hs.forEach(function(h,i){houses.push({num:i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
-    else if(typeof hs==="object"){Object.keys(hs).forEach(function(k){var h=hs[k];var num=parseInt(k.replace(/\D/g,""))||houses.length+1;houses.push({num:num,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
+    var hs=raw.houses||data.houses||raw.cusps||{};
+    if(Array.isArray(hs)){hs.forEach(function(h,i){houses.push({num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
+    else if(typeof hs==="object"&&Object.keys(hs).length>0){Object.keys(hs).forEach(function(k){var h=hs[k];var num=parseInt(k.replace(/\D/g,""))||houses.length+1;houses.push({num:num,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
     houses.sort(function(a,b){return a.num-b.num;});
     var sunPl=planets.find(function(p){return p.name==="Sunce";});
     var moonPl=planets.find(function(p){return p.name==="Mesec";});
