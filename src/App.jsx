@@ -365,7 +365,7 @@ export default function App(){
       asp.forEach(function(a){
         var p1=PMAP[(a.planet1||a.body1||"").toLowerCase()]||(a.planet1||"");
         var p2=PMAP[(a.planet2||a.body2||"").toLowerCase()]||(a.planet2||"");
-        var type=AMAP[a.type||a.aspect||""]||(a.type||a.aspect||"");
+        var type=AMAP[a.aspect_type||a.type||a.aspect||""]||(a.aspect_type||a.type||"");
         var orb=parseFloat(a.orb||0).toFixed(2);
         if(p1&&p2&&type)result.push({p1:p1,p2:p2,aspect:type,orb:orb});
       });
@@ -378,27 +378,33 @@ export default function App(){
       var bd=makeBirthData(dateStr,timeStr,cityName);
       var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}};
       
-      // Call positions and aspects in parallel
+      // Call positions, aspects and houses in parallel
       var results=await Promise.all([
         astroPost("/api/v3/data/positions/enhanced",body),
-        astroPost("/api/v3/data/aspects/enhanced",body)
+        astroPost("/api/v3/data/aspects/enhanced",body),
+        astroPost("/api/v3/data/houses/placidus",body)
       ]);
-      
-      var posData=results[0],aspData=results[1];
+
+      var posData=results[0],aspData=results[1],housesData=results[2];
       console.log("POS response:",JSON.stringify(posData).slice(0,500));
       console.log("ASP response:",JSON.stringify(aspData).slice(0,500));
+      console.log("HOUSES response:",JSON.stringify(housesData).slice(0,500));
       var chart=parsePositions(posData);
       if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
-      // Merge houses/ascendant from aspects response if missing
-      if(chart.houses.length===0&&aspData){
-        var aspRaw=(aspData.data||aspData);
-        var aspHouses=aspRaw.houses||aspRaw.cusps;
-        if(aspHouses){
-          var extra=parsePositions(aspData);
-          if(extra&&extra.houses.length>0)chart.houses=extra.houses;
-          if(chart.ascSign==="Nepoznato"&&extra&&extra.ascSign!=="Nepoznato"){chart.ascSign=extra.ascSign;chart.ascDeg=extra.ascDeg;}
+      // Parse houses from dedicated houses endpoint
+      if(housesData){
+        var hRaw=(housesData.data||housesData);
+        var hArr=hRaw.houses||hRaw.cusps||[];
+        if(Array.isArray(hArr)&&hArr.length>0){
+          chart.houses=hArr.map(function(h,i){return{num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)};});
+          // First house = ascendant
+          chart.ascSign=chart.houses[0].sign;
+          chart.ascDeg=chart.houses[0].deg;
         }
+        // Also check for explicit ascendant field
+        var hAsc=hRaw.ascendant;
+        if(hAsc&&hAsc.sign){chart.ascSign=SMAP[hAsc.sign||""]||hAsc.sign;chart.ascDeg=parseFloat(hAsc.degree_in_sign||hAsc.degree||0).toFixed(1);}
       }
       chart.source="astrology-api-v3";
       console.log("AstroAPI v3 OK - "+chart.planets.length+" planets, "+chart.aspects.length+" aspects, "+chart.houses.length+" houses, asc="+chart.ascSign);
