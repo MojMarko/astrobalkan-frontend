@@ -489,32 +489,36 @@ export default function App(){
   function parseTransits(data){
     if(!data)return[];
     var raw=data.data||data;
-    // If fallback, parse transit positions into aspects with natal
+    var SLOW=["saturn","jupiter","uranus","neptune","pluto","mars"];
+    // Primary format: events array
+    var events=raw.events||raw.aspects||raw.transit_aspects||[];
+    var result=[];
+    if(Array.isArray(events)&&events.length>0){
+      events.forEach(function(e){
+        var tpRaw=e.transiting_planet||e.transit_planet||e.point1||"";
+        if(SLOW.indexOf(tpRaw.toLowerCase())<0)return;
+        var tp=PMAP[tpRaw.toLowerCase()]||tpRaw;
+        var npRaw=e.stationed_planet||e.natal_planet||e.point2||"";
+        var np=PMAP[npRaw.toLowerCase()]||npRaw;
+        var type=AMAP[e.aspect_type||e.type||""]||(e.aspect_type||e.type||"");
+        var orb=parseFloat(e.orb||0).toFixed(2);
+        result.push({planet:"T."+tp,natalPlanet:np,aspect:type,orb:orb,house:e.natal_house||e.house||null,interpretation:e.interpretation||""});
+      });
+      return result;
+    }
+    // Fallback: transit positions
     if(data.fallback&&data.transit_positions){
       var tRaw=(data.transit_positions.data||data.transit_positions);
       var tPos=tRaw.positions||[];
-      var result=[];
       if(Array.isArray(tPos)){
         tPos.forEach(function(p){
+          if(SLOW.indexOf((p.name||"").toLowerCase())<0)return;
           var nm=PMAP[(p.name||"").toLowerCase()]||p.name||"";
           var sg=SMAP[p.sign||""]||p.sign||"";
           var deg=parseFloat(p.degree_in_sign||p.degree||0).toFixed(1);
           result.push({planet:"T."+nm,sign:sg,deg:deg,retrograde:p.is_retrograde||false});
         });
       }
-      return result;
-    }
-    // Parse transit report aspects
-    var aspects=raw.aspects||raw.transit_aspects||[];
-    var result=[];
-    if(Array.isArray(aspects)){
-      aspects.forEach(function(a){
-        var tp=PMAP[(a.transit_planet||a.point1||"").toLowerCase()]||(a.transit_planet||a.point1||"");
-        var np=PMAP[(a.natal_planet||a.point2||"").toLowerCase()]||(a.natal_planet||a.point2||"");
-        var type=AMAP[a.aspect_type||a.type||""]||(a.aspect_type||a.type||"");
-        var orb=parseFloat(a.orb||0).toFixed(2);
-        if(tp&&np)result.push({planet:"T."+tp,natalPlanet:np,aspect:type,orb:orb});
-      });
     }
     return result;
   }
@@ -543,7 +547,7 @@ export default function App(){
     // Build transit text
     var trTxt="";
     if(sl.transits&&sl.transits.length>0){
-      if(sl.transits[0].natalPlanet){trTxt="\n\nTRANZITI ZA DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+" (orb "+t.orb+"°)";}).join("\n");}
+      if(sl.transits[0].natalPlanet){trTxt="\n\nTRANZITI ZA DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" (orb "+t.orb+"°)"+(t.interpretation?" - "+t.interpretation:"");}).join("\n");}
       else{trTxt="\n\nTRANZITNE POZICIJE DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n");}
     }
     var usr=mainPr+"\n\nPODACI:\nIme: "+(sl.client.ime||"")+"\nDatum: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Asc: "+sl.ch.ascSign+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+"\n\nPITANJA: "+(sl.client.pitanja||"Bez pitanja.");
@@ -788,20 +792,20 @@ export default function App(){
           ),
           // TRANSITS
           s.transits&&s.transits.length>0&&React.createElement("div",{className:"card",style:{marginTop:"8px"}},
-            React.createElement("div",{className:"ct"},"Trenutni Tranziti"),
+            React.createElement("div",{className:"ct"},"Trenutni Tranziti ("+s.transits.length+")"),
             s.transits[0].natalPlanet
-              ?React.createElement("div",{className:"asplist"},
-                s.transits.map(function(t,i){
-                  var isOuter=["T.Saturn","T.Jupiter","T.Uran","T.Neptun","T.Pluton"].indexOf(t.planet)>=0;
-                  return React.createElement("div",{key:i,style:{color:isOuter?"var(--gd2)":"var(--mt)",fontWeight:isOuter?500:400}},
-                    t.planet+" "+t.aspect+" "+t.natalPlanet+" ",React.createElement("span",{style:{opacity:.5}},"(orb "+t.orb+"\u00B0)")
+              ?s.transits.map(function(t,i){
+                  return React.createElement("div",{key:i,style:{padding:"6px 0",borderBottom:"1px solid var(--bd)"}},
+                    React.createElement("div",{style:{fontSize:"12px",color:"var(--gd2)",fontWeight:500}},
+                      t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" ",
+                      React.createElement("span",{style:{opacity:.5,fontWeight:400}},"orb "+t.orb+"\u00B0")
+                    ),
+                    t.interpretation&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"3px",lineHeight:"1.5"}},t.interpretation)
                   );
                 })
-              )
               :React.createElement("div",{className:"pgrid"},
                 s.transits.map(function(t,i){
-                  var isOuter=["T.Saturn","T.Jupiter","T.Uran","T.Neptun","T.Pluton"].indexOf(t.planet)>=0;
-                  return React.createElement("div",{key:i,className:"prow",style:{borderLeft:isOuter?"2px solid var(--gd)":"none"}},
+                  return React.createElement("div",{key:i,className:"prow",style:{borderLeft:"2px solid var(--gd)"}},
                     React.createElement("span",{className:"pn"},t.planet+(t.retrograde?" \u211E":"")),
                     React.createElement("span",{className:"pv"},t.sign+" "+t.deg+"\u00B0")
                   );
