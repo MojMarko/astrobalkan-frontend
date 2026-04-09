@@ -91,11 +91,7 @@ async function parseMsg(text){
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
-var DEF_USERS=[
-  {email:"admin@astrobalkan.com",password:"admin2024",role:"admin",name:"Admin",country:"sr",verified:true},
-  {email:"suzana@astrobalkan.com",password:"suzana2024",role:"user",name:"Suzana",country:"sr",verified:true},
-  {email:"marija@astrobalkan.com",password:"marija2024",role:"user",name:"Marija",country:"hr",verified:true}
-];
+var API="https://astrobalkan-backend.onrender.com";
 
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
@@ -142,11 +138,11 @@ var CSS="@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamon
 // MAIN APP -----------------------------------------------------------------
 export default function App(){
   var [user,setUser]=useState(null);
-  var [users,setUsers]=useState(DEF_USERS);
+  var [adminUsers,setAdminUsers]=useState([]);
   var [lm,setLm]=useState("login");
   var [lEmail,setLEmail]=useState(""); var [lPw,setLPw]=useState("");
   var [rName,setRName]=useState(""); var [rEmail,setREmail]=useState(""); var [rPw,setRPw]=useState(""); var [rPw2,setRPw2]=useState("");
-  var [genCode,setGenCode]=useState(""); var [entCode,setEntCode]=useState(""); var [pendUser,setPendUser]=useState(null);
+  var [entCode,setEntCode]=useState(""); var [pendUser,setPendUser]=useState(null);
   var [fEmail,setFEmail]=useState(""); var [fCode,setFCode]=useState(""); var [fNewPw,setFNewPw]=useState(""); var [fStep,setFStep]=useState(1);
   var [lerr,setLerr]=useState(""); var [lsuc,setLsuc]=useState("");
   var [showCtr,setShowCtr]=useState(false);
@@ -162,11 +158,14 @@ export default function App(){
   var active=useRef(0); var MAX=2;
 
   useEffect(function(){
-    stoGet("users",DEF_USERS).then(setUsers);
     stoGet("custPr",{sr:{main:"",ds:""},hr:{main:"",ds:""}}).then(setCustPr);
     stoGet("analyses",[]).then(setAnalyses);
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
   },[]);
+
+  useEffect(function(){
+    if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
+  },[tab]);
 
   function toast2(m){setToast(m);setTimeout(function(){setToast("");},3000);}
   function upSlot(i,fn){setSlots(function(p){return p.map(function(s,j){return j===i?fn(s):s;});});}
@@ -175,51 +174,95 @@ export default function App(){
   var astroName=country==="hr"?"Marija":"Suzana";
 
   // AUTH
-  function doLogin(){
-    var found=users.find(function(u){return u.email.toLowerCase()===lEmail.toLowerCase().trim()&&u.password===lPw;});
-    if(!found)return setLerr("Pogresna lozinka ili email.");
-    if(!found.verified)return setLerr("Email nije verifikovan.");
-    setUser(found);stoSet("session",found);setLerr("");
-    if(!found.country)setShowCtr(true);
+  async function doLogin(){
+    setLerr("");
+    try{
+      var r=await fetch(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:lEmail.trim().toLowerCase(),password:lPw})});
+      var d=await r.json();
+      if(!r.ok)return setLerr(d.error||"Pogresna lozinka ili email.");
+      if(!d.user.verified)return setLerr("Email nije verifikovan.");
+      setUser(d.user);stoSet("session",d.user);setLerr("");
+      if(!d.user.country)setShowCtr(true);
+    }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
-  function doRegister(){
+  async function doRegister(){
     if(!rName.trim())return setLerr("Unesite ime.");
     if(!rEmail.includes("@"))return setLerr("Unesite validan email.");
     if(rPw.length<6)return setLerr("Lozinka mora imati min. 6 znakova.");
     if(rPw!==rPw2)return setLerr("Lozinke se ne podudaraju.");
-    if(users.find(function(u){return u.email.toLowerCase()===rEmail.toLowerCase().trim();}))return setLerr("Email vec postoji.");
-    var code=Math.floor(100000+Math.random()*900000).toString();
-    setGenCode(code);
-    setPendUser({email:rEmail.trim().toLowerCase(),password:rPw,role:"user",name:rName.trim(),country:"sr",verified:false});
-    setLm("verify");setLerr("");
+    setLerr("");
+    try{
+      var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:rEmail.trim().toLowerCase(),password:rPw,name:rName.trim(),country:"sr"})});
+      var d=await r.json();
+      if(!r.ok)return setLerr(d.error||"Greska pri registraciji.");
+      setPendUser({email:rEmail.trim().toLowerCase()});
+      setLm("verify");setLerr("");setLsuc("Verifikacioni kod je poslan na email.");
+    }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
-  function doVerify(){
-    if(entCode!==genCode)return setLerr("Pogresan kod.");
-    var nu=Object.assign({},pendUser,{verified:true});
-    var upd=users.concat([nu]);setUsers(upd);stoSet("users",upd);
-    setUser(nu);stoSet("session",nu);setLerr("");setShowCtr(true);
+  async function doVerify(){
+    if(!entCode)return setLerr("Unesite kod.");
+    setLerr("");
+    try{
+      var r=await fetch(API+"/api/auth/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:pendUser.email,code:entCode})});
+      var d=await r.json();
+      if(!r.ok)return setLerr(d.error||"Pogresan kod.");
+      setLm("login");setLerr("");setLsuc("Email verifikovan! Prijavi se.");
+    }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
-  function doForgot1(){
+  async function doForgot1(){
     if(!fEmail.includes("@"))return setLerr("Unesite email.");
-    if(!users.find(function(u){return u.email.toLowerCase()===fEmail.toLowerCase().trim();}))return setLerr("Korisnik ne postoji.");
-    var code=Math.floor(1000+Math.random()*9000).toString();
-    setGenCode(code);setFStep(2);setLerr("");
-    toast2("Reset kod: "+code+" (zapamti ga!)");
+    setLerr("");
+    try{
+      var r=await fetch(API+"/api/auth/forgot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase()})});
+      var d=await r.json();
+      if(!r.ok)return setLerr(d.error||"Korisnik ne postoji.");
+      setFStep(2);setLerr("");
+      toast2("Reset kod je poslan na email!");
+    }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
-  function doForgot2(){
-    if(fCode!==genCode)return setLerr("Pogresan kod.");
+  async function doForgot2(){
+    if(!fCode)return setLerr("Unesite kod.");
     if(fNewPw.length<6)return setLerr("Lozinka mora imati min. 6 znakova.");
-    var upd=users.map(function(u){return u.email.toLowerCase()===fEmail.toLowerCase().trim()?Object.assign({},u,{password:fNewPw}):u;});
-    setUsers(upd);stoSet("users",upd);
-    setLm("login");setFStep(1);setLerr("");setLsuc("Lozinka promijenjena! Prijavi se.");
+    setLerr("");
+    try{
+      var r=await fetch(API+"/api/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase(),code:fCode,newPassword:fNewPw})});
+      var d=await r.json();
+      if(!r.ok)return setLerr(d.error||"Pogresan kod.");
+      setLm("login");setFStep(1);setLerr("");setLsuc("Lozinka promijenjena! Prijavi se.");
+    }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
   function doLogout(){setUser(null);stoSet("session",null);}
   function selectCtr(c){
     var upd=Object.assign({},user,{country:c});
     setUser(upd);stoSet("session",upd);
-    var usersUpd=users.map(function(u){return u.email===user.email?Object.assign({},u,{country:c}):u;});
-    setUsers(usersUpd);stoSet("users",usersUpd);
     setShowCtr(false);
+  }
+
+  // ADMIN
+  async function loadAdminUsers(){
+    try{
+      var r=await fetch(API+"/api/admin/users",{headers:{"x-user-id":user.id}});
+      var d=await r.json();
+      if(d.users)setAdminUsers(d.users);
+    }catch(e){}
+  }
+  async function deleteAdminUser(id){
+    try{
+      await fetch(API+"/api/admin/users/"+id,{method:"DELETE",headers:{"x-user-id":user.id}});
+      loadAdminUsers();
+      toast2("Korisnik uklonjen.");
+    }catch(e){toast2("Greska.");}
+  }
+  async function addAdminUser(){
+    if(!nuData.name||!nuData.email||!nuData.pw)return toast2("Popuni sva polja.");
+    try{
+      var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:nuData.email.toLowerCase(),password:nuData.pw,name:nuData.name,country:nuData.country})});
+      var d=await r.json();
+      if(!r.ok)return toast2(d.error||"Greska.");
+      setNuData({name:"",email:"",pw:"",country:"sr"});
+      toast2("Korisnik dodan!");
+      loadAdminUsers();
+    }catch(e){toast2("Greska.");}
   }
 
   // PARSE
@@ -614,9 +657,9 @@ export default function App(){
             React.createElement("button",{className:"lbtn",onClick:doRegister},"Nastavi")
           ),
           lm==="verify"&&React.createElement(React.Fragment,null,
-            React.createElement("div",{style:{textAlign:"center",marginBottom:"10px",fontSize:"13px",color:"var(--mt)",lineHeight:"1.6"}},"Tvoj verifikacioni kod je:"),
-            React.createElement("div",{className:"vcode"},genCode),
-            React.createElement("div",{className:"lfld"},React.createElement("label",null,"Unesite Kod"),React.createElement("input",{value:entCode,onChange:function(e){setEntCode(e.target.value);},placeholder:"6-cifreni kod",style:{letterSpacing:"4px",textAlign:"center",fontSize:"18px"},onKeyDown:function(e){if(e.key==="Enter")doVerify();}})),
+            React.createElement("div",{style:{textAlign:"center",marginBottom:"10px",fontSize:"13px",color:"var(--mt)",lineHeight:"1.6"}},"Verifikacioni kod je poslan na email."),
+            lsuc&&React.createElement("div",{className:"lsuc"},lsuc),
+            React.createElement("div",{className:"lfld"},React.createElement("label",null,"Unesite Kod iz Emaila"),React.createElement("input",{value:entCode,onChange:function(e){setEntCode(e.target.value);},placeholder:"6-cifreni kod",style:{letterSpacing:"4px",textAlign:"center",fontSize:"18px"},onKeyDown:function(e){if(e.key==="Enter")doVerify();}})),
             lerr&&React.createElement("div",{className:"lerr"},lerr),
             React.createElement("button",{className:"lbtn",onClick:doVerify},"Potvrdi Registraciju"),
             React.createElement("button",{className:"llink",onClick:function(){setLm("register");setLerr("");}},"Nazad")
@@ -629,8 +672,8 @@ export default function App(){
               React.createElement("button",{className:"lbtn",onClick:doForgot1},"Generiši Reset Kod")
             ),
             fStep===2&&React.createElement(React.Fragment,null,
-              React.createElement("div",{className:"vcode",style:{fontSize:"28px"}},genCode),
-              React.createElement("div",{className:"lfld"},React.createElement("label",null,"Reset Kod"),React.createElement("input",{value:fCode,onChange:function(e){setFCode(e.target.value);},style:{letterSpacing:"3px",textAlign:"center"}})),
+              React.createElement("div",{style:{textAlign:"center",marginBottom:"10px",fontSize:"12px",color:"var(--grn)",lineHeight:"1.6"}},"Kod je poslan na email!"),
+              React.createElement("div",{className:"lfld"},React.createElement("label",null,"Reset Kod iz Emaila"),React.createElement("input",{value:fCode,onChange:function(e){setFCode(e.target.value);},style:{letterSpacing:"3px",textAlign:"center"}})),
               React.createElement("div",{className:"lfld"},React.createElement("label",null,"Nova Lozinka"),React.createElement("input",{type:"password",value:fNewPw,onChange:function(e){setFNewPw(e.target.value);},placeholder:"Min. 6 znakova",onKeyDown:function(e){if(e.key==="Enter")doForgot2();}})),
               lerr&&React.createElement("div",{className:"lerr"},lerr),
               React.createElement("button",{className:"lbtn",onClick:doForgot2},"Promijeni Lozinku")
@@ -779,23 +822,18 @@ export default function App(){
               )
             )
           ),
-          React.createElement("button",{className:"btn bgd bfull",onClick:function(){
-            if(!nuData.name||!nuData.email||!nuData.pw)return toast2("Popuni sva polja.");
-            var nu={email:nuData.email.toLowerCase(),password:nuData.pw,role:"user",name:nuData.name,country:nuData.country,verified:true};
-            var upd=users.concat([nu]);setUsers(upd);stoSet("users",upd);
-            setNuData({name:"",email:"",pw:"",country:"sr"});toast2("Korisnica dodana!");
-          }},"\u002B Dodaj")
+          React.createElement("button",{className:"btn bgd bfull",onClick:addAdminUser},"\u002B Dodaj")
         ),
         React.createElement("div",{className:"card"},
-          React.createElement("div",{className:"ct"},"Korisnice ("+users.length+")"),
-          users.map(function(u){
-            return React.createElement("div",{key:u.email,className:"urow"},
+          React.createElement("div",{className:"ct"},"Korisnici ("+adminUsers.length+")"),
+          adminUsers.map(function(u){
+            return React.createElement("div",{key:u.id||u.email,className:"urow"},
               React.createElement("div",{className:"uav"},(u.name||"?")[0]),
               React.createElement("div",{style:{flex:1}},
-                React.createElement("div",{style:{fontSize:"13px",fontWeight:500}},u.name," ",u.role==="admin"&&React.createElement("span",{className:"abadge",style:{fontSize:"8px",marginLeft:"4px"}},"ADMIN")," ",u.country==="hr"?"\uD83C\uDDED\uD83C\uDDF7":"\uD83C\uDDF7\uD83C\uDDF8"),
+                React.createElement("div",{style:{fontSize:"13px",fontWeight:500}},u.name," ",u.role==="admin"&&React.createElement("span",{className:"abadge",style:{fontSize:"8px",marginLeft:"4px"}},"ADMIN")," ",u.country==="hr"?"\uD83C\uDDED\uD83C\uDDF7":"\uD83C\uDDF7\uD83C\uDDF8"," ",!u.verified&&React.createElement("span",{style:{fontSize:"9px",color:"var(--red)"}},"(neverifikovan)")),
                 React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"1px"}},u.email)
               ),
-              u.email!==user.email&&React.createElement("button",{className:"btn bsm brd",onClick:function(){var upd=users.filter(function(x){return x.email!==u.email;});setUsers(upd);stoSet("users",upd);toast2("Uklonjena.");}},"Ukloni")
+              u.id!==(user&&user.id)&&React.createElement("button",{className:"btn bsm brd",onClick:function(){deleteAdminUser(u.id);}},"Ukloni")
             );
           })
         )
