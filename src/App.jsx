@@ -46,7 +46,9 @@ function calcChart(dateStr,timeStr,lat,lon){
   var keys=Object.keys(pos);
   for(var i=0;i<keys.length;i++){for(var j=i+1;j<keys.length;j++){var p1=keys[i],p2=keys[j],raw=norm(pos[p1]-pos[p2]),df=raw>180?360-raw:raw;for(var k=0;k<ATYPES.length;k++){var t=ATYPES[k],mo=t.o+(LUM.indexOf(p1)>=0||LUM.indexOf(p2)>=0?2:0),ob=Math.abs(df-t.a);if(ob<=mo)aspects.push({p1:p1,p2:p2,aspect:t.n,orb:ob.toFixed(2)});}}}
   aspects.sort(function(a,b){return parseFloat(a.orb)-parseFloat(b.orb);});
-  return{sunSign:signOf(pos.Sunce),moonSign:signOf(pos.Mesec),ascSign:ad?signOf(ad):"Nepoznato",planets:planets,aspects:aspects};
+  var houses=[];
+  if(hs){for(var i=0;i<12;i++){houses.push({num:i+1,sign:signOf(hs[i]),deg:degIn(hs[i])});}}
+  return{sunSign:signOf(pos.Sunce),moonSign:signOf(pos.Mesec),ascSign:ad?signOf(ad):"Nepoznato",ascDeg:ad?degIn(ad):"0",planets:planets,aspects:aspects,houses:houses};
 }
 var CITIES={beograd:[44.8176,20.4633],"novi sad":[45.2671,19.8335],nis:[43.3209,21.8954],sarajevo:[43.8476,18.3564],zagreb:[45.8150,15.9819],split:[43.5081,16.4402],rijeka:[45.3271,14.4422],osijek:[45.5550,18.6955],doboj:[44.7333,18.0833],tuzla:[44.5384,18.6734],"banja luka":[44.7722,17.1910],podgorica:[42.4411,19.2636],skopje:[41.9981,21.4254],london:[51.5074,-0.1278],berlin:[52.5200,13.4050],wien:[48.2082,16.3738],paris:[48.8566,2.3522],"new york":[40.7128,-74.0060],dubai:[25.2048,55.2708],munich:[48.1351,11.5820],stuttgart:[48.7758,9.1829],frankfurt:[50.1109,8.6821],hamburg:[53.5753,10.0153]};
 function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase().trim();var keys=Object.keys(CITIES);for(var i=0;i<keys.length;i++){if(k.indexOf(keys[i])>=0||keys[i].indexOf(k)>=0)return CITIES[keys[i]];}return[44.8176,20.4633];}
@@ -285,7 +287,7 @@ export default function App(){
 
   // ASTROLOGY API v3 - Swiss Ephemeris (nasa.gov preciznost)
   var ASTRO_KEY=""; // handled by backend
-  var PMAP={sun:"Sunce",moon:"Mesec",mercury:"Merkur",venus:"Venera",mars:"Mars",jupiter:"Jupiter",saturn:"Saturn",uranus:"Uran",neptune:"Neptun",pluto:"Pluton"};
+  var PMAP={sun:"Sunce",moon:"Mesec",mercury:"Merkur",venus:"Venera",mars:"Mars",jupiter:"Jupiter",saturn:"Saturn",uranus:"Uran",neptune:"Neptun",pluto:"Pluton",north_node:"Sev.Cvor",south_node:"Juz.Cvor",lilith:"Lilit",chiron:"Hiron",pars_fortunae:"Tocka Srece","part_of_fortune":"Tocka Srece",mean_node:"Sev.Cvor",true_node:"Sev.Cvor"};
   var SMAP={Aries:"Ovan",Taurus:"Bik",Gemini:"Blizanci",Cancer:"Rak",Leo:"Lav",Virgo:"Devica",Libra:"Vaga",Scorpio:"Skorpija",Sagittarius:"Strelac",Capricorn:"Jarac",Aquarius:"Vodolija",Pisces:"Ribe"};
   var AMAP={Conjunction:"Konjunkcija",Opposition:"Opozicija",Trine:"Trigon",Square:"Kvadrat",Sextile:"Sekstil",Quincunx:"Kvinkunks","Semi-sextile":"Polusekstil"};
 
@@ -310,7 +312,6 @@ export default function App(){
 
   function parsePositions(data){
     if(!data)return null;
-    // v3 response: { planets: { sun: { sign, degree_in_sign, house, retrograde }, ... }, ascendant: { sign, degree } }
     var pl=data.planets||data.positions||{};
     var planets=[];
     Object.keys(pl).forEach(function(k){
@@ -319,14 +320,22 @@ export default function App(){
       var nm=PMAP[k.toLowerCase()]||k;
       var sg=SMAP[pd.sign||""]||pd.sign||"";
       var deg=parseFloat(pd.degree_in_sign||pd.degree||0).toFixed(1);
+      var absDeg=parseFloat(pd.absolute_degree||pd.longitude||0);
       var hs=pd.house||null;
-      planets.push({name:nm,sign:sg,degInSign:deg,house:hs,retrograde:pd.retrograde||false});
+      planets.push({name:nm,sign:sg,degInSign:deg,absDeg:absDeg,house:hs,retrograde:pd.retrograde||false});
     });
     var asc=data.ascendant||data.rising||{};
     var ascSign=SMAP[asc.sign||""]||asc.sign||"Nepoznato";
+    var ascDeg=parseFloat(asc.degree_in_sign||asc.degree||0).toFixed(1);
+    // Parse houses
+    var houses=[];
+    var hs=data.houses||data.cusps||{};
+    if(Array.isArray(hs)){hs.forEach(function(h,i){houses.push({num:i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
+    else if(typeof hs==="object"){Object.keys(hs).forEach(function(k){var h=hs[k];var num=parseInt(k.replace(/\D/g,""))||houses.length+1;houses.push({num:num,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree_in_sign||h.degree||0).toFixed(1)});});}
+    houses.sort(function(a,b){return a.num-b.num;});
     var sunPl=planets.find(function(p){return p.name==="Sunce";});
     var moonPl=planets.find(function(p){return p.name==="Mesec";});
-    return{sunSign:sunPl?sunPl.sign:"",moonSign:moonPl?moonPl.sign:"",ascSign:ascSign,planets:planets};
+    return{sunSign:sunPl?sunPl.sign:"",moonSign:moonPl?moonPl.sign:"",ascSign:ascSign,ascDeg:ascDeg,planets:planets,houses:houses};
   }
 
   function parseAspects(data){
@@ -347,7 +356,7 @@ export default function App(){
   async function callAstroAPI(dateStr,timeStr,cityName){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName);
-      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}};
+      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","North Node","Chiron","Lilith","Part of Fortune"]}};
       
       // Call positions and aspects in parallel
       var results=await Promise.all([
@@ -497,6 +506,25 @@ export default function App(){
     );
   }
 
+  // ELEMENT & QUALITY HELPERS
+  var ELEM={Ovan:"Vatra",Lav:"Vatra",Strelac:"Vatra",Bik:"Zemlja",Devica:"Zemlja",Jarac:"Zemlja",Blizanci:"Vazduh",Vaga:"Vazduh",Vodolija:"Vazduh",Rak:"Voda",Skorpija:"Voda",Ribe:"Voda"};
+  var QUAL={Ovan:"Kardinalni",Rak:"Kardinalni",Vaga:"Kardinalni",Jarac:"Kardinalni",Bik:"Fiksni",Lav:"Fiksni",Skorpija:"Fiksni",Vodolija:"Fiksni",Blizanci:"Promjenljivi",Devica:"Promjenljivi",Strelac:"Promjenljivi",Ribe:"Promjenljivi"};
+  var ELEM_CLR={Vatra:"#e87070",Zemlja:"#90b060",Vazduh:"#7090d0",Voda:"#60a0b0"};
+  var POSITIVE_ASP=["Konjunkcija","Trigon","Sekstil"];
+
+  function calcElements(planets){
+    var cnt={Vatra:0,Zemlja:0,Vazduh:0,Voda:0};
+    var mainPlanets=["Sunce","Mesec","Merkur","Venera","Mars","Jupiter","Saturn","Uran","Neptun","Pluton"];
+    planets.forEach(function(p){if(mainPlanets.indexOf(p.name)>=0&&ELEM[p.sign])cnt[ELEM[p.sign]]++;});
+    return cnt;
+  }
+  function calcQualities(planets){
+    var cnt={Kardinalni:0,Fiksni:0,Promjenljivi:0};
+    var mainPlanets=["Sunce","Mesec","Merkur","Venera","Mars","Jupiter","Saturn","Uran","Neptun","Pluton"];
+    planets.forEach(function(p){if(mainPlanets.indexOf(p.name)>=0&&QUAL[p.sign])cnt[QUAL[p.sign]]++;});
+    return cnt;
+  }
+
   // SLOT RENDERER
   function SlotView(props){
     var idx=props.idx;
@@ -586,20 +614,62 @@ export default function App(){
         :React.createElement(React.Fragment,null,
           React.createElement("div",{className:"card"},
             React.createElement("div",{className:"ct"},"Horoskop: "+s.client.ime),
+            // Sun/Moon/Asc with degrees
             React.createElement("div",{className:"sgnrow"},
               React.createElement("div",{className:"sgni"},React.createElement("div",{className:"sgnl"},"Sunce"),React.createElement("div",{className:"sgnv"},s.ch.sunSign)),
               React.createElement("div",{className:"sgni"},React.createElement("div",{className:"sgnl"},"Mesec"),React.createElement("div",{className:"sgnv"},s.ch.moonSign)),
-              React.createElement("div",{className:"sgni"},React.createElement("div",{className:"sgnl"},"Ascendent"),React.createElement("div",{className:"sgnv"},s.ch.ascSign))
+              React.createElement("div",{className:"sgni"},React.createElement("div",{className:"sgnl"},"Ascendent"),React.createElement("div",{className:"sgnv"},s.ch.ascSign+(s.ch.ascDeg?" "+s.ch.ascDeg+"\u00B0":"")))
             ),
+            // Planets with degrees + retrograde
+            React.createElement("div",{className:"ct",style:{marginTop:"8px"}},"Planete"),
             React.createElement("div",{className:"pgrid"},
-              s.ch.planets.map(function(p){return React.createElement("div",{key:p.name,className:"prow"},React.createElement("span",{className:"pn"},p.name),React.createElement("span",{className:"pv"},p.sign+(p.house?" · "+p.house+"K":"")));})
+              s.ch.planets.map(function(p){return React.createElement("div",{key:p.name,className:"prow"},
+                React.createElement("span",{className:"pn"},p.name+(p.retrograde?" \u211E":"")),
+                React.createElement("span",{className:"pv"},p.sign+" "+p.degInSign+"\u00B0"+(p.house?" · "+p.house+"K":""))
+              );})
             ),
+            // Elements & Qualities
+            React.createElement("div",{style:{display:"flex",gap:"12px",marginTop:"10px",flexWrap:"wrap"}},
+              React.createElement("div",{style:{flex:1,minWidth:"140px"}},
+                React.createElement("div",{className:"ct"},"Elementi"),
+                Object.keys(calcElements(s.ch.planets)).map(function(el){var cnt=calcElements(s.ch.planets)[el];return React.createElement("div",{key:el,style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"3px",fontSize:"11px"}},
+                  React.createElement("span",{style:{width:"8px",height:"8px",borderRadius:"50%",background:ELEM_CLR[el],flexShrink:0}}),
+                  React.createElement("span",{style:{color:"var(--mt)",minWidth:"65px"}},el),
+                  React.createElement("span",{style:{color:"var(--gd2)",fontWeight:500}},cnt)
+                );})
+              ),
+              React.createElement("div",{style:{flex:1,minWidth:"140px"}},
+                React.createElement("div",{className:"ct"},"Kvalitet"),
+                Object.keys(calcQualities(s.ch.planets)).map(function(q){var cnt=calcQualities(s.ch.planets)[q];return React.createElement("div",{key:q,style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"3px",fontSize:"11px"}},
+                  React.createElement("span",{style:{color:"var(--mt)",minWidth:"85px"}},q),
+                  React.createElement("span",{style:{color:"var(--gd2)",fontWeight:500}},cnt)
+                );})
+              )
+            ),
+            // Houses
+            s.ch.houses&&s.ch.houses.length>0&&React.createElement("div",{style:{marginTop:"10px"}},
+              React.createElement("div",{className:"ct"},"Kuce ("+s.ch.houses.length+")"),
+              React.createElement("div",{className:"pgrid"},
+                s.ch.houses.map(function(h){return React.createElement("div",{key:h.num,className:"prow"},
+                  React.createElement("span",{className:"pn"},h.num+". kuca"),
+                  React.createElement("span",{className:"pv"},h.sign+" "+h.deg+"\u00B0")
+                );})
+              )
+            ),
+            // Aspects - split positive/negative
             React.createElement("div",{style:{marginTop:"9px"}},
-              React.createElement("div",{className:"ct"},"Aspekti ("+s.ch.aspects.length+")"),
+              React.createElement("div",{className:"ct"},"Pozitivni Aspekti"),
               React.createElement("div",{className:"asplist"},
-                s.ch.aspects.slice(0,25).map(function(a,i){
-                  var cl=a.aspect==="Konjunkcija"?"ac0":a.aspect==="Opozicija"?"ao":a.aspect==="Trigon"?"at":a.aspect==="Kvadrat"?"aq":a.aspect==="Sekstil"?"as":"ax";
-                  return React.createElement("div",{key:i,className:cl},a.p1+" "+a.aspect+" "+a.p2+" ",React.createElement("span",{style:{opacity:.5}},"(orb "+a.orb+"°)"));
+                s.ch.aspects.filter(function(a){return POSITIVE_ASP.indexOf(a.aspect)>=0;}).slice(0,15).map(function(a,i){
+                  var cl=a.aspect==="Konjunkcija"?"ac0":a.aspect==="Trigon"?"at":"as";
+                  return React.createElement("div",{key:"p"+i,className:cl},a.p1+" "+a.aspect+" "+a.p2+" ",React.createElement("span",{style:{opacity:.5}},"(orb "+a.orb+"\u00B0)"));
+                })
+              ),
+              React.createElement("div",{className:"ct",style:{marginTop:"8px"}},"Izazovni Aspekti"),
+              React.createElement("div",{className:"asplist"},
+                s.ch.aspects.filter(function(a){return POSITIVE_ASP.indexOf(a.aspect)<0;}).slice(0,15).map(function(a,i){
+                  var cl=a.aspect==="Opozicija"?"ao":a.aspect==="Kvadrat"?"aq":"ax";
+                  return React.createElement("div",{key:"n"+i,className:cl},a.p1+" "+a.aspect+" "+a.p2+" ",React.createElement("span",{style:{opacity:.5}},"(orb "+a.orb+"\u00B0)"));
                 })
               )
             )
