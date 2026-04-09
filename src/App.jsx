@@ -558,7 +558,7 @@ export default function App(){
       if(sl.transits[0].natalPlanet){trTxt="\n\nTRANZITI ZA DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" (orb "+t.orb+"°)"+(t.interpretation?" - "+t.interpretation:"");}).join("\n");}
       else{trTxt="\n\nTRANZITNE POZICIJE DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n");}
     }
-    var usr=mainPr+"\n\nPODACI:\nIme: "+(sl.client.ime||"")+"\nDatum: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Asc: "+sl.ch.ascSign+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+"\n\nPITANJA: "+(sl.client.pitanja||"Bez pitanja.");
+    var usr=mainPr+"\n\n---\n\nPODACI O KLIJENTU:\nIme: "+(sl.client.ime||"")+"\nDatum rodjenja: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Ascendent: "+sl.ch.ascSign+(sl.ch.ascDeg?" "+sl.ch.ascDeg+"°":"")+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu.");
     var ri=idx;
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
