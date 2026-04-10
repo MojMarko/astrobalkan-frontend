@@ -630,7 +630,7 @@ export default function App(){
       var finalText=fmtText(fullText);
       setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:finalText}):s;});});
       var now=new Date();
-      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:sl.types,analysis:finalText,country:country,owner:user&&user.email,mesto:sl.client.mesto||""};
+      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),birthDate:sl.client.datum||"",types:sl.types,analysis:finalText,country:country,owner:user&&user.email,mesto:sl.client.mesto||""};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(err){
       setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:"Greška. Provjeri konekciju i pokušaj ponovo."}):s;});});
@@ -1121,7 +1121,7 @@ export default function App(){
         (function(){
           var q=bazaSearch.toLowerCase().trim();
           var filtered=myAnalyses;
-          if(q)filtered=filtered.filter(function(a){return((a.clientName||"")+(a.sign||"")+(a.date||"")+(a.mesto||"")).toLowerCase().indexOf(q)>=0;});
+          if(q)filtered=filtered.filter(function(a){var bd=a.birthDate||"";var bdSr=bd?new Date(bd).toLocaleDateString("sr"):"";return((a.clientName||"")+" "+(a.sign||"")+" "+(a.date||"")+" "+(a.mesto||"")+" "+bd+" "+bdSr).toLowerCase().indexOf(q)>=0;});
           if(bazaDateFilter){var dfSr=new Date(bazaDateFilter).toLocaleDateString("sr");filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
           var dateLabel=bazaDateFilter?new Date(bazaDateFilter).toLocaleDateString("sr"):"";
           return filtered.length===0
