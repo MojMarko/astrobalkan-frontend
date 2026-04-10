@@ -101,9 +101,17 @@ var PR_HR_DS="Na osnovu analize napisi TOCNE PERIODE u narednih 12 mjeseci. Foku
 
 // API ----------------------------------------------------------------------
 async function parseMsg(text){
-  var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,system:'Izvuci podatke i vrati SAMO JSON: {"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}',messages:[{role:"user",content:"Izvuci:\n"+text}]})});
+  var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,system:'Izvuci podatke iz poruke i vrati SAMO JSON bez ikakvog teksta oko njega: {"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nVAZNO:\n- datum MORA biti u formatu YYYY-MM-DD (npr 1987-04-24 NE 24.04.1987)\n- vreme MORA biti u formatu HH:MM (npr 10:40)\n- ako nema vremena ostavi prazan string\n- ako pise Za cerku/sina/brata itd stavi to u ime polje\n- imaPartnera=true ako ima podatke za drugu osobu (muz, zet, partner)',messages:[{role:"user",content:"Izvuci:\n"+text}]})});
   var d=await r.json(),t=(d.content&&d.content[0]&&d.content[0].text)||"{}";
-  try{return JSON.parse(t.replace(/```json|```/g,"").trim());}catch(e){return null;}
+  try{
+    var parsed=JSON.parse(t.replace(/```json|```/g,"").trim());
+    // Fix date format if AI returned DD.MM.YYYY instead of YYYY-MM-DD
+    function fixDate(d){if(!d)return"";if(/^\d{4}-\d{2}-\d{2}$/.test(d))return d;var m=d.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");return d;}
+    if(parsed.klijent){parsed.klijent.datum=fixDate(parsed.klijent.datum);}
+    if(parsed.partner){parsed.partner.datum=fixDate(parsed.partner.datum);}
+    console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
+    return parsed;
+  }catch(e){console.error("parseMsg JSON error:",e,t.slice(0,200));return null;}
 }
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
