@@ -719,7 +719,7 @@ export default function App(){
   // TRANSLATE TO SERBIAN
   async function translateToSerbian(englishText){
     try{
-      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Gramatika mora biti 100% ispravna po srpskom pravopisu. Ne dodaji nista novo, ne menjaj sadrzaj, ne skracuj, samo prevedi. Zadrzi sve prazne redove i formatiranje originala. Zadrzi sva imena i datume. Vrati SAMO prevedeni tekst bez ikakvog komentara.",messages:[{role:"user",content:englishText}]})});
+      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Gramatika mora biti 100% ispravna po srpskom pravopisu. Ne dodaji nista novo, ne menjaj sadrzaj, ne skracuj, samo prevedi tacno onako kako jeste. Zadrzi sve prazne redove i formatiranje originala. Zadrzi sva imena i datume. NIKAD ne duplaj slova (ne pisi srcemm, borbaa, oseecas). Svaka rec mora biti ispravno napisana. Vrati SAMO prevedeni tekst bez ikakvog komentara.",messages:[{role:"user",content:englishText}]})});
       if(!resp.ok)return englishText;
       var d=await resp.json();
       var t=(d.content&&d.content[0]&&d.content[0].text)||englishText;
