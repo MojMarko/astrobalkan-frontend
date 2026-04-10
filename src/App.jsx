@@ -172,12 +172,14 @@ export default function App(){
   var [showCtr,setShowCtr]=useState(false);
   var [tab,setTab]=useState("a1");
   var [slots,setSlots]=useState([emptySlot(),emptySlot(),emptySlot()]);
-  var [custPr,setCustPr]=useState({sr:{main:"",ds:""},hr:{main:"",ds:""}});
+  var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
   var [toast,setToast]=useState("");
   var [dsPaste,setDsPaste]=useState(""); var [dsAn,setDsAn]=useState(""); var [dsSt,setDsSt]=useState("idle"); var [dsCi,setDsCi]=useState(0);
+  var [pqPrev,setPqPrev]=useState(""); var [pqQuest,setPqQuest]=useState(""); var [pqAn,setPqAn]=useState(""); var [pqSt,setPqSt]=useState("idle"); var [pqCi,setPqCi]=useState(0);
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
+  var [bazaSearch,setBazaSearch]=useState("");
   var [nuData,setNuData]=useState({name:"",email:"",pw:"",country:"sr"});
   var active=useRef(0); var MAX=2;
 
@@ -618,7 +620,7 @@ export default function App(){
       var finalText=fmtText(fullText);
       setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:finalText}):s;});});
       var now=new Date();
-      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:sl.types,analysis:finalText,country:country,owner:user&&user.email};
+      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:sl.types,analysis:finalText,country:country,owner:user&&user.email,mesto:sl.client.mesto||""};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(err){
       setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:"Greška. Provjeri konekciju i pokušaj ponovo."}):s;});});
@@ -648,6 +650,34 @@ export default function App(){
       var na={id:"d"+Date.now(),clientName:"Downsell",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:["tranziti"],analysis:fmtText(full),country:country,owner:user&&user.email};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(e){setDsSt("done");setDsAn("Greška. Provjeri konekciju.");}
+    finally{active.current=Math.max(0,active.current-1);}
+  }
+
+  // PITANJA GEN
+  async function doPqGen(){
+    if(!pqPrev.trim()||!pqQuest.trim())return;
+    setPqSt("generating");setPqAn("");setPqCi(0);
+    var isHR=country==="hr";
+    var aName=isHR?"Marija":"Suzana";
+    var lang=isHR?"hrvatskom":"srpskom";
+    var pqPr=custPr[country]&&custPr[country].pitanja?custPr[country].pitanja:"";
+    var sys=pqPr||("Ti si "+aName+", vrhunski astrolog sa 30 godina iskustva. Klijent ti je poslao svoju prethodnu analizu i ima dodatna pitanja. Odgovori ISKLJUCIVO na postavljena pitanja, opsirno, detaljno i duboko. Pisi na "+lang+" ekavica zenski rod. Ne pravi uvod, odmah kreni sa odgovorima na pitanja. Svaki odgovor mora biti detaljan minimum 5-6 recenica. Pisi kao da sjedis pred klijentom.");
+    while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
+    active.current+=1;
+    try{
+      var resp=await fetch(API+"/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:"PRETHODNA ANALIZA:\n"+pqPrev+"\n\nPITANJA KLIJENTA:\n"+pqQuest}]})});
+      if(!resp.ok)throw new Error("HTTP "+resp.status);
+      var reader=resp.body.getReader(),dec=new TextDecoder();var full="";
+      while(true){
+        var result=await reader.read();if(result.done)break;
+        var lines=dec.decode(result.value,{stream:true}).split("\n").filter(function(l){return l.startsWith("data:");});
+        for(var li=0;li<lines.length;li++){try{var j=JSON.parse(lines[li].slice(5));if(j.type==="content_block_delta"&&j.delta&&j.delta.text){full+=j.delta.text;setPqAn(fmtText(full));}}catch(e){}}
+      }
+      setPqSt("done");
+      var now=new Date();
+      var na={id:"q"+Date.now(),clientName:"Pitanja",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:["pitanja"],analysis:fmtText(full),country:country,owner:user&&user.email};
+      setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
+    }catch(e){setPqSt("done");setPqAn("Greska. Provjeri konekciju.");}
     finally{active.current=Math.max(0,active.current-1);}
   }
 
@@ -988,7 +1018,7 @@ export default function App(){
   }
 
   // MAIN ---------------------------------------------------------------------
-  var navItems=[{id:"a1",l:"A1",icon:"\u2726"},{id:"a2",l:"A2",icon:"\u2727"},{id:"a3",l:"A3",icon:"\u2728"},{id:"downsell",l:"DS",icon:"\u21BB"},{id:"baza",l:"Baza",icon:"\uD83D\uDCC1"},{id:"prompt",l:"Prompt",icon:"\u2699"}];
+  var navItems=[{id:"a1",l:"A1",icon:"\u2726"},{id:"a2",l:"A2",icon:"\u2727"},{id:"a3",l:"A3",icon:"\u2728"},{id:"downsell",l:"DS",icon:"\u21BB"},{id:"pitanja",l:"Pit.",icon:"\u2753"},{id:"baza",l:"Baza",icon:"\uD83D\uDCC1"},{id:"prompt",l:"Prompt",icon:"\u2699"}];
   if(user.role==="admin")navItems.push({id:"admin",l:"Admin",icon:"\uD83D\uDC64"});
 
   return React.createElement(React.Fragment,null,
@@ -1042,23 +1072,53 @@ export default function App(){
         )
       ),
 
+      // PITANJA
+      tab==="pitanja"&&React.createElement("div",{className:"sec"},
+        React.createElement("div",{className:"stitle"},React.createElement(Logo,{size:19})," Pitanja Klijenta"),
+        React.createElement("div",{className:"card card-hi"},
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"),React.createElement("textarea",{value:pqPrev,onChange:function(e){setPqPrev(e.target.value);},placeholder:"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pqQuest,onChange:function(e){setPqQuest(e.target.value);},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
+          React.createElement("button",{className:"btn bgd bfull",onClick:doPqGen,disabled:pqSt==="generating"||!pqPrev.trim()||!pqQuest.trim()},
+            pqSt==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generisi Odgovore"
+          )
+        ),
+        pqAn&&React.createElement(React.Fragment,null,
+          React.createElement(ChunkTracker,{ch:getChunks(pqAn),ci:pqCi,setCi:setPqCi}),
+          React.createElement("div",{className:"aout "+(pqSt==="generating"?"cur":"")},pqAn),
+          React.createElement("div",{className:"abar"},
+            pqCi<getChunks(pqAn).length
+              ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){var ch=getChunks(pqAn);doCopy(ch[pqCi],"Dio "+(pqCi+1)+"/"+ch.length);setPqCi(function(p){return Math.min(p+1,ch.length);});}},"Kopiraj "+(pqCi+1)+"/"+getChunks(pqAn).length)
+              :React.createElement("button",{className:"btn bol bsm",onClick:function(){setPqCi(0);}},"Ponovi"),
+            React.createElement("button",{className:"btn bol bsm",disabled:pqCi===0,onClick:function(){setPqCi(function(p){return Math.max(0,p-1);});}},"<"),
+            React.createElement("button",{className:"btn bol bsm",disabled:pqCi>=getChunks(pqAn).length-1,onClick:function(){setPqCi(function(p){return Math.min(getChunks(pqAn).length-1,p+1);});}},">"),
+            React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pqAn);toast2("Sve kopirano!");}},"Sve")
+          )
+        )
+      ),
+
       // BAZA
       tab==="baza"&&React.createElement("div",{className:"sec"},
         React.createElement("div",{className:"stitle"},React.createElement(Logo,{size:19})," Baza Analiza"),
-        myAnalyses.length===0
-          ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,"Još nema sačuvanih analiza."))
-          :React.createElement(React.Fragment,null,
-            React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},myAnalyses.length+" analiza"),
-            myAnalyses.map(function(a){
-              return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAn(a);}},
-                React.createElement("div",{className:"acard-top"},
-                  React.createElement("div",{className:"acard-name"},(a.clientName||"Nepoznat")+(a.sign?" · "+a.sign:"")),
-                  React.createElement("div",{className:"acard-date"},a.date)
-                ),
-                React.createElement("div",{className:"acard-prev"},a.analysis)
-              );
-            })
-          )
+        React.createElement("div",{className:"fld",style:{marginBottom:"10px"}},React.createElement("input",{value:bazaSearch,onChange:function(e){setBazaSearch(e.target.value);},placeholder:"Pretrazi po imenu, datumu, znaku...",className:"sel-input"})),
+        (function(){
+          var q=bazaSearch.toLowerCase().trim();
+          var filtered=q?myAnalyses.filter(function(a){return((a.clientName||"")+(a.sign||"")+(a.date||"")+(a.mesto||"")).toLowerCase().indexOf(q)>=0;}):myAnalyses;
+          return filtered.length===0
+            ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,q?"Nema rezultata za '"+bazaSearch+"'":"Jos nema sacuvanih analiza."))
+            :React.createElement(React.Fragment,null,
+              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(q?" pronadjeno":" analiza")),
+              filtered.map(function(a){
+                return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAn(a);}},
+                  React.createElement("div",{className:"acard-top"},
+                    React.createElement("div",{className:"acard-name"},(a.clientName||"Nepoznat")+(a.sign?" \u00B7 "+a.sign:"")),
+                    React.createElement("div",{className:"acard-date"},a.date)
+                  ),
+                  a.mesto&&React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginTop:"1px"}},a.mesto),
+                  React.createElement("div",{className:"acard-prev"},a.analysis)
+                );
+              })
+            );
+        })()
       ),
 
       // PROMPT
@@ -1066,7 +1126,8 @@ export default function App(){
         React.createElement("div",{className:"stitle"},React.createElement(Logo,{size:19})," Promptovi"),
         React.createElement("div",{className:"tabs"},
           React.createElement("button",{className:"tab "+(editPr==="main"?"on":""),onClick:function(){setEditPr("main");}},"Glavni"),
-          React.createElement("button",{className:"tab "+(editPr==="ds"?"on":""),onClick:function(){setEditPr("ds");}},"Downsell")
+          React.createElement("button",{className:"tab "+(editPr==="ds"?"on":""),onClick:function(){setEditPr("ds");}},"Downsell"),
+          React.createElement("button",{className:"tab "+(editPr==="pitanja"?"on":""),onClick:function(){setEditPr("pitanja");}},"Pitanja")
         ),
         React.createElement("div",{style:{display:"flex",gap:"6px",marginBottom:"12px"}},
           React.createElement("span",{style:{fontSize:"11px",color:"var(--mt)",alignSelf:"center"}},"Regija:"),
