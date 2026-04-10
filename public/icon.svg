@@ -1,27 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#0d0525"/>
-      <stop offset="100%" stop-color="#02000d"/>
-    </radialGradient>
-    <radialGradient id="moon" cx="40%" cy="35%" r="60%">
-      <stop offset="0%" stop-color="#fff8e0"/>
-      <stop offset="50%" stop-color="#e8c96d"/>
-      <stop offset="100%" stop-color="#8a5e1a"/>
-    </radialGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
-  <circle cx="256" cy="256" r="200" stroke="url(#moon)" stroke-width="2" fill="none" opacity=".15"/>
-  <path d="M256 80C180 80 120 140 120 216C120 292 180 352 256 352C200 330 162 285 162 216C162 147 200 102 256 80Z" fill="url(#moon)" filter="url(#glow)"/>
-  <circle cx="340" cy="130" r="12" fill="#f5dfa0" filter="url(#glow)"/>
-  <circle cx="380" cy="200" r="8" fill="#e8c96d" opacity=".9"/>
-  <circle cx="360" cy="300" r="10" fill="#f5dfa0" filter="url(#glow)"/>
-  <line x1="340" y1="130" x2="380" y2="200" stroke="#c9a84c" stroke-width="1.5" opacity=".5"/>
-  <line x1="380" y1="200" x2="360" y2="300" stroke="#c9a84c" stroke-width="1.5" opacity=".5"/>
-  <path d="M256 50L258 58L266 60L258 62L256 70L254 62L246 60L254 58Z" fill="#f5dfa0" opacity=".8"/>
-  <path d="M400 350L401.5 355L407 356.5L401.5 358L400 363L398.5 358L393 356.5L398.5 355Z" fill="#f5dfa0" opacity=".6"/>
+  <rect width="512" height="512" rx="96" fill="#000000"/>
+  <text x="256" y="270" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="145" font-weight="bold" fill="#00BFFF" letter-spacing="-2">astro</text>
+  <path d="M200 310 Q256 370 370 310" stroke="#00BFFF" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <path d="M365 310 L380 295 L370 315" fill="#00BFFF"/>
 </svg>
