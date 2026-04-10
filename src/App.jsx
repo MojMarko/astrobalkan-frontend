@@ -1122,7 +1122,7 @@ export default function App(){
           var q=bazaSearch.toLowerCase().trim();
           var filtered=myAnalyses;
           if(q)filtered=filtered.filter(function(a){return((a.clientName||"")+(a.sign||"")+(a.date||"")+(a.mesto||"")).toLowerCase().indexOf(q)>=0;});
-          if(bazaDateFilter)filtered=filtered.filter(function(a){return(a.rawDate||"")=== bazaDateFilter||(a.date||"").indexOf(bazaDateFilter)>=0;});
+          if(bazaDateFilter){var dfSr=new Date(bazaDateFilter).toLocaleDateString("sr");filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
           var dateLabel=bazaDateFilter?new Date(bazaDateFilter).toLocaleDateString("sr"):"";
           return filtered.length===0
             ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter)?"Nema rezultata":"Jos nema sacuvanih analiza."))
