@@ -184,7 +184,16 @@ export default function App(){
   var active=useRef(0); var MAX=2;
 
   useEffect(function(){
-    stoGet("custPr",{sr:{main:"",ds:""},hr:{main:"",ds:""}}).then(setCustPr);
+    stoGet("custPr",{sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}}).then(function(local){
+      setCustPr(local);
+      // Load from backend (overrides local)
+      fetch(API+"/api/prompts").then(function(r){return r.json();}).then(function(d){
+        if(d.prompts&&Object.keys(d.prompts).length>0){
+          var merged={sr:Object.assign({main:"",ds:"",pitanja:""},local.sr||{},d.prompts.sr||{}),hr:Object.assign({main:"",ds:"",pitanja:""},local.hr||{},d.prompts.hr||{})};
+          setCustPr(merged);stoSet("custPr",merged);
+        }
+      }).catch(function(){});
+    });
     stoGet("analyses",[]).then(setAnalyses);
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
   },[]);
@@ -1138,14 +1147,19 @@ export default function App(){
           React.createElement("button",{className:"tab "+(country==="hr"?"on":""),onClick:function(){selectCtr("hr");}},"\uD83C\uDDED\uD83C\uDDF7 Hrvatska")
         ),
         React.createElement("div",{className:"card"},
-          React.createElement("div",{className:"ct"},editPr==="main"?"Glavni Prompt ("+astroName+")":"Downsell Prompt"),
+          React.createElement("div",{className:"ct"},editPr==="main"?"Glavni Prompt ("+astroName+")":editPr==="ds"?"Downsell Prompt":"Pitanja Prompt"),
           React.createElement("div",{className:"fld"},
-            React.createElement("textarea",{value:custPr[country]&&custPr[country][editPr]?custPr[country][editPr]:"",onChange:function(e){var val=e.target.value;setCustPr(function(p){var n=Object.assign({},p);n[country]=Object.assign({},n[country]);n[country][editPr]=val;return n;});},rows:12,placeholder:"Ostavi prazno za default prompt."})
+            React.createElement("textarea",{value:custPr[country]&&custPr[country][editPr]?custPr[country][editPr]:"",onChange:function(e){if(user.role!=="admin")return;var val=e.target.value;setCustPr(function(p){var n=Object.assign({},p);n[country]=Object.assign({},n[country]);n[country][editPr]=val;return n;});},rows:12,placeholder:"Ostavi prazno za default prompt.",readOnly:user.role!=="admin"})
           ),
-          React.createElement("div",{className:"abar"},
-            React.createElement("button",{className:"btn bgd",onClick:function(){stoSet("custPr",custPr);toast2("Sacuvano!");}},"\u0053acuvaj"),
-            React.createElement("button",{className:"btn bol bsm",onClick:function(){setCustPr(function(p){var n=Object.assign({},p);n[country]=Object.assign({},n[country]);n[country][editPr]="";return n;});}},"\u0052eset")
-          )
+          user.role==="admin"
+            ?React.createElement("div",{className:"abar"},
+              React.createElement("button",{className:"btn bgd",onClick:function(){
+                stoSet("custPr",custPr);
+                fetch(API+"/api/prompts",{method:"POST",headers:{"Content-Type":"application/json","x-user-role":"admin"},body:JSON.stringify({country:country,type:editPr,content:(custPr[country]&&custPr[country][editPr])||""})}).then(function(){toast2("Sacuvano u bazu!");}).catch(function(){toast2("Sacuvano lokalno.");});
+              }},"\u0053acuvaj"),
+              React.createElement("button",{className:"btn bol bsm",onClick:function(){setCustPr(function(p){var n=Object.assign({},p);n[country]=Object.assign({},n[country]);n[country][editPr]="";return n;});}},"\u0052eset")
+            )
+            :React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"8px"}},"Samo admin moze mijenjati promptove.")
         )
       ),
 
