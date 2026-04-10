@@ -124,10 +124,10 @@ var API="https://astrobalkan-backend.onrender.com";
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
   var sz=props.size||44;
-  var fs=sz*0.28;
+  var w=sz*2.5;
   var uid="lg"+Math.random().toString(36).slice(2,6);
   return (
-    React.createElement("svg",{width:sz,height:sz,viewBox:"0 0 44 44",fill:"none"},
+    React.createElement("svg",{width:w,height:sz,viewBox:"0 0 120 44",fill:"none"},
       React.createElement("defs",null,
         React.createElement("linearGradient",{id:uid+"t",x1:"0%",y1:"0%",x2:"0%",y2:"100%"},
           React.createElement("stop",{offset:"0%",stopColor:"#7FEFFF"}),
@@ -139,17 +139,17 @@ function Logo(props){
           React.createElement("stop",{offset:"100%",stopColor:"#7FEFFF"})
         ),
         React.createElement("filter",{id:uid+"g"},
-          React.createElement("feGaussianBlur",{stdDeviation:"0.8",result:"b"}),
+          React.createElement("feGaussianBlur",{stdDeviation:"1",result:"b"}),
           React.createElement("feMerge",null,React.createElement("feMergeNode",{in:"b"}),React.createElement("feMergeNode",{in:"SourceGraphic"}))
         )
       ),
-      React.createElement("text",{x:"21",y:"22",textAnchor:"middle",fontFamily:"'Arial Rounded MT Bold','Nunito',Arial,sans-serif",fontSize:fs,fontWeight:"bold",fill:"url(#"+uid+"t)"},"astro"),
-      React.createElement("path",{d:"M8 28 Q14 25 22 29 Q29 33 36 28",stroke:"url(#"+uid+"s)",strokeWidth:"1.2",fill:"none",strokeLinecap:"round"}),
-      React.createElement("path",{d:"M35.5 27.5 L37.5 25.5 Q37 28 38 28.5 Z",fill:"#7FEFFF",filter:"url(#"+uid+"g)"}),
-      React.createElement("path",{d:"M36 26 L36.3 24.5 L36.6 26 L38.1 26.3 L36.6 26.6 L36.3 28.1 L36 26.6 L34.5 26.3 Z",fill:"#fff",filter:"url(#"+uid+"g)"}),
-      React.createElement("circle",{cx:33,cy:31,r:.6,fill:"#7FEFFF",filter:"url(#"+uid+"g)",opacity:".7"}),
-      React.createElement("circle",{cx:30,cy:33,r:.4,fill:"#00BFFF",opacity:".5"}),
-      React.createElement("circle",{cx:10,cy:27,r:.4,fill:"#00BFFF",opacity:".4"})
+      React.createElement("text",{x:"50",y:"24",textAnchor:"middle",fontFamily:"'Arial Rounded MT Bold','Nunito',Arial,sans-serif",fontSize:"22",fontWeight:"bold",fill:"url(#"+uid+"t)"},"astro"),
+      React.createElement("path",{d:"M20 32 Q35 28 55 34 Q72 39 95 30",stroke:"url(#"+uid+"s)",strokeWidth:"2",fill:"none",strokeLinecap:"round"}),
+      React.createElement("path",{d:"M94 30 L99 25 Q97 31 100 32 Z",fill:"#7FEFFF",filter:"url(#"+uid+"g)"}),
+      React.createElement("path",{d:"M98 26 L98.5 23 L99 26 L102 26.5 L99 27 L98.5 30 L98 27 L95 26.5 Z",fill:"#fff",filter:"url(#"+uid+"g)"}),
+      React.createElement("circle",{cx:88,cy:36,r:1,fill:"#7FEFFF",filter:"url(#"+uid+"g)",opacity:".7"}),
+      React.createElement("circle",{cx:82,cy:38,r:.7,fill:"#00BFFF",opacity:".5"}),
+      React.createElement("circle",{cx:25,cy:31,r:.7,fill:"#00BFFF",opacity:".4"})
     )
   );
 }
@@ -1079,7 +1079,7 @@ export default function App(){
       // HEADER
       React.createElement("div",{className:"hdr"},
         React.createElement("div",{className:"hdr-top"},
-          React.createElement("div",{className:"hbrand"},React.createElement(Logo,{size:28}),React.createElement("div",null,React.createElement("div",{className:"hname"},"Astro Balkan"))),
+          React.createElement("div",{className:"hbrand"},React.createElement(Logo,{size:32})),
           React.createElement("div",{className:"huser"},
             user.role==="admin"&&React.createElement("span",{className:"abadge"},"ADMIN"),
             React.createElement("span",null,country==="hr"?"\uD83C\uDDED\uD83C\uDDF7":"\uD83C\uDDF7\uD83C\uDDF8"),
