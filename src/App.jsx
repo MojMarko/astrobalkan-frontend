@@ -411,12 +411,13 @@ export default function App(){
       // Call positions, aspects, houses and solar return in parallel
       var curYear=new Date().getFullYear();
       var solarBody={subject:{name:"Client",birth_data:bd},options:{year:curYear,house_system:"P"}};
-      var results=await Promise.all([
+      var results=await Promise.allSettled([
         astroPost("/api/v3/data/positions/enhanced",body),
         astroPost("/api/v3/data/aspects/enhanced",body),
         astroPost("/api/v3/data/houses",body),
         fetch(API+"/api/astro/solar-return",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd,year:curYear})}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
       ]);
+      results=results.map(function(r){return r.status==="fulfilled"?r.value:null;});
 
       var posData=results[0],aspData=results[1],housesData=results[2],solarData=results[3];
       console.log("POS response:",JSON.stringify(posData).slice(0,500));
@@ -491,24 +492,28 @@ export default function App(){
     var sl=slots[idx];if(!sl.client.datum)return;
     upSlot(idx,function(s){return Object.assign({},s,{status:"computing"});});
     try{
+      console.log("doCalc START for:",sl.client.ime,sl.client.datum,sl.client.vreme,sl.client.mesto);
       // Try astrology-api.io first (Swiss Ephemeris precision)
-      var c=await callAstroAPI(sl.client.datum,sl.client.vreme,sl.client.mesto);
+      var c=null;
+      try{c=await callAstroAPI(sl.client.datum,sl.client.vreme,sl.client.mesto);}catch(e){console.error("callAstroAPI crashed:",e);}
       if(!c){
         // Fallback to local calculation
         console.log("Using local fallback calculation");
         var coords=getCoords(sl.client.mesto);
         c=calcChart(sl.client.datum,sl.client.vreme,coords[0],coords[1]);
+        console.log("Local calc result:",c?c.planets.length+" planets":"null");
       }
       var pc=null;
       if(sl.hasPart&&sl.partner.datum){
-        pc=await callAstroAPI(sl.partner.datum,sl.partner.vreme,sl.partner.mesto);
+        try{pc=await callAstroAPI(sl.partner.datum,sl.partner.vreme,sl.partner.mesto);}catch(e){console.error("Partner callAstroAPI crashed:",e);}
         if(!pc){var pc2=getCoords(sl.partner.mesto);pc=calcChart(sl.partner.datum,sl.partner.vreme,pc2[0],pc2[1]);}
       }
+      console.log("doCalc DONE, planets:",c?c.planets.length:0,"aspects:",c?c.aspects.length:0);
       upSlot(idx,function(s){return Object.assign({},s,{ch:c,pch:pc,status:"idle"});});
       // Fetch transits in background
       fetchTransits(idx,sl.client.datum,sl.client.vreme,sl.client.mesto);
     }catch(e){
-      console.error("doCalc error:",e);
+      console.error("doCalc FATAL error:",e);
       upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
     }
   }
