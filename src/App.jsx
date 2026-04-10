@@ -124,28 +124,12 @@ var API="https://astrobalkan-backend.onrender.com";
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
   var sz=props.size||44;
+  var fs=sz*0.32;
   return (
     React.createElement("svg",{width:sz,height:sz,viewBox:"0 0 44 44",fill:"none"},
-      React.createElement("defs",null,
-        React.createElement("radialGradient",{id:"lg",cx:"45%",cy:"35%",r:"65%"},
-          React.createElement("stop",{offset:"0%",stopColor:"#fff8e0"}),
-          React.createElement("stop",{offset:"60%",stopColor:"#e8c96d"}),
-          React.createElement("stop",{offset:"100%",stopColor:"#8a5e1a"})
-        ),
-        React.createElement("filter",{id:"gw"},
-          React.createElement("feGaussianBlur",{stdDeviation:"1.2",result:"b"}),
-          React.createElement("feMerge",null,React.createElement("feMergeNode",{in:"b"}),React.createElement("feMergeNode",{in:"SourceGraphic"}))
-        )
-      ),
-      React.createElement("circle",{cx:22,cy:22,r:20.5,stroke:"url(#lg)",strokeWidth:".8",opacity:".45"}),
-      React.createElement("circle",{cx:22,cy:22,r:14,stroke:"url(#lg)",strokeWidth:".4",opacity:".25"}),
-      React.createElement("path",{d:"M22 5C13.5 5 7.5 11.2 7.5 19C7.5 26.8 13.5 33 22 33C16 30.2 12.2 25.2 12.2 19C12.2 12.8 16 7.8 22 5Z",fill:"url(#lg)",filter:"url(#gw)"}),
-      React.createElement("circle",{cx:30.5,cy:11.5,r:1.7,fill:"#f5dfa0",filter:"url(#gw)"}),
-      React.createElement("circle",{cx:35.5,cy:19.5,r:1.1,fill:"#e8c96d",opacity:".9"}),
-      React.createElement("circle",{cx:33,cy:28.5,r:1.4,fill:"#f5dfa0",filter:"url(#gw)"}),
-      React.createElement("line",{x1:30.5,y1:11.5,x2:35.5,y2:19.5,stroke:"#c9a84c",strokeWidth:".55",opacity:".6"}),
-      React.createElement("line",{x1:35.5,y1:19.5,x2:33,y2:28.5,stroke:"#c9a84c",strokeWidth:".55",opacity:".6"}),
-      React.createElement("path",{d:"M22 1.5L22.5 3.5L24.5 4L22.5 4.5L22 6.5L21.5 4.5L19.5 4L21.5 3.5Z",fill:"#f5dfa0",opacity:".85"})
+      React.createElement("text",{x:"22",y:"24",textAnchor:"middle",fontFamily:"Arial Rounded MT Bold, Arial, sans-serif",fontSize:fs,fontWeight:"bold",fill:"#00BFFF"},"astro"),
+      React.createElement("path",{d:"M12 28 Q22 35 34 28",stroke:"#00BFFF",strokeWidth:"1.5",fill:"none",strokeLinecap:"round"}),
+      React.createElement("path",{d:"M33 28 L35.5 26 L34 28.5",fill:"#00BFFF"})
     )
   );
 }
