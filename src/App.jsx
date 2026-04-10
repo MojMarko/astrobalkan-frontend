@@ -606,7 +606,11 @@ export default function App(){
     if(sl.ch.solarReturn&&sl.ch.solarReturn.planets.length>0){
       srTxt="\n\nSOLARNA REVOLUCIJA (karta za "+sl.ch.solarReturn.year+". godinu):\n"+sl.ch.solarReturn.planets.map(function(p){return p.name+": "+p.sign+" "+p.deg+"°"+(p.house?" ("+p.house+". kuca)":"");}).join("\n");
     }
-    var usr=mainPr+"\n\n---\n\nPODACI O KLIJENTU:\nIme: "+(sl.client.ime||"")+"\nDatum rodjenja: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Ascendent: "+sl.ch.ascSign+(sl.ch.ascDeg?" "+sl.ch.ascDeg+"°":"")+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+srTxt+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu.");
+    var treceOsobe=["cerka","kcerka","ćerka","kćerka","sin","brat","sestra","zet","snaha","muz","muž","supruga","mama","tata","majka","otac","prijatelj","prijateljica","komsija","komšija","komsinca","komšinica","tetka","stric","ujak"];
+    var imeLow=(sl.client.ime||"").toLowerCase().trim();
+    var isTrece=treceOsobe.some(function(r){return imeLow.indexOf(r)>=0;});
+    var trecePrefix=isTrece?"OBAVEZNO: Ova osoba je "+sl.client.ime+" klijenta, ne klijent sam. Pisi u trecem licu. Pocni ovako: 'Tvoj/Tvoja "+sl.client.ime+" je osoba koja...' NIKAD ne pisi direktno toj osobi.\n\n":"";
+    var usr=trecePrefix+mainPr+"\n\n---\n\nPODACI O KLIJENTU:\nIme: "+(sl.client.ime||"")+"\nDatum rodjenja: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Ascendent: "+sl.ch.ascSign+(sl.ch.ascDeg?" "+sl.ch.ascDeg+"°":"")+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+srTxt+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu.");
     var ri=idx;
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
