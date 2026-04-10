@@ -75,7 +75,7 @@ function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase
 // TEXT UTILS ---------------------------------------------------------------
 function fmtText(text){
   if(!text)return text;
-  return text.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1").replace(/^[-*]\s+/gm,"").replace(/__/g,"").replace(/\n{3,}/g,"\n\n").trim();
+  return text.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1").replace(/^[-*•]\s+/gm,"").replace(/__/g,"").replace(/\n{3,}/g,"\n\n").trim();
 }
 function getChunks(text,max){
   if(!max)max=2900;
