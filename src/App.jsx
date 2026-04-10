@@ -175,7 +175,7 @@ export default function App(){
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
   var [toast,setToast]=useState("");
-  var [dsPaste,setDsPaste]=useState(""); var [dsAn,setDsAn]=useState(""); var [dsSt,setDsSt]=useState("idle"); var [dsCi,setDsCi]=useState(0);
+  var [dsPaste,setDsPaste]=useState(""); var [dsAn,setDsAn]=useState(""); var [dsSt,setDsSt]=useState("idle"); var [dsCi,setDsCi]=useState(0); var [dsPitanja,setDsPitanja]=useState("");
   var [pqPrev,setPqPrev]=useState(""); var [pqQuest,setPqQuest]=useState(""); var [pqAn,setPqAn]=useState(""); var [pqSt,setPqSt]=useState("idle"); var [pqCi,setPqCi]=useState(0);
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
@@ -637,7 +637,9 @@ export default function App(){
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
     try{
-      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:pr+"\n\nANALIZA KLIJENTA:\n"+snap}]})});
+      var usrContent=pr+"\n\nANALIZA KLIJENTA:\n"+snap;
+      if(dsPitanja.trim())usrContent+="\n\nDODATNA PITANJA KLIJENTA:\n"+dsPitanja+"\nOdgovori i na ova pitanja opsirno i detaljno.";
+      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:usrContent}]})});
       if(!resp.ok)throw new Error("HTTP "+resp.status);
       var reader=resp.body.getReader(),dec=new TextDecoder();var full="";
       while(true){
@@ -1054,6 +1056,7 @@ export default function App(){
           React.createElement("div",{className:"ct"},"Generiši Analizu Perioda"),
           React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Nalepi gotovu analizu od ranije iz Messengera kako bi mogla napisati Downsell analizu."),
           React.createElement("div",{className:"fld"},React.createElement("textarea",{value:dsPaste,onChange:function(e){setDsPaste(e.target.value);},style:{minHeight:"110px"}})),
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:dsPitanja,onChange:function(e){setDsPitanja(e.target.value);},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
           React.createElement("button",{className:"btn bgd bfull",onClick:doDsGen,disabled:dsSt==="generating"||!dsPaste.trim()},
             dsSt==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generiši Analizu Perioda"
           )
