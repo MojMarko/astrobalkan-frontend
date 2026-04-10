@@ -1,6 +1,59 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="glow1" cx="75%" cy="65%" r="30%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#00BFFF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#00BFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7FEFFF"/>
+      <stop offset="100%" stop-color="#00AAEE"/>
+    </linearGradient>
+    <linearGradient id="swooshGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00AAEE" stop-opacity="0.3"/>
+      <stop offset="40%" stop-color="#00BFFF"/>
+      <stop offset="100%" stop-color="#7FEFFF"/>
+    </linearGradient>
+    <filter id="starGlow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bigGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
   <rect width="512" height="512" rx="96" fill="#000000"/>
-  <text x="256" y="270" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="145" font-weight="bold" fill="#00BFFF" letter-spacing="-2">astro</text>
-  <path d="M200 310 Q256 370 370 310" stroke="#00BFFF" stroke-width="12" fill="none" stroke-linecap="round"/>
-  <path d="M365 310 L380 295 L370 315" fill="#00BFFF"/>
+
+  <!-- "astro" text -->
+  <text x="248" y="245" text-anchor="middle" font-family="'Arial Rounded MT Bold','Nunito','Arial',sans-serif" font-size="128" font-weight="bold" fill="url(#textGrad)" letter-spacing="-3">astro</text>
+
+  <!-- Main swoosh curve -->
+  <path d="M100 310 Q160 290 256 330 Q340 365 400 310" stroke="url(#swooshGrad)" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <!-- Second thinner swoosh line -->
+  <path d="M120 300 Q180 280 256 318 Q335 352 390 305" stroke="#00AAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Arrow tip at end of swoosh -->
+  <path d="M395 305 L410 285 Q405 305 415 310 Z" fill="#7FEFFF" filter="url(#starGlow)"/>
+
+  <!-- Big sparkle star (right side) -->
+  <path d="M400 290 L403 280 L406 290 L416 293 L406 296 L403 306 L400 296 L390 293 Z" fill="#ffffff" filter="url(#bigGlow)"/>
+
+  <!-- Medium sparkle stars -->
+  <path d="M370 340 L371.5 335 L373 340 L378 341.5 L373 343 L371.5 348 L370 343 L365 341.5 Z" fill="#7FEFFF" filter="url(#starGlow)"/>
+  <path d="M340 360 L341 357 L342 360 L345 361 L342 362 L341 365 L340 362 L337 361 Z" fill="#7FEFFF" filter="url(#starGlow)" opacity="0.8"/>
+
+  <!-- Small sparkle dots -->
+  <circle cx="115" cy="295" r="2" fill="#00BFFF" filter="url(#starGlow)" opacity="0.6"/>
+  <circle cx="135" cy="305" r="1.5" fill="#7FEFFF" filter="url(#starGlow)" opacity="0.5"/>
+  <circle cx="155" cy="290" r="1" fill="#ffffff" filter="url(#starGlow)" opacity="0.4"/>
+  <circle cx="310" cy="355" r="1.5" fill="#00BFFF" filter="url(#starGlow)" opacity="0.5"/>
+  <circle cx="355" cy="350" r="1" fill="#7FEFFF" filter="url(#starGlow)" opacity="0.6"/>
+  <circle cx="385" cy="330" r="1.5" fill="#ffffff" filter="url(#starGlow)" opacity="0.5"/>
+  <circle cx="420" cy="305" r="1" fill="#7FEFFF" filter="url(#starGlow)" opacity="0.4"/>
+
+  <!-- Glow behind big star -->
+  <circle cx="403" cy="293" r="20" fill="url(#glow1)"/>
 </svg>

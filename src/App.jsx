@@ -124,12 +124,32 @@ var API="https://astrobalkan-backend.onrender.com";
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
   var sz=props.size||44;
-  var fs=sz*0.32;
+  var fs=sz*0.28;
+  var uid="lg"+Math.random().toString(36).slice(2,6);
   return (
     React.createElement("svg",{width:sz,height:sz,viewBox:"0 0 44 44",fill:"none"},
-      React.createElement("text",{x:"22",y:"24",textAnchor:"middle",fontFamily:"Arial Rounded MT Bold, Arial, sans-serif",fontSize:fs,fontWeight:"bold",fill:"#00BFFF"},"astro"),
-      React.createElement("path",{d:"M12 28 Q22 35 34 28",stroke:"#00BFFF",strokeWidth:"1.5",fill:"none",strokeLinecap:"round"}),
-      React.createElement("path",{d:"M33 28 L35.5 26 L34 28.5",fill:"#00BFFF"})
+      React.createElement("defs",null,
+        React.createElement("linearGradient",{id:uid+"t",x1:"0%",y1:"0%",x2:"0%",y2:"100%"},
+          React.createElement("stop",{offset:"0%",stopColor:"#7FEFFF"}),
+          React.createElement("stop",{offset:"100%",stopColor:"#00AAEE"})
+        ),
+        React.createElement("linearGradient",{id:uid+"s",x1:"0%",y1:"0%",x2:"100%",y2:"0%"},
+          React.createElement("stop",{offset:"0%",stopColor:"#00AAEE",stopOpacity:".3"}),
+          React.createElement("stop",{offset:"50%",stopColor:"#00BFFF"}),
+          React.createElement("stop",{offset:"100%",stopColor:"#7FEFFF"})
+        ),
+        React.createElement("filter",{id:uid+"g"},
+          React.createElement("feGaussianBlur",{stdDeviation:"0.8",result:"b"}),
+          React.createElement("feMerge",null,React.createElement("feMergeNode",{in:"b"}),React.createElement("feMergeNode",{in:"SourceGraphic"}))
+        )
+      ),
+      React.createElement("text",{x:"21",y:"22",textAnchor:"middle",fontFamily:"'Arial Rounded MT Bold','Nunito',Arial,sans-serif",fontSize:fs,fontWeight:"bold",fill:"url(#"+uid+"t)"},"astro"),
+      React.createElement("path",{d:"M8 28 Q14 25 22 29 Q29 33 36 28",stroke:"url(#"+uid+"s)",strokeWidth:"1.2",fill:"none",strokeLinecap:"round"}),
+      React.createElement("path",{d:"M35.5 27.5 L37.5 25.5 Q37 28 38 28.5 Z",fill:"#7FEFFF",filter:"url(#"+uid+"g)"}),
+      React.createElement("path",{d:"M36 26 L36.3 24.5 L36.6 26 L38.1 26.3 L36.6 26.6 L36.3 28.1 L36 26.6 L34.5 26.3 Z",fill:"#fff",filter:"url(#"+uid+"g)"}),
+      React.createElement("circle",{cx:33,cy:31,r:.6,fill:"#7FEFFF",filter:"url(#"+uid+"g)",opacity:".7"}),
+      React.createElement("circle",{cx:30,cy:33,r:.4,fill:"#00BFFF",opacity:".5"}),
+      React.createElement("circle",{cx:10,cy:27,r:.4,fill:"#00BFFF",opacity:".4"})
     )
   );
 }
