@@ -180,6 +180,7 @@ export default function App(){
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
   var [bazaSearch,setBazaSearch]=useState("");
+  var [bazaDateFilter,setBazaDateFilter]=useState("");
   var [nuData,setNuData]=useState({name:"",email:"",pw:"",country:"sr"});
   var active=useRef(0); var MAX=2;
 
@@ -629,7 +630,7 @@ export default function App(){
       var finalText=fmtText(fullText);
       setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:finalText}):s;});});
       var now=new Date();
-      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:sl.types,analysis:finalText,country:country,owner:user&&user.email,mesto:sl.client.mesto||""};
+      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:sl.types,analysis:finalText,country:country,owner:user&&user.email,mesto:sl.client.mesto||""};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(err){
       setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:"Greška. Provjeri konekciju i pokušaj ponovo."}):s;});});
@@ -658,7 +659,7 @@ export default function App(){
       }
       setDsSt("done");
       var now=new Date();
-      var na={id:"d"+Date.now(),clientName:"Downsell",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:["tranziti"],analysis:fmtText(full),country:country,owner:user&&user.email};
+      var na={id:"d"+Date.now(),clientName:"Downsell",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["tranziti"],analysis:fmtText(full),country:country,owner:user&&user.email};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(e){setDsSt("done");setDsAn("Greška. Provjeri konekciju.");}
     finally{active.current=Math.max(0,active.current-1);}
@@ -686,7 +687,7 @@ export default function App(){
       }
       setPqSt("done");
       var now=new Date();
-      var na={id:"q"+Date.now(),clientName:"Pitanja",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),types:["pitanja"],analysis:fmtText(full),country:country,owner:user&&user.email};
+      var na={id:"q"+Date.now(),clientName:"Pitanja",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:fmtText(full),country:country,owner:user&&user.email};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(e){setPqSt("done");setPqAn("Greska. Provjeri konekciju.");}
     finally{active.current=Math.max(0,active.current-1);}
@@ -1111,14 +1112,22 @@ export default function App(){
       // BAZA
       tab==="baza"&&React.createElement("div",{className:"sec"},
         React.createElement("div",{className:"stitle"},React.createElement(Logo,{size:19})," Baza Analiza"),
-        React.createElement("div",{className:"fld",style:{marginBottom:"10px"}},React.createElement("input",{value:bazaSearch,onChange:function(e){setBazaSearch(e.target.value);},placeholder:"Pretrazi po imenu, datumu, znaku...",className:"sel-input"})),
+        React.createElement("div",{className:"fld",style:{marginBottom:"6px"}},React.createElement("input",{value:bazaSearch,onChange:function(e){setBazaSearch(e.target.value);},placeholder:"Pretrazi po imenu, datumu, znaku...",className:"sel-input"})),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}},
+          React.createElement("label",{style:{fontSize:"10px",color:"var(--mt)"}},"Datum:"),
+          React.createElement("input",{type:"date",value:bazaDateFilter,onChange:function(e){setBazaDateFilter(e.target.value);},style:{background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",padding:"5px 8px",color:"var(--tx)",fontFamily:"'Jost',sans-serif",fontSize:"12px"}}),
+          bazaDateFilter&&React.createElement("button",{className:"btn bol bsm",onClick:function(){setBazaDateFilter("");}},"\u2715")
+        ),
         (function(){
           var q=bazaSearch.toLowerCase().trim();
-          var filtered=q?myAnalyses.filter(function(a){return((a.clientName||"")+(a.sign||"")+(a.date||"")+(a.mesto||"")).toLowerCase().indexOf(q)>=0;}):myAnalyses;
+          var filtered=myAnalyses;
+          if(q)filtered=filtered.filter(function(a){return((a.clientName||"")+(a.sign||"")+(a.date||"")+(a.mesto||"")).toLowerCase().indexOf(q)>=0;});
+          if(bazaDateFilter)filtered=filtered.filter(function(a){return(a.rawDate||"")=== bazaDateFilter||(a.date||"").indexOf(bazaDateFilter)>=0;});
+          var dateLabel=bazaDateFilter?new Date(bazaDateFilter).toLocaleDateString("sr"):"";
           return filtered.length===0
-            ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,q?"Nema rezultata za '"+bazaSearch+"'":"Jos nema sacuvanih analiza."))
+            ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter)?"Nema rezultata":"Jos nema sacuvanih analiza."))
             :React.createElement(React.Fragment,null,
-              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(q?" pronadjeno":" analiza")),
+              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(bazaDateFilter?" analiza uradjeno "+dateLabel:q?" pronadjeno":" analiza")),
               filtered.map(function(a){
                 return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAn(a);}},
                   React.createElement("div",{className:"acard-top"},
