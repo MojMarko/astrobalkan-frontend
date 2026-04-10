@@ -400,17 +400,21 @@ export default function App(){
       var bd=makeBirthData(dateStr,timeStr,cityName);
       var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Chiron","Lilith","True_Node"]}};
 
-      // Call positions, aspects and houses in parallel
+      // Call positions, aspects, houses and solar return in parallel
+      var curYear=new Date().getFullYear();
+      var solarBody={subject:{name:"Client",birth_data:bd},options:{year:curYear,house_system:"P"}};
       var results=await Promise.all([
         astroPost("/api/v3/data/positions/enhanced",body),
         astroPost("/api/v3/data/aspects/enhanced",body),
-        astroPost("/api/v3/data/houses",body)
+        astroPost("/api/v3/data/houses",body),
+        fetch(API+"/api/astro/solar-return",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd,year:curYear})}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
       ]);
 
-      var posData=results[0],aspData=results[1],housesData=results[2];
+      var posData=results[0],aspData=results[1],housesData=results[2],solarData=results[3];
       console.log("POS response:",JSON.stringify(posData).slice(0,500));
       console.log("ASP response:",JSON.stringify(aspData).slice(0,500));
       console.log("HOUSES response:",JSON.stringify(housesData).slice(0,300));
+      console.log("SOLAR response:",JSON.stringify(solarData).slice(0,300));
       var chart=parsePositions(posData);
       if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
@@ -442,6 +446,17 @@ export default function App(){
       if(chart.houses.length>0){
         var cusps=chart.houses.map(function(h){var idx=SIGNS.indexOf(h.sign);return idx*30+parseFloat(h.deg);});
         chart.planets.forEach(function(p){if(!p.house&&p.absDeg){p.house=inHouse(p.absDeg,cusps);}});
+      }
+      // Parse solar return
+      chart.solarReturn=null;
+      if(solarData){
+        var sr=solarData.data||solarData;
+        var srPlanets=sr.positions||sr.planets||[];
+        var srHouses=sr.houses||[];
+        var srParsed=[];
+        if(Array.isArray(srPlanets)){srPlanets.forEach(function(p){var nm=PMAP[(p.name||"").toLowerCase()]||p.name||"";var sg=SMAP[p.sign||""]||p.sign||"";srParsed.push({name:nm,sign:sg,deg:parseFloat(p.degree_in_sign||p.degree||0).toFixed(1),house:p.house||null});});}
+        if(srParsed.length>0)chart.solarReturn={planets:srParsed,houses:srHouses,year:curYear};
+        console.log("SOLAR parsed:",srParsed.length,"planets");
       }
       chart.source="astrology-api-v3";
       console.log("AstroAPI v3 OK - "+chart.planets.length+" planets, "+chart.aspects.length+" aspects, "+chart.houses.length+" houses, asc="+chart.ascSign);
@@ -579,7 +594,11 @@ export default function App(){
       if(sl.transits[0].natalPlanet){trTxt="\n\nTRANZITI ZA DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" (orb "+t.orb+"°)"+(t.interpretation?" - "+t.interpretation:"");}).join("\n");}
       else{trTxt="\n\nTRANZITNE POZICIJE DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n");}
     }
-    var usr=mainPr+"\n\n---\n\nPODACI O KLIJENTU:\nIme: "+(sl.client.ime||"")+"\nDatum rodjenja: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Ascendent: "+sl.ch.ascSign+(sl.ch.ascDeg?" "+sl.ch.ascDeg+"°":"")+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu.");
+    var srTxt="";
+    if(sl.ch.solarReturn&&sl.ch.solarReturn.planets.length>0){
+      srTxt="\n\nSOLARNA REVOLUCIJA (karta za "+sl.ch.solarReturn.year+". godinu):\n"+sl.ch.solarReturn.planets.map(function(p){return p.name+": "+p.sign+" "+p.deg+"°"+(p.house?" ("+p.house+". kuca)":"");}).join("\n");
+    }
+    var usr=mainPr+"\n\n---\n\nPODACI O KLIJENTU:\nIme: "+(sl.client.ime||"")+"\nDatum rodjenja: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Ascendent: "+sl.ch.ascSign+(sl.ch.ascDeg?" "+sl.ch.ascDeg+"°":"")+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+srTxt+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu.");
     var ri=idx;
     while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
     active.current+=1;
