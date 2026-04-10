@@ -417,71 +417,64 @@ export default function App(){
   async function callAstroAPI(dateStr,timeStr,cityName){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName);
-      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Chiron","Lilith","True_Node"]}};
 
-      // Call positions, aspects, houses and solar return in parallel
-      var curYear=new Date().getFullYear();
-      var solarBody={subject:{name:"Client",birth_data:bd},options:{year:curYear,house_system:"P"}};
+      // PRIMARY: Use backend Swiss Ephemeris (NASA-level precision)
+      try{
+        var chartResp=await fetch(API+"/api/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bd)});
+        if(chartResp.ok){
+          var chartData=await chartResp.json();
+          console.log("SWISSEPH response:",chartData.source,chartData.positions?chartData.positions.length+" planets":"no positions");
+          if(chartData.positions&&chartData.positions.length>0){
+            var chart={planets:[],aspects:[],houses:[],sunSign:"",moonSign:"",ascSign:"Nepoznato",ascDeg:"0"};
+            // Parse planets
+            chartData.positions.forEach(function(p){
+              chart.planets.push({name:PMAP[(p.name||"").toLowerCase()]||p.name,sign:SMAP[p.sign||""]||p.sign||"",degInSign:parseFloat(p.degree||0).toFixed(1),absDeg:p.absolute_degree||0,house:p.house||null,retrograde:p.is_retrograde||false});
+            });
+            // Parse aspects
+            if(chartData.aspects){chartData.aspects.forEach(function(a){
+              var p1=PMAP[(a.point1||"").toLowerCase()]||a.point1||"";
+              var p2=PMAP[(a.point2||"").toLowerCase()]||a.point2||"";
+              var type=AMAP[a.aspect_type||""]||(a.aspect_type||"");
+              if(p1&&p2&&type)chart.aspects.push({p1:p1,p2:p2,aspect:type,orb:parseFloat(a.orb||0).toFixed(2)});
+            });}
+            // Parse houses
+            if(chartData.houses){chart.houses=chartData.houses.map(function(h){return{num:h.number,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.degree||0).toFixed(1)};});}
+            // Ascendant
+            if(chartData.ascendant){chart.ascSign=SMAP[chartData.ascendant.sign||""]||chartData.ascendant.sign||"";chart.ascDeg=parseFloat(chartData.ascendant.degree||0).toFixed(1);}
+            // Sun/Moon signs
+            var sunP=chart.planets.find(function(p){return p.name==="Sunce";});
+            var moonP=chart.planets.find(function(p){return p.name==="Mesec";});
+            chart.sunSign=sunP?sunP.sign:"";chart.moonSign=moonP?moonP.sign:"";
+            chart.source="swisseph";
+            console.log("SwissEph OK:",chart.planets.length,"planets,",chart.aspects.length,"aspects,",chart.houses.length,"houses, asc="+chart.ascSign+" "+chart.ascDeg+"°");
+            // Fetch transits data from astrology-api in background (non-blocking)
+            chart.solarReturn=null;
+            return chart;
+          }
+        }
+      }catch(e){console.warn("SwissEph backend failed:",e.message);}
+
+      // FALLBACK: Use astrology-api.io
+      console.log("Falling back to astrology-api.io");
+      var body={subject:{name:"Client",birth_data:bd},options:{house_system:"P",active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}};
       var results=await Promise.allSettled([
         astroPost("/api/v3/data/positions/enhanced",body),
-        astroPost("/api/v3/data/aspects/enhanced",body),
-        astroPost("/api/v3/data/houses",body),
-        fetch(API+"/api/astro/solar-return",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd,year:curYear})}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+        astroPost("/api/v3/data/aspects/enhanced",body)
       ]);
       results=results.map(function(r){return r.status==="fulfilled"?r.value:null;});
-
-      var posData=results[0],aspData=results[1],housesData=results[2],solarData=results[3];
-      console.log("POS response:",JSON.stringify(posData).slice(0,500));
-      console.log("ASP response:",JSON.stringify(aspData).slice(0,500));
-      console.log("HOUSES response:",JSON.stringify(housesData).slice(0,300));
-      console.log("SOLAR response:",JSON.stringify(solarData).slice(0,300));
+      var posData=results[0],aspData=results[1];
       var chart=parsePositions(posData);
-      if(!chart||chart.planets.length===0){console.warn("AstroAPI: no positions, using local");return null;}
+      if(!chart||chart.planets.length===0){console.warn("AstroAPI also failed, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
-      // Parse houses from API response
+      // Local houses as last resort
       var coords=getCoords(cityName);
       var dp=dateStr.split("-"),tp=(timeStr||"12:00").split(":");
       var J=jd(parseInt(dp[0]),parseInt(dp[1]),parseInt(dp[2]),parseInt(tp[0])+parseInt(tp[1])/60-coords[1]/15);
-      if(housesData){
-        var hRaw=(housesData.data||housesData);
-        var hArr=hRaw.houses||[];
-        if(Array.isArray(hArr)&&hArr.length>0){
-          chart.houses=hArr.map(function(h,i){return{num:h.number||i+1,sign:SMAP[h.sign||""]||h.sign||"",deg:parseFloat(h.cusp||h.degree_in_sign||h.degree||0).toFixed(1)};});
-          chart.ascSign=SMAP[hArr[0].sign||""]||hArr[0].sign||chart.ascSign;
-          chart.ascDeg=parseFloat(hArr[0].cusp||hArr[0].degree_in_sign||hArr[0].degree||0).toFixed(1);
-          console.log("HOUSES from API:",chart.houses.length,"houses, asc="+chart.ascSign+" "+chart.ascDeg+"°");
-        }
-        if(hRaw.ascendant&&hRaw.ascendant.sign){chart.ascSign=SMAP[hRaw.ascendant.sign||""]||hRaw.ascendant.sign;chart.ascDeg=parseFloat(hRaw.ascendant.cusp||hRaw.ascendant.degree_in_sign||hRaw.ascendant.degree||0).toFixed(1);}
-      }
-      // Local fallback if API didn't return houses
-      if(chart.houses.length===0&&timeStr){
-        var ad=ascLon(J,coords[0],coords[1]);
-        var mc=mcLon(J,coords[1]);
-        chart.ascSign=signOf(ad);chart.ascDeg=degIn(ad);
-        var hs=getHouses(ad,mc,coords[0]);
-        chart.houses=hs.map(function(h,i){return{num:i+1,sign:signOf(h),deg:degIn(h)};});
-        console.log("HOUSES from local calc, asc="+chart.ascSign);
-      }
-      // Assign houses to planets if missing
-      if(chart.houses.length>0){
-        var cusps=chart.houses.map(function(h){var idx=SIGNS.indexOf(h.sign);return idx*30+parseFloat(h.deg);});
-        chart.planets.forEach(function(p){if(!p.house&&p.absDeg){p.house=inHouse(p.absDeg,cusps);}});
-      }
-      // Parse solar return
+      if(timeStr){var ad=ascLon(J,coords[0],coords[1]);var mc=mcLon(J,coords[1]);chart.ascSign=signOf(ad);chart.ascDeg=degIn(ad);var hs=getHouses(ad,mc,coords[0]);chart.houses=hs.map(function(h,i){return{num:i+1,sign:signOf(h),deg:degIn(h)};});}
       chart.solarReturn=null;
-      if(solarData){
-        var sr=solarData.data||solarData;
-        var srPlanets=sr.positions||sr.planets||[];
-        var srHouses=sr.houses||[];
-        var srParsed=[];
-        if(Array.isArray(srPlanets)){srPlanets.forEach(function(p){var nm=PMAP[(p.name||"").toLowerCase()]||p.name||"";var sg=SMAP[p.sign||""]||p.sign||"";srParsed.push({name:nm,sign:sg,deg:parseFloat(p.degree_in_sign||p.degree||0).toFixed(1),house:p.house||null});});}
-        if(srParsed.length>0)chart.solarReturn={planets:srParsed,houses:srHouses,year:curYear};
-        console.log("SOLAR parsed:",srParsed.length,"planets");
-      }
-      chart.source="astrology-api-v3";
-      console.log("AstroAPI v3 OK - "+chart.planets.length+" planets, "+chart.aspects.length+" aspects, "+chart.houses.length+" houses, asc="+chart.ascSign);
+      chart.source="astrology-api-v3-fallback";
       return chart;
-    }catch(e){console.warn("AstroAPI v3 failed:",e.message);return null;}
+    }catch(e){console.warn("callAstroAPI failed:",e.message);return null;}
   }
 
   // Synastry via API (za sinastiju)
