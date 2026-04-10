@@ -78,7 +78,7 @@ function fmtText(text){
   // Replace Cyrillic characters with Latin equivalents
   var cyrMap={"а":"a","б":"b","в":"v","г":"g","д":"d","ђ":"dj","е":"e","ж":"z","з":"z","и":"i","й":"j","к":"k","л":"l","љ":"lj","м":"m","н":"n","њ":"nj","о":"o","п":"p","р":"r","с":"s","т":"t","ћ":"c","у":"u","ф":"f","х":"h","ц":"c","ч":"c","џ":"dz","ш":"s","А":"A","Б":"B","В":"V","Г":"G","Д":"D","Ђ":"Dj","Е":"E","Ж":"Z","З":"Z","И":"I","Й":"J","К":"K","Л":"L","Љ":"Lj","М":"M","Н":"N","Њ":"Nj","О":"O","П":"P","Р":"R","С":"S","Т":"T","Ћ":"C","У":"U","Ф":"F","Х":"H","Ц":"C","Ч":"C","Џ":"Dz","Ш":"S","ј":"j","Ј":"J"};
   var t=text.replace(/[а-яА-ЯђћџљњјЂЋЏЉЊЈ]/g,function(c){return cyrMap[c]||c;});
-  return t.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1").replace(/^[-*•]\s+/gm,"").replace(/__/g,"").replace(/\n{3,}/g,"\n\n").trim();
+  return t.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1").replace(/^[-–—*•]\s*/gm,"").replace(/__/g,"").replace(/\n{3,}/g,"\n\n").trim();
 }
 function getChunks(text,max){
   if(!max)max=2900;
@@ -719,10 +719,12 @@ export default function App(){
   // TRANSLATE TO SERBIAN
   async function translateToSerbian(englishText){
     try{
-      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Gramatika mora biti 100% ispravna po srpskom pravopisu. Ne dodaji nista novo, ne menjaj sadrzaj, ne skracuj, samo prevedi tacno onako kako jeste. Zadrzi sve prazne redove i formatiranje originala. Zadrzi sva imena i datume. NIKAD ne duplaj slova (ne pisi srcemm, borbaa, oseecas). Svaka rec mora biti ispravno napisana. Vrati SAMO prevedeni tekst bez ikakvog komentara.",messages:[{role:"user",content:englishText}]})});
+      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
       if(!resp.ok)return englishText;
       var d=await resp.json();
       var t=(d.content&&d.content[0]&&d.content[0].text)||englishText;
+      // Remove any remaining dashes at start of lines
+      t=t.replace(/^[-–—]\s*/gm,"");
       return t;
     }catch(e){console.error("Translation error:",e);return englishText;}
   }
