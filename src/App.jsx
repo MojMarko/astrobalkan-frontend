@@ -659,7 +659,7 @@ export default function App(){
       }
       setDsSt("done");
       var now=new Date();
-      var na={id:"d"+Date.now(),clientName:"Downsell",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["tranziti"],analysis:fmtText(full),country:country,owner:user&&user.email};
+      var na={id:"d"+Date.now(),clientName:"Downsell - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["downsell"],analysis:fmtText(full),country:country,owner:user&&user.email};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(e){setDsSt("done");setDsAn("Greška. Provjeri konekciju.");}
     finally{active.current=Math.max(0,active.current-1);}
@@ -687,7 +687,7 @@ export default function App(){
       }
       setPqSt("done");
       var now=new Date();
-      var na={id:"q"+Date.now(),clientName:"Pitanja",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:fmtText(full),country:country,owner:user&&user.email};
+      var na={id:"q"+Date.now(),clientName:"Pitanja - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:fmtText(full),country:country,owner:user&&user.email};
       setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
     }catch(e){setPqSt("done");setPqAn("Greska. Provjeri konekciju.");}
     finally{active.current=Math.max(0,active.current-1);}
@@ -1224,7 +1224,13 @@ export default function App(){
         React.createElement("div",{className:"modal-title"},(viewAn.clientName||"Analiza")+" · "+viewAn.date),
         React.createElement("div",{className:"aout",style:{maxHeight:"60vh"}},viewAn.analysis),
         React.createElement("div",{className:"abar",style:{marginTop:"12px"}},
-          React.createElement("button",{className:"btn bgd bsm",onClick:function(){cpText(viewAn.analysis);toast2("Kopirano!");}},"\uD83D\uDCCB Kopiraj Sve"),
+          React.createElement("button",{className:"btn bgd bsm",onClick:function(){cpText(viewAn.analysis);toast2("Kopirano!");}},"\uD83D\uDCCB Kopiraj"),
+          viewAn.clientName&&viewAn.clientName!=="Downsell"&&viewAn.clientName!=="Pitanja"&&React.createElement("button",{className:"btn bpu bsm",onClick:function(){
+            var name=viewAn.clientName;
+            var all=analyses.filter(function(a){return a.clientName===name;});
+            if(all.length<=1){cpText(viewAn.analysis);toast2("Kopirano 1 analiza!");}
+            else{var txt=all.map(function(a){return a.analysis;}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
+          }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);}},"\u005aatvori")
         )
       )
