@@ -162,7 +162,7 @@ var TYPES=[
   {id:"tranziti",label:"Tranziti",icon:"♄",color:"#60a090"}
 ];
 
-function emptySlot(){return{mode:"messenger",paste:"",parsed:null,client:{ime:"",datum:"",vreme:"",mesto:"",pitanja:""},partner:{ime:"",datum:"",vreme:"",mesto:""},hasPart:false,ch:null,pch:null,transits:null,types:["ljubav"],status:"idle",analysis:"",copyIdx:0};}
+function emptySlot(){return{mode:"messenger",paste:"",parsed:null,client:{ime:"",datum:"",vreme:"",mesto:"",pitanja:""},partner:{ime:"",datum:"",vreme:"",mesto:""},hasPart:false,ch:null,pch:null,transits:null,types:["ljubav"],status:"idle",analysis:"",copyIdx:0,jobId:null};}
 
 // CSS ----------------------------------------------------------------------
 var CSS="@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Jost:wght@300;400;500&display=swap');\n*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}\n:root{--bg:#02000d;--sf:rgba(15,10,28,.9);--sf2:rgba(22,15,38,.92);--bd:rgba(180,140,60,.18);--bd2:rgba(180,140,60,.35);--gd:#c9a84c;--gd2:#e8c96d;--tx:#ede5ff;--mt:#9080b0;--ac:#9b6fd4;--ac2:#7c4fc0;--red:#c06060;--grn:#60b060;}\nbody{font-family:'Jost',sans-serif;color:var(--tx);min-height:100vh;background:var(--bg);overflow-x:hidden;padding-bottom:60px;}\nbody::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 15% 25%,rgba(100,30,180,.5) 0%,transparent 50%),radial-gradient(ellipse at 85% 15%,rgba(40,15,100,.6) 0%,transparent 45%),linear-gradient(170deg,#05010f 0%,#090320 35%,#0d0525 65%,#060115 100%);}\nbody::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:radial-gradient(1.5px 1.5px at 8% 5%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1px 1px at 20% 10%,rgba(255,255,220,.9) 0%,transparent 100%),radial-gradient(2px 2px at 33% 4%,rgba(220,230,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 47% 8%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 60% 3%,rgba(255,240,200,.9) 0%,transparent 100%),radial-gradient(2px 2px at 75% 7%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(2.5px 2.5px at 22% 40%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 48% 44%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(2px 2px at 46% 60%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 25% 75%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(2px 2px at 70% 78%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 50% 87%,rgba(255,255,255,.9) 0%,transparent 100%);animation:tw 7s ease-in-out infinite alternate;}\n@keyframes tw{0%{opacity:.5}50%{opacity:1}100%{opacity:.6}}\n.app{position:relative;z-index:1;max-width:720px;margin:0 auto;padding-bottom:70px;}\n.lwrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;position:relative;z-index:1;}\n.lcard{width:100%;max-width:420px;background:linear-gradient(145deg,rgba(18,10,36,.97),rgba(10,5,24,.99));border:1px solid var(--bd2);border-radius:22px;padding:36px 26px;box-shadow:0 0 80px rgba(100,50,200,.2);}\n.llogo{text-align:center;margin-bottom:22px;}\n.llogo h1{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:600;color:var(--gd2);letter-spacing:3px;text-shadow:0 0 30px rgba(201,168,76,.5);}\n.llogo p{font-size:10px;color:var(--mt);letter-spacing:3px;text-transform:uppercase;margin-top:4px;}\n.ldiv{height:1px;background:linear-gradient(90deg,transparent,var(--bd2),transparent);margin:18px 0;}\n.lfld{margin-bottom:13px;}\n.lfld label{display:block;font-size:11px;color:var(--mt);letter-spacing:.5px;margin-bottom:5px;}\n.lfld input{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--bd);border-radius:8px;padding:11px 14px;color:var(--tx);font-family:'Jost',sans-serif;font-size:14px;outline:none;transition:border-color .2s;}\n.lfld input:focus{border-color:var(--gd);}\n.lbtn{width:100%;padding:13px;background:linear-gradient(135deg,#b8922a,#c9a84c,#e8c96d);color:#1a0e00;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;letter-spacing:1.5px;border:none;border-radius:9px;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(201,168,76,.3);margin-top:4px;}\n.lbtn:hover{transform:translateY(-1px);}\n.lerr{color:#e07070;font-size:12px;text-align:center;margin:10px 0 0;}\n.lsuc{color:#70e070;font-size:12px;text-align:center;margin:10px 0 0;}\n.ltabs{display:flex;gap:6px;margin-bottom:18px;}\n.ltab{flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--mt);font-family:'Jost',sans-serif;font-size:12px;cursor:pointer;transition:all .2s;}\n.ltab.on{border-color:var(--gd);background:rgba(201,168,76,.1);color:var(--gd2);}\n.llink{display:block;margin:12px auto 0;background:none;border:none;color:var(--mt);font-size:12px;cursor:pointer;font-family:'Jost',sans-serif;text-decoration:underline;}\n.csel{display:flex;gap:10px;margin-bottom:18px;}\n.cbtn{flex:1;padding:14px 8px;border-radius:12px;border:2px solid var(--bd);background:transparent;cursor:pointer;transition:all .2s;text-align:center;}\n.cbtn:hover,.cbtn.on{border-color:var(--gd);background:rgba(201,168,76,.1);}\n.cflag{font-size:28px;display:block;margin-bottom:5px;}\n.cname{font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--gd2);font-weight:600;}\n.csub{font-size:10px;color:var(--mt);margin-top:2px;}\n.vcode{font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;color:var(--gd2);font-family:'Cormorant Garamond',serif;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:16px;margin:14px 0;}\n.hdr{padding:0;background:linear-gradient(180deg,rgba(12,6,28,.98) 0%,rgba(8,4,20,.85) 100%);backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100;}\n.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;}\n.hbrand{display:flex;align-items:center;gap:11px;}\n.hname{font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--gd2);letter-spacing:2.5px;}\n.hsub{font-size:9px;color:var(--mt);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}\n.huser{display:flex;align-items:center;gap:7px;}\n.huser span{font-size:11px;color:var(--mt);}\n.hlout{background:transparent;border:1px solid var(--bd);color:var(--mt);font-size:10px;padding:4px 10px;border-radius:12px;cursor:pointer;font-family:'Jost',sans-serif;transition:all .2s;}\n.hlout:hover{border-color:var(--red);color:var(--red);}\n.abadge{background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.35);color:var(--gd);font-size:9px;padding:2px 8px;border-radius:10px;}\n.bnav{display:flex;background:linear-gradient(0deg,rgba(8,4,20,.99) 0%,rgba(12,6,28,.95) 100%);border-top:1px solid var(--bd);padding:6px 2px;padding-bottom:max(10px,env(safe-area-inset-bottom,10px));position:fixed;bottom:0;left:0;right:0;z-index:200;max-width:720px;margin:0 auto;}\n.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--mt);font-family:'Jost',sans-serif;cursor:pointer;padding:4px 2px;transition:color .2s;}\n.bnav-btn.on{color:var(--gd2);}\n.bnav-btn.on .bnav-ico{text-shadow:0 0 12px rgba(201,168,76,.5);}\n.bnav-ico{font-size:16px;line-height:1;position:relative;}\n.bnav-lbl{font-size:9px;font-weight:500;letter-spacing:.3px;}\n.ndot{position:absolute;top:-2px;right:-6px;width:5px;height:5px;background:var(--ac);border-radius:50%;}\n.sec{padding:16px 14px;}\n.stitle{font-family:'Cormorant Garamond',serif;font-size:19px;color:var(--gd2);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:9px;}\n.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:10px;}\n.card-hi{border-color:rgba(201,168,76,.3);background:linear-gradient(145deg,rgba(20,14,35,.95),rgba(15,10,28,.98));}\n.ct{font-size:10px;font-weight:500;color:var(--gd);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:9px;}\n.fld{margin-bottom:8px;}\n.fld label{display:block;font-size:10.5px;color:var(--mt);margin-bottom:3px;}\n.fld input,.fld textarea{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:8px 11px;color:var(--tx);font-family:'Jost',sans-serif;font-size:13px;outline:none;transition:border-color .2s;}\n.fld input:focus,.fld textarea:focus{border-color:var(--gd);}\n.fld input[type=date],.fld input[type=time]{-webkit-appearance:none;appearance:none;color-scheme:dark;}\n.fld textarea{resize:vertical;min-height:72px;}\n.r2{display:grid;grid-template-columns:1fr 1fr;gap:7px;}\n.div1{height:1px;background:var(--bd);margin:9px 0;}\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:9px 16px;border-radius:7px;font-family:'Jost',sans-serif;font-size:12.5px;font-weight:500;cursor:pointer;border:none;transition:all .2s;}\n.bgd{background:linear-gradient(135deg,#b8922a,#c9a84c);color:#1a0e00;font-weight:600;box-shadow:0 2px 12px rgba(201,168,76,.25);}\n.bgd:hover{opacity:.9;transform:translateY(-1px);}\n.bpu{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff;}\n.bpu:hover{opacity:.9;transform:translateY(-1px);}\n.bol{background:transparent;border:1px solid var(--bd);color:var(--mt);}\n.bol:hover{border-color:var(--gd);color:var(--tx);}\n.brd{background:transparent;border:1px solid var(--red);color:var(--red);}\n.bsm{padding:5px 10px;font-size:11px;}\n.bfull{width:100%;}\n.btn:disabled{opacity:.4;cursor:not-allowed;}\n.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:11px;}\n.tab{padding:5px 12px;border-radius:16px;font-size:11px;border:1px solid var(--bd);background:transparent;color:var(--mt);cursor:pointer;font-family:'Jost',sans-serif;transition:all .2s;}\n.tab.on{background:var(--ac2);border-color:var(--ac);color:#fff;}\n.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px;}\n.tbtn{padding:11px 5px;border-radius:8px;border:1px solid var(--bd);background:var(--sf2);color:var(--mt);cursor:pointer;text-align:center;font-family:'Jost',sans-serif;font-size:10.5px;transition:all .2s;position:relative;}\n.tbtn.on{border-color:var(--gd);background:rgba(201,168,76,.1);color:var(--gd2);}\n.tico{font-size:18px;display:block;margin-bottom:4px;line-height:1;}\n.srow{display:flex;align-items:center;gap:7px;padding:7px 10px;background:var(--sf2);border-radius:5px;font-size:11px;margin-bottom:7px;}\n.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}\n.dot-w{background:var(--gd);}\n.slhdr{display:flex;align-items:center;gap:7px;margin-bottom:9px;}\n.slbadge{background:linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.08));color:var(--gd2);border:1px solid rgba(201,168,76,.28);border-radius:5px;padding:2px 9px;font-size:10px;font-weight:600;font-family:'Cormorant Garamond',serif;}\n.slst{font-size:10px;padding:2px 8px;border-radius:10px;margin-left:auto;}\n.stidl{background:rgba(138,122,170,.12);color:var(--mt);}\n.strun{background:rgba(155,111,212,.2);color:var(--ac);}\n.stdone{background:rgba(96,176,96,.18);color:var(--grn);}\n.aout{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:15px;font-size:13px;line-height:2.05;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;color:var(--tx);min-height:160px;max-height:55vh;overflow-y:auto;font-family:'Jost',sans-serif;}\n.aout::-webkit-scrollbar{width:3px;}\n.aout::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px;}\n.cur::after{content:'|';animation:bl 1s infinite;color:var(--gd);}\n@keyframes bl{0%,100%{opacity:1}50%{opacity:0}}\n.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}\n.prow{display:flex;justify-content:space-between;padding:4px 8px;background:var(--sf2);border-radius:4px;font-size:11px;}\n.pn{color:var(--mt)}.pv{color:var(--gd2);font-weight:500;}\n.sgnrow{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px;}\n.sgni{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;text-align:center;}\n.sgnl{font-size:9px;color:var(--mt);margin-bottom:2px;}\n.sgnv{font-size:14px;color:var(--gd2);font-family:'Cormorant Garamond',serif;font-weight:600;}\n.asplist{font-size:10.5px;color:var(--mt);line-height:1.9;}\n.ac0{color:#e8c96d}.ao{color:#c06060}.at{color:#60a090}.aq{color:#c07840}.as{color:#7090d0}.ax{color:#8a7aaa}\n.ctrack{background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:10px 12px;margin-bottom:9px;}\n.cdots{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}\n.cdot{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;cursor:pointer;transition:all .15s;}\n.abar{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;}\n.urow{display:flex;align-items:center;gap:9px;padding:10px 13px;background:var(--sf);border:1px solid var(--bd);border-radius:8px;margin-bottom:7px;}\n.uav{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--ac2),var(--gd));display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0;}\n.acard{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:border-color .2s;}\n.acard:hover{border-color:var(--gd);}\n.acard-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}\n.acard-name{font-size:13.5px;font-weight:500;font-family:'Cormorant Garamond',serif;color:var(--gd2);}\n.acard-date{font-size:10px;color:var(--mt);}\n.acard-prev{font-size:11.5px;color:var(--mt);line-height:1.5;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}\n.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;}\n.modal{background:var(--sf);border:1px solid var(--bd);border-radius:16px 16px 0 0;padding:20px 16px;width:100%;max-height:88vh;overflow-y:auto;}\n.modal-title{font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--gd2);margin-bottom:14px;}\n.toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(20,12,38,.97);border:1px solid var(--gd);color:var(--tx);padding:10px 20px;border-radius:20px;font-size:12px;z-index:999;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:tIn .3s ease;}\n@keyframes tIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}\n.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--gd);border-radius:50%;animation:sp .7s linear infinite;display:inline-block;}\n@keyframes sp{to{transform:rotate(360deg)}}\n.empty{text-align:center;padding:36px 20px;color:var(--mt);}\n.empty .ico{font-size:30px;margin-bottom:10px;opacity:.4;}\n.sel-input{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:8px 11px;color:var(--tx);font-family:'Jost',sans-serif;font-size:13px;outline:none;}\n";
@@ -193,7 +193,7 @@ export default function App(){
   var [bazaSearch,setBazaSearch]=useState("");
   var [bazaDateFilter,setBazaDateFilter]=useState("");
   var [nuData,setNuData]=useState({name:"",email:"",pw:"",country:"sr"});
-  var active=useRef(0); var MAX=2;
+  var [activeJobs,setActiveJobs]=useState({});
 
   useEffect(function(){
     stoGet("custPr",{sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}}).then(function(local){
@@ -625,32 +625,22 @@ export default function App(){
     var trecePrefix=isTrece?"NAJVAZNIJE PRAVILO - TRECE LICE:\nOva analiza NIJE za klijenta koji ti se obraca nego za njegovu/njenu "+sl.client.ime+". Ti pricas sa klijentom O toj osobi.\nPISI UVEK OVAKO: 'Tvoja "+sl.client.ime+" je osoba koja...', 'Ona nosi u sebi...', 'Njen zivot je...', 'Vidim da je ona...'\nNIKAD NE PISI OVAKO: 'Ti si osoba koja...', 'Gledam tvoju kartu...', 'Vidim da si ti...'\nObraces se klijentu i pricas mu o njegovoj/njenoj "+sl.client.ime+" u trecem licu (ona/on). Klijent cita ovu analizu da razume svoju "+sl.client.ime+", ne sebe.\n\n":"";
     var usr=trecePrefix+mainPr+"\n\n---\n\nPODACI O KLIJENTU:\nIme: "+(sl.client.ime||"")+"\nDatum rodjenja: "+sl.client.datum+", Vreme: "+(sl.client.vreme||"nepoznato")+", Mesto: "+(sl.client.mesto||"nepoznato")+"\nSunce: "+sl.ch.sunSign+", Mesec: "+sl.ch.moonSign+", Ascendent: "+sl.ch.ascSign+(sl.ch.ascDeg?" "+sl.ch.ascDeg+"°":"")+"\n\nPLANETE:\n"+ptxt+"\n\nASPEKTI:\n"+atxt+pTxt+trTxt+srTxt+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu.");
     var ri=idx;
-    while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
-    active.current+=1;
-    var fullText="";
     try{
-      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:usr}]})});
-      if(!resp.ok)throw new Error("HTTP "+resp.status);
-      var reader=resp.body.getReader(),dec=new TextDecoder();
-      while(true){
-        var result=await reader.read();
-        if(result.done)break;
-        var lines=dec.decode(result.value,{stream:true}).split("\n").filter(function(l){return l.startsWith("data:");});
-        for(var li=0;li<lines.length;li++){
-          try{var j=JSON.parse(lines[li].slice(5));if(j.type==="content_block_delta"&&j.delta&&j.delta.text){fullText+=j.delta.text;var ft=fmtText(fullText);setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{analysis:ft}):s;});});}}catch(e){}
-        }
-      }
-      // Translate English to Serbian
-      setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"generating",analysis:fmtText(fullText)+"\n\n⏳ Prevodim na srpski..."}):s;});});
-      var serbianText=await translateToSerbian(fullText);
-      var finalText=fmtText(serbianText);
-      setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:finalText}):s;});});
-      var now=new Date();
-      var na={id:"a"+Date.now(),clientName:sl.client.ime,sign:sl.ch.sunSign,date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),birthDate:sl.client.datum||"",types:sl.types,analysis:finalText,country:country,owner:user&&user.email,mesto:sl.client.mesto||""};
-      setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
+      // Submit job to backend for background processing
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||""})});
+      var jobData=await resp.json();
+      if(!jobData.id)throw new Error(jobData.error||"Failed to create job");
+      // Save job ID in slot and localStorage
+      upSlot(ri,function(s){return Object.assign({},s,{jobId:jobData.id,analysis:"Generisem analizu u pozadini..."});});
+      var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+      jobs["a"+(ri+1)]={id:jobData.id,clientName:sl.client.ime,tab:"a"+(ri+1),idx:ri};
+      localStorage.setItem("activeJobs",JSON.stringify(jobs));
+      // Start polling
+      pollJob(jobData.id,ri,"a"+(ri+1));
     }catch(err){
-      setSlots(function(p){return p.map(function(s,i){return i===ri?Object.assign({},s,{status:"done",analysis:"Greška. Provjeri konekciju i pokušaj ponovo."}):s;});});
-    }finally{active.current=Math.max(0,active.current-1);}
+      console.error("doGen error:",err);
+      upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
+    }
   }
 
   // DOWNSELL GEN
@@ -662,29 +652,31 @@ export default function App(){
     var aName=isHR?"Marija":"Suzana";
     var lang=isHR?"hrvatskom":"srpskom";
     var sys="WRITE IN ENGLISH. The text will be translated to Serbian later.\n\nYou are "+aName+", a top female astrologer with 30 years of experience. Write as feminine voice.\n\nTASK: Based on the client analysis, write EXACT PERIODS for the next 12 months with specific dates. You may reference transits and planets as these are concrete forecast data.\n\nWRITING STYLE: Write as a warm, living person talking to the client. Each period should be a natural paragraph of 5-6 sentences. Dates must be concrete and written within sentences without breaking.\n\nFORBIDDEN:\n- Uppercase section titles (APRIL MAY 2026 etc)\n- Bullet lists\n- Short paragraphs of 1-2 sentences\n- Markdown symbols ## ** ---\n\nSTRUCTURE: Write period by period as natural paragraphs. Each period has a concrete date and description of what will happen. Be direct and brutally honest.\n\nLENGTH: Minimum 1200 words. Develop each period in detail with minimum 5-6 sentences.\n\nDo NOT write any greeting or closing. No 'Thank you'. The analysis ends with the last period.\n\nToday is: "+todayStr+".";
-    while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
-    active.current+=1;
     try{
       var usrContent=pr+"\n\nANALIZA KLIJENTA:\n"+snap;
       if(dsPitanja.trim())usrContent+="\n\nDODATNA PITANJA KLIJENTA:\n"+dsPitanja+"\nOdgovori i na ova pitanja opsirno i detaljno.";
-      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:usrContent}]})});
-      if(!resp.ok)throw new Error("HTTP "+resp.status);
-      var reader=resp.body.getReader(),dec=new TextDecoder();var full="";
-      while(true){
-        var result=await reader.read();if(result.done)break;
-        var lines=dec.decode(result.value,{stream:true}).split("\n").filter(function(l){return l.startsWith("data:");});
-        for(var li=0;li<lines.length;li++){try{var j=JSON.parse(lines[li].slice(5));if(j.type==="content_block_delta"&&j.delta&&j.delta.text){full+=j.delta.text;setDsAn(fmtText(full));}}catch(e){}}
-      }
-      setDsAn(fmtText(full)+"\n\n\u23F3 Prevodim na srpski...");
-      var serbianDS=await translateToSerbian(full);
-      var finalDS=fmtText(serbianDS);
-      setDsAn(finalDS);
-      setDsSt("done");
-      var now=new Date();
-      var na={id:"d"+Date.now(),clientName:"Downsell - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["downsell"],analysis:finalDS,country:country,owner:user&&user.email};
-      setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
-    }catch(e){setDsSt("done");setDsAn("Greška. Provjeri konekciju.");}
-    finally{active.current=Math.max(0,active.current-1);}
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:"Downsell",job_type:"downsell",user_id:user&&user.id||""})});
+      var jobData=await resp.json();
+      if(!jobData.id)throw new Error(jobData.error||"Failed");
+      setDsAn("Generisem u pozadini...");
+      var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+      jobs["ds"]={id:jobData.id,clientName:"Downsell",tab:"downsell"};
+      localStorage.setItem("activeJobs",JSON.stringify(jobs));
+      var dsInterval=setInterval(async function(){
+        try{
+          var r=await fetch(API+"/api/generate/"+jobData.id);var j=await r.json();
+          if(j.status==="generating")setDsAn("Generisem analizu...");
+          else if(j.status==="translating")setDsAn("Prevodim na srpski...");
+          else if(j.status==="done"){
+            clearInterval(dsInterval);var ft=fmtText(j.serbian_text||"");setDsAn(ft);setDsSt("done");
+            var now=new Date();
+            setAnalyses(function(prev){var upd=[{id:"d"+Date.now(),clientName:"Downsell - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
+            var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs["ds"];localStorage.setItem("activeJobs",JSON.stringify(jbs));
+            toast2("Downsell analiza gotova!");
+          }else if(j.status==="error"){clearInterval(dsInterval);setDsAn(j.serbian_text||"Greska.");setDsSt("done");}
+        }catch(e){}
+      },3000);
+    }catch(e){setDsSt("done");setDsAn("Greska: "+e.message);}
   }
 
   // PITANJA GEN
@@ -697,30 +689,83 @@ export default function App(){
     var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
     var pqPr=custPr[country]&&custPr[country].pitanja?custPr[country].pitanja:"";
     var sys=pqPr||("WRITE IN ENGLISH. The text will be translated to Serbian later.\n\nYou are "+aName+", a top female astrologer with 30 years of experience. Write as feminine voice.\n\nTODAY'S DATE: "+todayStr+". Current year is "+today.getFullYear()+". All forecasts must be for "+today.getFullYear()+" and "+(today.getFullYear()+1)+". NEVER write about past years as present.\n\nTASK: The client sent their previous analysis and has additional questions. Answer ONLY the asked questions, thoroughly and in detail, as if sitting across from the person.\n\nWRITING STYLE: Write warmly, emotionally and directly. No uppercase titles. No bullet lists. Each answer must be in paragraph form with minimum 6-8 sentences. LENGTH: Minimum 1000 words total. Develop each question EXTREMELY thoroughly with concrete examples, periods and situations.\n\nFORBIDDEN:\n- Uppercase section titles\n- Bullet lists with numbers or dashes\n- Planet names and houses in text\n- Short paragraphs of 1-2 sentences\n- Markdown symbols ## ** ---\n- Forecasts for past years (2024, 2025) as present\n\nDo NOT write any greeting or closing. Just answer the questions.");
-    while(active.current>=MAX)await new Promise(function(r){return setTimeout(r,600);});
-    active.current+=1;
     try{
-      var resp=await fetch(API+"/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,stream:true,system:sys,messages:[{role:"user",content:"Today is "+todayStr+", year "+today.getFullYear()+".\n\nPREVIOUS ANALYSIS:\n"+pqPrev+"\n\nCLIENT QUESTIONS:\n"+pqQuest}]})});
-      if(!resp.ok)throw new Error("HTTP "+resp.status);
-      var reader=resp.body.getReader(),dec=new TextDecoder();var full="";
-      while(true){
-        var result=await reader.read();if(result.done)break;
-        var lines=dec.decode(result.value,{stream:true}).split("\n").filter(function(l){return l.startsWith("data:");});
-        for(var li=0;li<lines.length;li++){try{var j=JSON.parse(lines[li].slice(5));if(j.type==="content_block_delta"&&j.delta&&j.delta.text){full+=j.delta.text;setPqAn(fmtText(full));}}catch(e){}}
-      }
-      setPqAn(fmtText(full)+"\n\n\u23F3 Prevodim na srpski...");
-      var serbianPQ=await translateToSerbian(full);
-      var finalPQ=fmtText(serbianPQ);
-      setPqAn(finalPQ);
-      setPqSt("done");
-      var now=new Date();
-      var na={id:"q"+Date.now(),clientName:"Pitanja - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:finalPQ,country:country,owner:user&&user.email};
-      setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
-    }catch(e){setPqSt("done");setPqAn("Greska. Provjeri konekciju.");}
-    finally{active.current=Math.max(0,active.current-1);}
+      var pqUsr="Today is "+todayStr+", year "+today.getFullYear()+".\n\nPREVIOUS ANALYSIS:\n"+pqPrev+"\n\nCLIENT QUESTIONS:\n"+pqQuest;
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:"Pitanja",job_type:"pitanja",user_id:user&&user.id||""})});
+      var jobData=await resp.json();
+      if(!jobData.id)throw new Error(jobData.error||"Failed");
+      setPqAn("Generisem u pozadini...");
+      var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+      jobs["pq"]={id:jobData.id,clientName:"Pitanja",tab:"pitanja"};
+      localStorage.setItem("activeJobs",JSON.stringify(jobs));
+      var pqInterval=setInterval(async function(){
+        try{
+          var r=await fetch(API+"/api/generate/"+jobData.id);var j=await r.json();
+          if(j.status==="generating")setPqAn("Generisem odgovore...");
+          else if(j.status==="translating")setPqAn("Prevodim na srpski...");
+          else if(j.status==="done"){
+            clearInterval(pqInterval);var ft=fmtText(j.serbian_text||"");setPqAn(ft);setPqSt("done");
+            var now=new Date();
+            setAnalyses(function(prev){var upd=[{id:"q"+Date.now(),clientName:"Pitanja - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
+            var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs["pq"];localStorage.setItem("activeJobs",JSON.stringify(jbs));
+            toast2("Odgovori na pitanja su gotovi!");
+          }else if(j.status==="error"){clearInterval(pqInterval);setPqAn(j.serbian_text||"Greska.");setPqSt("done");}
+        }catch(e){}
+      },3000);
+    }catch(e){setPqSt("done");setPqAn("Greska: "+e.message);}
   }
 
   // TRANSLATE TO SERBIAN
+  // POLL JOB STATUS
+  function pollJob(jobId,slotIdx,tabKey){
+    var interval=setInterval(async function(){
+      try{
+        var resp=await fetch(API+"/api/generate/"+jobId);
+        if(!resp.ok)return;
+        var job=await resp.json();
+        if(job.status==="generating"){
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{analysis:"Generisem analizu..."});});
+        }else if(job.status==="translating"){
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{analysis:"Prevodim na srpski..."});});
+        }else if(job.status==="done"){
+          clearInterval(interval);
+          var finalText=fmtText(job.serbian_text||"");
+          if(slotIdx!==null){
+            upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:finalText,jobId:null});});
+          }
+          // Save to analyses
+          var now=new Date();
+          var na={id:"j"+Date.now(),clientName:job.client_name||"",sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:[job.job_type||"analiza"],analysis:finalText,country:country,owner:user&&user.email};
+          setAnalyses(function(prev){var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;});
+          // Remove from active jobs
+          var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+          if(tabKey)delete jobs[tabKey];
+          localStorage.setItem("activeJobs",JSON.stringify(jobs));
+          // Toast notification
+          toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");
+        }else if(job.status==="error"){
+          clearInterval(interval);
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:job.serbian_text||"Greska pri generisanju."});});
+          var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+          if(tabKey)delete jobs[tabKey];
+          localStorage.setItem("activeJobs",JSON.stringify(jobs));
+        }
+      }catch(e){console.warn("Poll error:",e.message);}
+    },3000);
+  }
+
+  // Resume polling for active jobs on app load
+  useEffect(function(){
+    var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+    Object.keys(jobs).forEach(function(key){
+      var j=jobs[key];
+      if(j&&j.id){
+        console.log("Resuming poll for job:",j.id,key);
+        pollJob(j.id,j.idx!==undefined?j.idx:null,key);
+      }
+    });
+  },[]);
+
   async function translateToSerbian(englishText){
     try{
       var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
@@ -959,7 +1004,9 @@ export default function App(){
           React.createElement("button",{className:"btn bol bsm",disabled:s.copyIdx>=ch.length-1,onClick:function(){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.min(ch.length-1,sl.copyIdx+1)});});}},">" ),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(s.analysis);toast2("Sve kopirano!");}},"\u0041ll"),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){doGen(idx);},disabled:busy},"\u21BA")
-        )
+        ),
+        // NOVA ANALIZA dugme
+        s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});}},"\u21BB Nova analiza")
       )
     );
   }
@@ -1120,7 +1167,8 @@ export default function App(){
             React.createElement("button",{className:"btn bol bsm",disabled:dsCi===0,onClick:function(){setDsCi(function(p){return Math.max(0,p-1);});}},"<"),
             React.createElement("button",{className:"btn bol bsm",disabled:dsCi>=getChunks(dsAn).length-1,onClick:function(){setDsCi(function(p){return Math.min(getChunks(dsAn).length-1,p+1);});}},">" ),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(dsAn);toast2("Sve kopirano!");}},"Sve")
-          )
+          ),
+          dsSt==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){setDsPaste("");setDsAn("");setDsSt("idle");setDsCi(0);setDsPitanja("");}},"\u21BB Nova analiza")
         )
       ),
 
@@ -1144,7 +1192,8 @@ export default function App(){
             React.createElement("button",{className:"btn bol bsm",disabled:pqCi===0,onClick:function(){setPqCi(function(p){return Math.max(0,p-1);});}},"<"),
             React.createElement("button",{className:"btn bol bsm",disabled:pqCi>=getChunks(pqAn).length-1,onClick:function(){setPqCi(function(p){return Math.min(getChunks(pqAn).length-1,p+1);});}},">"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pqAn);toast2("Sve kopirano!");}},"Sve")
-          )
+          ),
+          pqSt==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){setPqPrev("");setPqQuest("");setPqAn("");setPqSt("idle");setPqCi(0);}},"\u21BB Nova analiza")
         )
       ),
 
