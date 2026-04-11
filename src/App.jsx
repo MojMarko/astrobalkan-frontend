@@ -1242,8 +1242,7 @@ export default function App(){
             );
           })
         )
-      )
-      // end content sections
+      ),
 
       // BOTTOM NAV
       React.createElement("nav",{className:"bnav"},
