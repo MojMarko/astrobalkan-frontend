@@ -127,29 +127,46 @@ function Logo(props){
   var w=sz*2.5;
   var uid="lg"+Math.random().toString(36).slice(2,6);
   return (
-    React.createElement("svg",{width:w,height:sz,viewBox:"0 0 120 44",fill:"none"},
+    React.createElement("svg",{width:w,height:sz,viewBox:"0 0 140 50",fill:"none"},
       React.createElement("defs",null,
         React.createElement("linearGradient",{id:uid+"t",x1:"0%",y1:"0%",x2:"0%",y2:"100%"},
           React.createElement("stop",{offset:"0%",stopColor:"#7FEFFF"}),
           React.createElement("stop",{offset:"100%",stopColor:"#00AAEE"})
         ),
         React.createElement("linearGradient",{id:uid+"s",x1:"0%",y1:"0%",x2:"100%",y2:"0%"},
-          React.createElement("stop",{offset:"0%",stopColor:"#00AAEE",stopOpacity:".3"}),
-          React.createElement("stop",{offset:"50%",stopColor:"#00BFFF"}),
+          React.createElement("stop",{offset:"0%",stopColor:"#00AAEE",stopOpacity:".2"}),
+          React.createElement("stop",{offset:"40%",stopColor:"#00BFFF"}),
           React.createElement("stop",{offset:"100%",stopColor:"#7FEFFF"})
         ),
         React.createElement("filter",{id:uid+"g"},
-          React.createElement("feGaussianBlur",{stdDeviation:"1",result:"b"}),
+          React.createElement("feGaussianBlur",{stdDeviation:"1.5",result:"b"}),
+          React.createElement("feMerge",null,React.createElement("feMergeNode",{in:"b"}),React.createElement("feMergeNode",{in:"SourceGraphic"}))
+        ),
+        React.createElement("filter",{id:uid+"g2"},
+          React.createElement("feGaussianBlur",{stdDeviation:"3",result:"b"}),
           React.createElement("feMerge",null,React.createElement("feMergeNode",{in:"b"}),React.createElement("feMergeNode",{in:"SourceGraphic"}))
         )
       ),
-      React.createElement("text",{x:"50",y:"24",textAnchor:"middle",fontFamily:"'Arial Rounded MT Bold','Nunito',Arial,sans-serif",fontSize:"22",fontWeight:"bold",fill:"url(#"+uid+"t)"},"astro"),
-      React.createElement("path",{d:"M20 32 Q35 28 55 34 Q72 39 95 30",stroke:"url(#"+uid+"s)",strokeWidth:"2",fill:"none",strokeLinecap:"round"}),
-      React.createElement("path",{d:"M94 30 L99 25 Q97 31 100 32 Z",fill:"#7FEFFF",filter:"url(#"+uid+"g)"}),
-      React.createElement("path",{d:"M98 26 L98.5 23 L99 26 L102 26.5 L99 27 L98.5 30 L98 27 L95 26.5 Z",fill:"#fff",filter:"url(#"+uid+"g)"}),
-      React.createElement("circle",{cx:88,cy:36,r:1,fill:"#7FEFFF",filter:"url(#"+uid+"g)",opacity:".7"}),
-      React.createElement("circle",{cx:82,cy:38,r:.7,fill:"#00BFFF",opacity:".5"}),
-      React.createElement("circle",{cx:25,cy:31,r:.7,fill:"#00BFFF",opacity:".4"})
+      // Main text
+      React.createElement("text",{x:"52",y:"27",textAnchor:"middle",fontFamily:"'Arial Rounded MT Bold','Nunito',Arial,sans-serif",fontSize:"28",fontWeight:"bold",fill:"url(#"+uid+"t)"},"astro"),
+      // Swoosh curve - thicker and more dramatic
+      React.createElement("path",{d:"M12 38 Q30 32 55 37 Q78 42 105 34 Q112 31 118 28",stroke:"url(#"+uid+"s)",strokeWidth:"2.5",fill:"none",strokeLinecap:"round"}),
+      // Second thin swoosh line for depth
+      React.createElement("path",{d:"M15 40 Q32 35 55 39 Q78 44 108 34",stroke:"url(#"+uid+"s)",strokeWidth:"1",fill:"none",strokeLinecap:"round",opacity:".4"}),
+      // Main glowing star - bigger and brighter
+      React.createElement("path",{d:"M120 26 L121 20 L122 26 L128 27 L122 28 L121 34 L120 28 L114 27 Z",fill:"#fff",filter:"url(#"+uid+"g2)"}),
+      // Star glow background
+      React.createElement("circle",{cx:121,cy:27,r:4,fill:"#7FEFFF",opacity:".3",filter:"url(#"+uid+"g2)"}),
+      // Sparkle dots around the swoosh
+      React.createElement("circle",{cx:108,cy:36,r:1.2,fill:"#7FEFFF",filter:"url(#"+uid+"g)",opacity:".8"}),
+      React.createElement("circle",{cx:100,cy:39,r:.8,fill:"#00BFFF",filter:"url(#"+uid+"g)",opacity:".6"}),
+      React.createElement("circle",{cx:92,cy:41,r:.6,fill:"#7FEFFF",opacity:".5"}),
+      React.createElement("circle",{cx:18,cy:36,r:.7,fill:"#00BFFF",opacity:".4"}),
+      React.createElement("circle",{cx:25,cy:34,r:.5,fill:"#7FEFFF",opacity:".5"}),
+      React.createElement("circle",{cx:115,cy:32,r:.5,fill:"#fff",opacity:".6"}),
+      // Small decorative stars
+      React.createElement("path",{d:"M112 38 L112.3 36.5 L112.6 38 L114 38.3 L112.6 38.6 L112.3 40 L112 38.6 L110.5 38.3 Z",fill:"#7FEFFF",opacity:".6",filter:"url(#"+uid+"g)"}),
+      React.createElement("path",{d:"M14 35 L14.2 34 L14.4 35 L15.5 35.2 L14.4 35.4 L14.2 36.5 L14 35.4 L13 35.2 Z",fill:"#00BFFF",opacity:".4"})
     )
   );
 }
@@ -1170,7 +1187,7 @@ export default function App(){
       // HEADER
       React.createElement("div",{className:"hdr"},
         React.createElement("div",{className:"hdr-top"},
-          React.createElement("div",{className:"hbrand"},React.createElement(Logo,{size:32})),
+          React.createElement("div",{className:"hbrand"},React.createElement(Logo,{size:40})),
           React.createElement("div",{className:"huser"},
             user.role==="admin"&&React.createElement("span",{className:"abadge"},"ADMIN"),
             React.createElement("span",null,country==="hr"?"\uD83C\uDDED\uD83C\uDDF7":"\uD83C\uDDF7\uD83C\uDDF8"),
@@ -1185,7 +1202,7 @@ export default function App(){
 
       // SLOTS
       ["a1","a2","a3"].indexOf(tab)>=0&&React.createElement("div",{className:"sec"},
-        React.createElement("div",{className:"stitle"},"Analiza "+tab[1],React.createElement("span",{style:{fontSize:"11px",color:"var(--gd)",fontWeight:400,marginLeft:"auto",fontStyle:"italic",letterSpacing:"0.5px"}},"NASA preciznost")),
+        React.createElement("div",{className:"stitle",style:{justifyContent:"center"}},React.createElement("span",null,"Analiza "+tab[1]),React.createElement("span",{style:{fontSize:"14px",color:"var(--gd2)",fontWeight:400,fontStyle:"italic",letterSpacing:"1px"}}," \u00B7 NASA preciznost")),
         SlotView({idx:parseInt(tab[1])-1})
       ),
 
