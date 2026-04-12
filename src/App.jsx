@@ -119,7 +119,29 @@ async function parseMsg(text){
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
-var API="https://astrobalkan-backend.onrender.com";
+var API=(typeof import.meta!=="undefined"&&import.meta.env&&import.meta.env.VITE_BACKEND_URL)||"https://astrobalkan-backend.onrender.com";
+
+// Auth token management
+function getAuthToken(){try{return localStorage.getItem("auth_token")||"";}catch(e){return"";}}
+function setAuthToken(t){try{if(t)localStorage.setItem("auth_token",t);else localStorage.removeItem("auth_token");}catch(e){}}
+
+// Authenticated fetch - auto-adds Authorization header
+async function authFetch(url,opts){
+  opts=opts||{};
+  var headers=Object.assign({},opts.headers||{});
+  var tok=getAuthToken();
+  if(tok)headers["Authorization"]="Bearer "+tok;
+  if(opts.body&&!headers["Content-Type"])headers["Content-Type"]="application/json";
+  var resp=await fetch(url,Object.assign({},opts,{headers:headers}));
+  if(resp.status===401){
+    // Token expired or invalid - clear session
+    setAuthToken("");
+    try{localStorage.removeItem("session");}catch(e){}
+    // Reload to trigger login screen
+    if(typeof window!=="undefined")window.location.reload();
+  }
+  return resp;
+}
 
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
@@ -186,9 +208,7 @@ var CSS="@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamon
 
 // MAIN APP -----------------------------------------------------------------
 export default function App(){
-  var [siteAccess,setSiteAccess]=useState(function(){try{return localStorage.getItem("site_access")==="true";}catch(e){return false;}});
-  var [sitePw,setSitePw]=useState("");
-  var [sitePwErr,setSitePwErr]=useState("");
+  // Site password removed for security
   var [showSplash,setShowSplash]=useState(true);
   var [user,setUser]=useState(null);
   var [adminUsers,setAdminUsers]=useState([]);
@@ -217,7 +237,7 @@ export default function App(){
     stoGet("custPr",{sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}}).then(function(local){
       setCustPr(local);
       // Load from backend (overrides local)
-      fetch(API+"/api/prompts").then(function(r){return r.json();}).then(function(d){
+      fetch(API+"/api/prompts",{mode:"cors"}).then(function(r){return r.json();}).then(function(d){
         if(d.prompts&&Object.keys(d.prompts).length>0){
           var merged={sr:Object.assign({main:"",ds:"",pitanja:""},local.sr||{},d.prompts.sr||{}),hr:Object.assign({main:"",ds:"",pitanja:""},local.hr||{},d.prompts.hr||{})};
           setCustPr(merged);stoSet("custPr",merged);
@@ -225,7 +245,11 @@ export default function App(){
       }).catch(function(){});
     });
     stoGet("analyses",[]).then(setAnalyses);
-    stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
+    stoGet("session",null).then(function(u){
+      // Only restore session if we also have a valid JWT token
+      if(u&&getAuthToken()){setUser(u);if(!u.country)setShowCtr(true);}
+      else{stoSet("session",null);setAuthToken("");}
+    });
   },[]);
 
   useEffect(function(){
@@ -251,6 +275,7 @@ export default function App(){
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Pogresna lozinka ili email.");
       if(!d.user.verified)return setLerr("Email nije verifikovan.");
+      if(d.token)setAuthToken(d.token);
       setUser(d.user);stoSet("session",d.user);setLerr("");
       if(!d.user.country)setShowCtr(true);
     }catch(e){setLerr("Greska. Provjeri konekciju.");}
@@ -258,7 +283,8 @@ export default function App(){
   async function doRegister(){
     if(!rName.trim())return setLerr("Unesite ime.");
     if(!rEmail.includes("@"))return setLerr("Unesite validan email.");
-    if(rPw.length<6)return setLerr("Lozinka mora imati min. 6 znakova.");
+    if(rPw.length<8)return setLerr("Lozinka mora imati min. 8 znakova, malo i veliko slovo i broj.");
+    if(!/[a-z]/.test(rPw)||!/[A-Z]/.test(rPw)||!/\d/.test(rPw))return setLerr("Lozinka mora imati malo slovo, veliko slovo i broj.");
     if(rPw!==rPw2)return setLerr("Lozinke se ne podudaraju.");
     setLerr("");
     try{
@@ -266,7 +292,7 @@ export default function App(){
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Greska pri registraciji.");
       setPendUser({email:rEmail.trim().toLowerCase()});
-      setLm("verify");setLerr("");setLsuc("Verifikacioni kod je poslan na email.");
+      setLm("verify");setLerr("");setLsuc("Verifikacioni kod je poslat na email.");
     }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
   async function doVerify(){
@@ -285,23 +311,24 @@ export default function App(){
     try{
       var r=await fetch(API+"/api/auth/forgot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase()})});
       var d=await r.json();
-      if(!r.ok)return setLerr(d.error||"Korisnik ne postoji.");
+      if(!r.ok)return setLerr(d.error||"Greska.");
       setFStep(2);setLerr("");
-      toast2("Reset kod je poslan na email!");
+      toast2("Ako email postoji, kod je poslat!");
     }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
   async function doForgot2(){
     if(!fCode)return setLerr("Unesite kod.");
-    if(fNewPw.length<6)return setLerr("Lozinka mora imati min. 6 znakova.");
+    if(fNewPw.length<8)return setLerr("Lozinka mora imati min. 8 znakova.");
+    if(!/[a-z]/.test(fNewPw)||!/[A-Z]/.test(fNewPw)||!/\d/.test(fNewPw))return setLerr("Lozinka mora imati malo slovo, veliko slovo i broj.");
     setLerr("");
     try{
       var r=await fetch(API+"/api/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase(),code:fCode,newPassword:fNewPw})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Pogresan kod.");
-      setLm("login");setFStep(1);setLerr("");setLsuc("Lozinka promijenjena! Prijavi se.");
+      setLm("login");setFStep(1);setLerr("");setLsuc("Lozinka promenjena! Prijavi se.");
     }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
-  function doLogout(){setUser(null);stoSet("session",null);}
+  function doLogout(){setUser(null);stoSet("session",null);setAuthToken("");}
   function selectCtr(c){
     var upd=Object.assign({},user,{country:c});
     setUser(upd);stoSet("session",upd);
@@ -311,14 +338,14 @@ export default function App(){
   // ADMIN
   async function loadAdminUsers(){
     try{
-      var r=await fetch(API+"/api/admin/users",{headers:{"x-user-id":user.id}});
+      var r=await authFetch(API+"/api/admin/users");
       var d=await r.json();
       if(d.users)setAdminUsers(d.users);
     }catch(e){}
   }
   async function deleteAdminUser(id){
     try{
-      await fetch(API+"/api/admin/users/"+id,{method:"DELETE",headers:{"x-user-id":user.id}});
+      await authFetch(API+"/api/admin/users/"+id,{method:"DELETE"});
       loadAdminUsers();
       toast2("Korisnik uklonjen.");
     }catch(e){toast2("Greska.");}
@@ -447,7 +474,7 @@ export default function App(){
 
       // PRIMARY: Use backend Swiss Ephemeris (NASA-level precision)
       try{
-        var chartResp=await fetch(API+"/api/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bd)});
+        var chartResp=await authFetch(API+"/api/chart",{method:"POST",body:JSON.stringify(bd)});
         if(chartResp.ok){
           var chartData=await chartResp.json();
           console.log("SWISSEPH response:",chartData.source,chartData.positions?chartData.positions.length+" planets":"no positions");
@@ -553,7 +580,7 @@ export default function App(){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName);
       console.log("TRANSITS calling:",API+"/api/astro/transits","body:",JSON.stringify({birth_data:bd}).slice(0,200));
-      var resp=await fetch(API+"/api/astro/transits",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd})});
+      var resp=await authFetch(API+"/api/astro/transits",{method:"POST",body:JSON.stringify({birth_data:bd})});
       console.log("TRANSITS status:",resp.status);
       if(!resp.ok){var errText=await resp.text();console.error("TRANSITS error response:",errText.slice(0,300));return;}
       var data=await resp.json();
@@ -650,7 +677,7 @@ export default function App(){
     var ri=idx;
     try{
       // Submit job to backend for background processing
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||""})});
+      var resp=await authFetch(API+"/api/generate",{method:"POST",body:JSON.stringify({system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza"})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed to create job");
       // Save job ID in slot and localStorage
@@ -678,7 +705,7 @@ export default function App(){
     try{
       var usrContent=pr+"\n\nANALIZA KLIJENTA:\n"+snap;
       if(dsPitanja.trim())usrContent+="\n\nDODATNA PITANJA KLIJENTA:\n"+dsPitanja+"\nOdgovori i na ova pitanja opsirno i detaljno.";
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:"Downsell",job_type:"downsell",user_id:user&&user.id||""})});
+      var resp=await authFetch(API+"/api/generate",{method:"POST",body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:"Downsell",job_type:"downsell"})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       setDsAn("Generisem u pozadini...");
@@ -690,7 +717,7 @@ export default function App(){
         try{
           var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
           if(!jbs["ds"]){clearInterval(dsInterval);return;}
-          var r=await fetch(API+"/api/generate/"+dsJobId);var j=await r.json();
+          var r=await authFetch(API+"/api/generate/"+dsJobId);var j=await r.json();
           if(j.status==="generating")setDsAn("Generisem analizu...");
           else if(j.status==="translating")setDsAn("Prevodim na srpski...");
           else if(j.status==="done"){
@@ -721,7 +748,7 @@ export default function App(){
     var sys=pqPr||("WRITE IN ENGLISH. The text will be translated to Serbian later.\n\nYou are "+aName+", a top female astrologer with 30 years of experience. Write as feminine voice.\n\nTODAY'S DATE: "+todayStr+". Current year is "+today.getFullYear()+". All forecasts must be for "+today.getFullYear()+" and "+(today.getFullYear()+1)+". NEVER write about past years as present.\n\nTASK: The client sent their previous analysis and has additional questions. Answer ONLY the asked questions, thoroughly and in detail, as if sitting across from the person.\n\nWRITING STYLE: Write warmly, emotionally and directly. No uppercase titles. No bullet lists. Each answer must be in paragraph form with minimum 6-8 sentences. LENGTH: Minimum 1000 words total. Develop each question EXTREMELY thoroughly with concrete examples, periods and situations.\n\nFORBIDDEN:\n- Uppercase section titles\n- Bullet lists with numbers or dashes\n- Planet names and houses in text\n- Short paragraphs of 1-2 sentences\n- Markdown symbols ## ** ---\n- Forecasts for past years (2024, 2025) as present\n\nDo NOT write any greeting or closing. Just answer the questions.");
     try{
       var pqUsr="Today is "+todayStr+", year "+today.getFullYear()+".\n\nPREVIOUS ANALYSIS:\n"+pqPrev+"\n\nCLIENT QUESTIONS:\n"+pqQuest;
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:"Pitanja",job_type:"pitanja",user_id:user&&user.id||""})});
+      var resp=await authFetch(API+"/api/generate",{method:"POST",body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:"Pitanja",job_type:"pitanja"})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       setPqAn("Generisem u pozadini...");
@@ -733,7 +760,7 @@ export default function App(){
         try{
           var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
           if(!jbs["pq"]){clearInterval(pqInterval);return;}
-          var r=await fetch(API+"/api/generate/"+pqJobId);var j=await r.json();
+          var r=await authFetch(API+"/api/generate/"+pqJobId);var j=await r.json();
           if(j.status==="generating")setPqAn("Generisem odgovore...");
           else if(j.status==="translating")setPqAn("Prevodim na srpski...");
           else if(j.status==="done"){
@@ -761,7 +788,7 @@ export default function App(){
         var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
         if(tabKey&&!jobs[tabKey]){clearInterval(interval);return;}
 
-        var resp=await fetch(API+"/api/generate/"+jobId);
+        var resp=await authFetch(API+"/api/generate/"+jobId);
         if(!resp.ok)return;
         var job=await resp.json();
         if(job.status==="generating"){
@@ -812,7 +839,7 @@ export default function App(){
 
   async function translateToSerbian(englishText){
     try{
-      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
+      var resp=await authFetch(API+"/api/parse",{method:"POST",body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
       if(!resp.ok)return englishText;
       var d=await resp.json();
       var t=(d.content&&d.content[0]&&d.content[0].text)||englishText;
@@ -1071,30 +1098,7 @@ export default function App(){
     );
   }
 
-  // SITE PASSWORD ------------------------------------------------------------
-  if(!siteAccess){
-    return React.createElement(React.Fragment,null,
-      React.createElement("style",null,CSS),
-      React.createElement("div",{className:"lwrap"},
-        React.createElement("div",{className:"lcard"},
-          React.createElement("div",{className:"llogo"},
-            React.createElement(Logo,{size:56}),
-            React.createElement("h1",{style:{marginTop:"10px"}},"Astro Balkan"),
-            React.createElement("p",null,"Profesionalni Astrološki Alat")
-          ),
-          React.createElement("div",{className:"ldiv"}),
-          React.createElement("div",{style:{textAlign:"center",marginBottom:"14px",fontSize:"12px",color:"var(--mt)"}},"Unesite pristupnu lozinku"),
-          React.createElement("div",{className:"lfld"},
-            React.createElement("label",null,"Lozinka"),
-            React.createElement("input",{type:"password",value:sitePw,onChange:function(e){setSitePw(e.target.value);setSitePwErr("");},placeholder:"\u2022\u2022\u2022\u2022",style:{textAlign:"center",fontSize:"18px",letterSpacing:"4px"},onKeyDown:function(e){if(e.key==="Enter"){if(sitePw==="2026"){localStorage.setItem("site_access","true");setSiteAccess(true);}else{setSitePwErr("Pogresna lozinka.");}}}})
-          ),
-          sitePwErr&&React.createElement("div",{className:"lerr"},sitePwErr),
-          React.createElement("button",{className:"lbtn",onClick:function(){if(sitePw==="2026"){localStorage.setItem("site_access","true");setSiteAccess(true);}else{setSitePwErr("Pogresna lozinka.");}}},"Pristupi"),
-          React.createElement("div",{style:{textAlign:"center",marginTop:"14px",fontSize:"11px",color:"var(--mt)",letterSpacing:"2px",opacity:".6"}},"\u2726 \u2727 \u2726")
-        )
-      )
-    );
-  }
+  // SITE PASSWORD REMOVED - security hardened (use real login instead)
 
   // LOGIN --------------------------------------------------------------------
   if(!user){
@@ -1313,7 +1317,7 @@ export default function App(){
             ?React.createElement("div",{className:"abar"},
               React.createElement("button",{className:"btn bgd",onClick:function(){
                 stoSet("custPr",custPr);
-                fetch(API+"/api/prompts",{method:"POST",headers:{"Content-Type":"application/json","x-user-role":"admin"},body:JSON.stringify({country:country,type:editPr,content:(custPr[country]&&custPr[country][editPr])||""})}).then(function(){toast2("Sacuvano u bazu!");}).catch(function(){toast2("Sacuvano lokalno.");});
+                authFetch(API+"/api/prompts",{method:"POST",body:JSON.stringify({country:country,type:editPr,content:(custPr[country]&&custPr[country][editPr])||""})}).then(function(){toast2("Sacuvano u bazu!");}).catch(function(){toast2("Sacuvano lokalno.");});
               }},"\u0053acuvaj"),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){setCustPr(function(p){var n=Object.assign({},p);n[country]=Object.assign({},n[country]);n[country][editPr]="";return n;});}},"\u0052eset")
             )
