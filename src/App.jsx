@@ -106,16 +106,32 @@ var PR_HR_DS="Na osnovu analize napisi TOCNE PERIODE u narednih 12 mjeseci. Foku
 async function parseMsg(text){
   var systemPrompt='Izvuci podatke o osobama iz poruke i vrati SAMO JSON bez ikakvog teksta oko njega.\n\nFormat odgovora:\n{"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nKLJUCNA PRAVILA:\n1. Prva osoba u poruci = KLIJENT, druga osoba = PARTNER\n2. Ako ima DVE osobe (dva imena ili dva datuma rodjenja) → OBAVEZNO imaPartnera=true i popuni partner objekat\n3. datum MORA biti YYYY-MM-DD u izlazu (1987-04-24)\n4. vreme MORA biti HH:MM u izlazu (10:40)\n5. mesto - samo grad bez drzave\n6. ako pise "kcerka", "sin", "brat", "sestra", "muz", "zena" itd pre imena - ukljuci tu rec u ime polje\n7. REDOSLED POLJA NIJE VAZAN - ime/datum/vreme/mesto mogu doci bilo kojim redom\n\nTOLERANTNI FORMATI ZA DATUM (sve ovo prepoznaj kao datum i konvertuj u YYYY-MM-DD):\n- 24.04.1987 ili 24/04/1987 ili 24-04-1987 → 1987-04-24\n- 4.1.2000 ili 4/1/2000 → 2000-01-04\n- 24 04 1987 (razmaci umesto tacaka) → 1987-04-24\n- 24041987 (bez separatora, DDMMYYYY) → 1987-04-24\n- 4011987 ili 4012000 (bez separatora, DMMYYYY kad dan ima 1 cifru) → 2000-01-04 za 4012000, 1987-01-04 za 4011987\n- 321995 ili 3021995 (D.M.YYYY bez separatora) → 1995-02-03 za 321995, 1995-02-03 za 3021995\n- 1987-04-24 (vec ispravan) → 1987-04-24\n\nTOLERANTNI FORMATI ZA VREME (sve ovo prepoznaj kao vreme i konvertuj u HH:MM):\n- 10:40 → 10:40\n- 10.40 (tacka umesto dvotacke) → 10:40\n- 10 40 (razmak) → 10:40\n- 10h40 ili 10-40 → 10:40\n- 5:40 ili 5.40 ili 5 40 (jedna cifra sat) → 05:40\n- 540 (bez separatora) → 05:40\n- 1040 (bez separatora, 4 cifre) → 10:40\n\nPREPOZNAJ po formatu:\n- Bilo sta sa 6-8 cifara (zavisno od formata) ili sa tackama/kosim crtama = DATUM\n- Brojevi 0-23 i 0-59 odvojeni separatorom = VREME\n- Reci sa velikim pocetnim slovom koje su imena (Marko, Ana, Suzana, Jovana) = IME\n- Gradovi (Beograd, Nis, Doboj, Novi Sad, Sarajevo, Zagreb, Banja Luka, itd) = MESTO\n\nPRIMERI:\n\nUnos: "Marko 24.04.1987 10:40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24.04.1987 10.40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24 04 1987 10 40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24041987 1040 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 4.1.2000 5.40 Doboj"\nIzlaz: {"klijent":{"ime":"Marko","datum":"2000-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Ana 321995 1420 Nis"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-02-03","vreme":"14:20","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4.1.2000 Marko 5.40 Doboj\\n27.5.2006 Jelena"\nIzlaz: {"klijent":{"ime":"Marko","datum":"2000-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"Jelena","datum":"2006-05-27","vreme":"","mesto":""},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ana, 15.07.1995, Nis\\nMarko, 20.03.1990, Beograd"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"Marko","datum":"1990-03-20","vreme":"","mesto":"Beograd"},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ja sam Ana 15.07.1995 Nis, moj muz je Marko 20.03.1990 Beograd"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"Marko","datum":"1990-03-20","vreme":"","mesto":"Beograd"},"imaPartnera":true,"pitanja":""}\n\nUnos: "Moja cerka Ana, 15.07.1995 u 14:20 u Nisu"\nIzlaz: {"klijent":{"ime":"cerka Ana","datum":"1995-07-15","vreme":"14:20","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nVAZNO: Vrati iskljucivo JSON, bez komentara, bez markdown formatiranja. Ako neki podatak nedostaje ostavi prazan string. Nikad ne ostavljaj sve polja prazna ako ima informacija.';
   var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}]})});
-  var d=await r.json(),t=(d.content&&d.content[0]&&d.content[0].text)||"{}";
+  var d=await r.json();
+  // Detect Anthropic API error
+  if(d.error||d.type==="error"){
+    console.error("parseMsg Anthropic error:",JSON.stringify(d).slice(0,500));
+    return {__error:"Anthropic API greska: "+(d.error&&d.error.message||d.message||"Nepoznata")};
+  }
+  var t=(d.content&&d.content[0]&&d.content[0].text)||"";
+  if(!t){
+    console.error("parseMsg empty response from Claude:",JSON.stringify(d).slice(0,500));
+    return {__error:"Prazan odgovor od AI - proveri Anthropic API kljuc"};
+  }
   try{
     var parsed=JSON.parse(t.replace(/```json|```/g,"").trim());
     // Fix date format if AI returned DD.MM.YYYY instead of YYYY-MM-DD
     function fixDate(d){if(!d)return"";if(/^\d{4}-\d{2}-\d{2}$/.test(d))return d;var m=d.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");return d;}
     if(parsed.klijent){parsed.klijent.datum=fixDate(parsed.klijent.datum);}
     if(parsed.partner){parsed.partner.datum=fixDate(parsed.partner.datum);}
+    // Detect empty result
+    var k=parsed.klijent||{};
+    if(!k.ime&&!k.datum&&!k.vreme&&!k.mesto){
+      console.warn("parseMsg empty fields, raw response:",t.slice(0,300));
+      return {__error:"AI nije prepoznao podatke - probaj jasniji format"};
+    }
     console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
     return parsed;
-  }catch(e){console.error("parseMsg JSON error:",e,t.slice(0,200));return null;}
+  }catch(e){console.error("parseMsg JSON error:",e,t.slice(0,200));return {__error:"AI odgovor nije valjan JSON: "+t.slice(0,100)};}
 }
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
@@ -342,7 +358,10 @@ export default function App(){
     upSlot(idx,function(s){return Object.assign({},s,{status:"parsing"});});
     try{
       var p=await parseMsg(s.paste);
-      if(p){
+      if(p&&p.__error){
+        upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
+        toast2(p.__error);
+      }else if(p){
         upSlot(idx,function(s){return Object.assign({},s,{status:"idle",parsed:p,paste:"",
           client:Object.assign({},s.client,p.klijent||{},{pitanja:p.pitanja||""}),
           partner:p.imaPartnera?Object.assign({},s.partner,p.partner||{}):s.partner,
@@ -351,7 +370,7 @@ export default function App(){
         });});
         toast2("Podaci prepoznati!");
       }else{upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});toast2("Nije prepoznato.");}
-    }catch(e){upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});toast2("Greska.");}
+    }catch(e){upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});toast2("Greska: "+(e.message||"nepoznata"));}
   }
 
   // ASTROLOGY API v3 - Swiss Ephemeris (nasa.gov preciznost)
