@@ -326,11 +326,11 @@ export default function App(){
   async function addAdminUser(){
     if(!nuData.name||!nuData.email||!nuData.pw)return toast2("Popuni sva polja.");
     try{
-      var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:nuData.email.toLowerCase(),password:nuData.pw,name:nuData.name,country:nuData.country})});
+      var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json","x-admin-override":"true","x-user-id":(user&&user.id)||""},body:JSON.stringify({email:nuData.email.toLowerCase(),password:nuData.pw,name:nuData.name,country:nuData.country})});
       var d=await r.json();
       if(!r.ok)return toast2(d.error||"Greska.");
       setNuData({name:"",email:"",pw:"",country:"sr"});
-      toast2("Korisnik dodan!");
+      toast2(d.message&&d.message.indexOf("updated")>=0?"Lozinka korisnika azurirana!":"Korisnik dodat!");
       loadAdminUsers();
     }catch(e){toast2("Greska.");}
   }
