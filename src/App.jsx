@@ -265,8 +265,8 @@ export default function App(){
       var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:rEmail.trim().toLowerCase(),password:rPw,name:rName.trim(),country:"sr"})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Greska pri registraciji.");
-      setPendUser({email:rEmail.trim().toLowerCase()});
-      setLm("verify");setLerr("");setLsuc("Verifikacioni kod je poslan na email.");
+      setLm("login");setLerr("");setLsuc("Registracija uspesna! Mozes se prijaviti.");
+      setLEmail(rEmail.trim().toLowerCase());
     }catch(e){setLerr("Greska. Provjeri konekciju.");}
   }
   async function doVerify(){
