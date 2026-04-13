@@ -105,35 +105,33 @@ var PR_HR_DS="Na osnovu analize napisi TOCNE PERIODE u narednih 12 mjeseci. Foku
 // API ----------------------------------------------------------------------
 async function parseMsg(text){
   var systemPrompt='Izvuci podatke o osobama iz poruke i vrati SAMO JSON bez ikakvog teksta oko njega.\n\nFormat odgovora:\n{"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nKLJUCNA PRAVILA:\n1. Prva osoba u poruci = KLIJENT, druga osoba = PARTNER\n2. Ako ima DVE osobe (dva imena ili dva datuma rodjenja) → OBAVEZNO imaPartnera=true i popuni partner objekat\n3. datum MORA biti YYYY-MM-DD u izlazu (1987-04-24)\n4. vreme MORA biti HH:MM u izlazu (10:40)\n5. mesto - samo grad bez drzave\n6. ako pise "kcerka", "sin", "brat", "sestra", "muz", "zena" itd pre imena - ukljuci tu rec u ime polje\n7. REDOSLED POLJA NIJE VAZAN - ime/datum/vreme/mesto mogu doci bilo kojim redom\n\nTOLERANTNI FORMATI ZA DATUM (sve ovo prepoznaj kao datum i konvertuj u YYYY-MM-DD):\n- 24.04.1987 ili 24/04/1987 ili 24-04-1987 → 1987-04-24\n- 4.1.2000 ili 4/1/2000 → 2000-01-04\n- 24 04 1987 (razmaci umesto tacaka) → 1987-04-24\n- 4 1 95 ili 4.1.95 (2-cifrena godina) → za godine 00-30 dodaj 2000 (95→1995, 05→2005), za 31-99 dodaj 1900 (95→1995, 87→1987)\n- 24041987 (bez separatora, DDMMYYYY, 8 cifara) → 1987-04-24\n- 4011987 (bez separatora, DMMYYYY, 7 cifara) → 1987-01-04\n- 2752006 (bez separatora, 7 cifara, DMYYYY) → 2006-05-27 (27 dan, 5 mesec, 2006 godina)\n- 321995 ili 3021995 (D.M.YYYY bez separatora) → 1995-02-03\n- 1987-04-24 (vec ispravan) → 1987-04-24\n- BITNO: ako je broj 6 cifara → pokusa D M YYYY (1.2.1995 = 121995), ako je 7 → DD M YYYY ili D MM YYYY, ako je 8 → DD MM YYYY\n\nTOLERANTNI FORMATI ZA VREME (sve ovo prepoznaj kao vreme i konvertuj u HH:MM):\n- 10:40 → 10:40\n- 10.40 (tacka umesto dvotacke) → 10:40\n- 10 40 (razmak) → 10:40\n- 10h40 ili 10-40 → 10:40\n- 5:40 ili 5.40 ili 5 40 (jedna cifra sat) → 05:40\n- 540 (bez separatora, 3 cifre) → 05:40\n- 1040 (bez separatora, 4 cifre) → 10:40\n\nPREPOZNAJ po formatu:\n- Broj vezan sa tackama/crticama/razmacima koji izgleda kao datum = DATUM\n- 6-8 cifara u nizu koje mogu da formiraju datum = DATUM (konvertuj)\n- Brojevi 0-23 za sate i 0-59 za minute odvojeni separatorom = VREME\n- 3-4 cifre u nizu koje mogu biti HHMM = VREME\n- Reci sa velikim pocetnim slovom koje su imena (Marko, Ana, Suzana, Jovana, Jelena) = IME\n- Gradovi (Beograd, Nis, Doboj, Novi Sad, Sarajevo, Zagreb, Banja Luka, Bijeljina, Tuzla, Mostar itd) = MESTO\n\nPRIMERI:\n\nUnos: "Marko 24.04.1987 10:40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24.04.1987 10.40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24 04 1987 10 40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24041987 1040 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 4.1.2000 5.40 Doboj"\nIzlaz: {"klijent":{"ime":"Marko","datum":"2000-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4 1 95 5 40 Doboj Marko"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1995-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4 1 95 5 40 Doboj Marko\\n2752006 Jelena"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1995-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"Jelena","datum":"2006-05-27","vreme":"","mesto":""},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ana 321995 1420 Nis"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-02-03","vreme":"14:20","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4.1.2000 Marko 5.40 Doboj\\n27.5.2006 Jelena"\nIzlaz: {"klijent":{"ime":"Marko","datum":"2000-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"Jelena","datum":"2006-05-27","vreme":"","mesto":""},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ana, 15.07.1995, Nis\\nMarko, 20.03.1990, Beograd"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"Marko","datum":"1990-03-20","vreme":"","mesto":"Beograd"},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ja sam Ana 15.07.1995 Nis, moj muz je Marko 20.03.1990 Beograd"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"Marko","datum":"1990-03-20","vreme":"","mesto":"Beograd"},"imaPartnera":true,"pitanja":""}\n\nUnos: "Moja cerka Ana, 15.07.1995 u 14:20 u Nisu"\nIzlaz: {"klijent":{"ime":"cerka Ana","datum":"1995-07-15","vreme":"14:20","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nVAZNO: Vrati iskljucivo JSON, bez komentara, bez markdown formatiranja. Ako neki podatak nedostaje ostavi prazan string. Nikad ne ostavljaj sve polja prazna ako ima informacija.';
-  // Try with primary model, then retry on overload, then fallback to haiku
-  var models=["claude-sonnet-4-20250514","claude-sonnet-4-20250514","claude-3-5-haiku-20241022","claude-3-5-sonnet-20241022"];
+  // Retry up to 4 times with increasing backoff if overloaded
   var d=null,lastError=null;
-  for(var attempt=0;attempt<models.length;attempt++){
+  var MAX_RETRIES=4;
+  for(var attempt=0;attempt<MAX_RETRIES;attempt++){
     try{
-      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:models[attempt],max_tokens:1500,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}]})});
+      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}]})});
       d=await r.json();
-      // If successful response, break out of retry loop
       if(d.content&&d.content[0]&&d.content[0].text)break;
-      // If overloaded or rate-limited, wait and retry
       if(d.error&&(d.error.type==="overloaded_error"||d.error.type==="rate_limit_error"||(d.error.message||"").toLowerCase().indexOf("overload")>=0)){
         lastError=d.error;
-        console.warn("parseMsg attempt "+(attempt+1)+" overloaded, retrying with "+models[attempt+1]);
-        await new Promise(function(res){setTimeout(res,1500+attempt*1000);});
+        var wait=2000+attempt*2000; // 2s, 4s, 6s, 8s
+        console.warn("parseMsg attempt "+(attempt+1)+" overloaded, retry in "+wait+"ms");
+        await new Promise(function(res){setTimeout(res,wait);});
         continue;
       }
-      // Other error - fail immediately
       lastError=d.error;
       break;
     }catch(e){
       lastError={message:e.message};
       console.error("parseMsg network error attempt "+(attempt+1)+":",e.message);
-      await new Promise(function(res){setTimeout(res,1500);});
+      await new Promise(function(res){setTimeout(res,2000);});
     }
   }
-  if(!d||d.error||d.type==="error"){
+  if(!d||d.error||d.type==="error"||!(d.content&&d.content[0]&&d.content[0].text)){
     console.error("parseMsg final Anthropic error:",JSON.stringify(lastError||d||{}).slice(0,500));
     var errMsg=(lastError&&lastError.message)||(d&&d.error&&d.error.message)||"Nepoznata";
-    if((errMsg||"").toLowerCase().indexOf("overload")>=0)errMsg="Anthropic servers preopterećeni. Sacekaj 30 sec i probaj ponovo.";
+    if((errMsg||"").toLowerCase().indexOf("overload")>=0)errMsg="Anthropic servers preopterećeni. Sacekaj minut i probaj ponovo.";
     return {__error:errMsg};
   }
   var t=(d.content&&d.content[0]&&d.content[0].text)||"";
