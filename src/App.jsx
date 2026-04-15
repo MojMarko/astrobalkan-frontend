@@ -257,7 +257,24 @@ export default function App(){
     });
     stoGet("analyses",[]).then(setAnalyses);
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
+    // Load shared analyses from backend - all users see all
+    fetch(API+"/api/analyses?limit=300").then(function(r){return r.json();}).then(function(d){
+      if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
+    }).catch(function(e){console.warn("Could not load shared analyses:",e.message);});
   },[]);
+
+  // Refresh analyses from backend periodically while on Baza tab
+  useEffect(function(){
+    if(tab!=="baza")return;
+    var refresh=function(){
+      fetch(API+"/api/analyses?limit=300").then(function(r){return r.json();}).then(function(d){
+        if(d.analyses)setAnalyses(d.analyses);
+      }).catch(function(){});
+    };
+    refresh();
+    var interval=setInterval(refresh,15000); // refresh every 15 sec
+    return function(){clearInterval(interval);};
+  },[tab]);
 
   useEffect(function(){
     var t=setTimeout(function(){setShowSplash(false);},4000);
@@ -885,7 +902,8 @@ export default function App(){
   }
 
   function doCopy(text,label){cpText(text);toast2(label+" kopiran!");}
-  var myAnalyses=user&&user.role==="admin"?analyses:analyses.filter(function(a){return a.owner===(user&&user.email);});
+  // Svi korisnici vide sve analize iz baze (deljena baza)
+  var myAnalyses=analyses;
 
   // CHUNK UI helper
   function ChunkTracker(props){
@@ -1332,6 +1350,7 @@ export default function App(){
                     React.createElement("div",{className:"acard-name"},(a.clientName||"Nepoznat")+(a.sign?" \u00B7 "+a.sign:"")),
                     React.createElement("div",{className:"acard-date"},a.date)
                   ),
+                  (a.ownerName||a.owner)&&React.createElement("div",{style:{fontSize:"9.5px",color:"var(--gd)",marginTop:"2px",fontStyle:"italic"}},"Generisao: "+(a.ownerName||a.owner)),
                   a.mesto&&React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginTop:"1px"}},a.mesto),
                   React.createElement("div",{className:"acard-prev"},a.analysis)
                 );
