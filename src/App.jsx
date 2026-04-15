@@ -235,8 +235,8 @@ export default function App(){
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
   var [toast,setToast]=useState("");
-  var [dsPaste,setDsPaste]=useState(""); var [dsAn,setDsAn]=useState(""); var [dsSt,setDsSt]=useState("idle"); var [dsCi,setDsCi]=useState(0); var [dsPitanja,setDsPitanja]=useState("");
-  var [pqPrev,setPqPrev]=useState(""); var [pqQuest,setPqQuest]=useState(""); var [pqAn,setPqAn]=useState(""); var [pqSt,setPqSt]=useState("idle"); var [pqCi,setPqCi]=useState(0);
+  var [dsPaste,setDsPaste]=useState(""); var [dsAn,setDsAn]=useState(""); var [dsSt,setDsSt]=useState("idle"); var [dsCi,setDsCi]=useState(0); var [dsPitanja,setDsPitanja]=useState(""); var [dsClientName,setDsClientName]=useState("");
+  var [pqPrev,setPqPrev]=useState(""); var [pqQuest,setPqQuest]=useState(""); var [pqAn,setPqAn]=useState(""); var [pqSt,setPqSt]=useState("idle"); var [pqCi,setPqCi]=useState(0); var [pqClientName,setPqClientName]=useState("");
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
   var [bazaSearch,setBazaSearch]=useState("");
@@ -757,12 +757,13 @@ export default function App(){
     try{
       var usrContent=pr+"\n\nANALIZA KLIJENTA:\n"+snap;
       if(dsPitanja.trim())usrContent+="\n\nDODATNA PITANJA KLIJENTA:\n"+dsPitanja+"\nOdgovori i na ova pitanja opsirno i detaljno.";
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:"Downsell",job_type:"downsell",user_id:user&&user.id||""})});
+      var dsName=dsClientName.trim()||"Downsell";
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:"Downsell - "+dsName,job_type:"downsell",user_id:user&&user.id||""})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       setDsAn("Generisem u pozadini...");
       var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
-      jobs["ds"]={id:jobData.id,clientName:"Downsell",tab:"downsell"};
+      jobs["ds"]={id:jobData.id,clientName:"Downsell - "+dsName,tab:"downsell"};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
       var dsInterval=setInterval(async function(){
@@ -779,7 +780,7 @@ export default function App(){
             setAnalyses(function(prev){
               if(prev.some(function(a){return a.jobId===dsJobId;}))return prev;
               var now=new Date();
-              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
+              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+(dsName||now.toLocaleDateString("sr")),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
             });
             toast2("Downsell analiza gotova!");
           }else if(j.status==="error"){clearInterval(dsInterval);setDsAn(j.serbian_text||"Greska.");setDsSt("done");var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3["ds"];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
@@ -800,12 +801,13 @@ export default function App(){
     var sys=pqPr||("WRITE IN ENGLISH. The text will be translated to Serbian later.\n\nYou are "+aName+", a top female astrologer with 30 years of experience. Write as feminine voice.\n\nTODAY'S DATE: "+todayStr+". Current year is "+today.getFullYear()+". All forecasts must be for "+today.getFullYear()+" and "+(today.getFullYear()+1)+". NEVER write about past years as present.\n\nTASK: The client sent their previous analysis and has additional questions. Answer ONLY the asked questions, thoroughly and in detail, as if sitting across from the person.\n\nWRITING STYLE: Write warmly, emotionally and directly. No uppercase titles. No bullet lists. Each answer must be in paragraph form with minimum 6-8 sentences. LENGTH: Minimum 1000 words total. Develop each question EXTREMELY thoroughly with concrete examples, periods and situations.\n\nFORBIDDEN:\n- Uppercase section titles\n- Bullet lists with numbers or dashes\n- Planet names and houses in text\n- Short paragraphs of 1-2 sentences\n- Markdown symbols ## ** ---\n- Forecasts for past years (2024, 2025) as present\n\nDo NOT write any greeting or closing. Just answer the questions.");
     try{
       var pqUsr="Today is "+todayStr+", year "+today.getFullYear()+".\n\nPREVIOUS ANALYSIS:\n"+pqPrev+"\n\nCLIENT QUESTIONS:\n"+pqQuest;
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:"Pitanja",job_type:"pitanja",user_id:user&&user.id||""})});
+      var pqName=pqClientName.trim()||"Pitanja";
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:"Pitanja - "+pqName,job_type:"pitanja",user_id:user&&user.id||""})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       setPqAn("Generisem u pozadini...");
       var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
-      jobs["pq"]={id:jobData.id,clientName:"Pitanja",tab:"pitanja"};
+      jobs["pq"]={id:jobData.id,clientName:"Pitanja - "+pqName,tab:"pitanja"};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var pqJobId=jobData.id;
       var pqInterval=setInterval(async function(){
@@ -822,7 +824,7 @@ export default function App(){
             setAnalyses(function(prev){
               if(prev.some(function(a){return a.jobId===pqJobId;}))return prev;
               var now=new Date();
-              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"Pitanja - "+now.toLocaleDateString("sr"),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
+              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"Pitanja - "+(pqName||now.toLocaleDateString("sr")),sign:"",date:now.toLocaleDateString("sr")+", "+now.toLocaleTimeString("sr",{hour:"2-digit",minute:"2-digit"}),rawDate:now.toISOString().slice(0,10),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
             });
             toast2("Odgovori na pitanja su gotovi!");
           }else if(j.status==="error"){clearInterval(pqInterval);setPqAn(j.serbian_text||"Greska.");setPqSt("done");var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3["pq"];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
@@ -1279,7 +1281,8 @@ export default function App(){
         React.createElement("div",{className:"card card-hi"},
           React.createElement("div",{className:"ct"},"Generiši Analizu Perioda"),
           React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Nalepi gotovu analizu od ranije iz Messengera kako bi mogla napisati Downsell analizu."),
-          React.createElement("div",{className:"fld"},React.createElement("textarea",{value:dsPaste,onChange:function(e){setDsPaste(e.target.value);},style:{minHeight:"110px"}})),
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime klijenta"),React.createElement("input",{value:dsClientName,onChange:function(e){setDsClientName(e.target.value);},placeholder:"Npr. Karolina"})),
+          React.createElement("div",{className:"fld"},React.createElement("textarea",{value:dsPaste,onChange:function(e){setDsPaste(e.target.value);},style:{minHeight:"110px"},placeholder:"Nalepi prethodnu analizu klijenta..."})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:dsPitanja,onChange:function(e){setDsPitanja(e.target.value);},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
           React.createElement("button",{className:"btn bgd bfull",onClick:doDsGen,disabled:dsSt==="generating"||!dsPaste.trim()},
             dsSt==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generiši Analizu Perioda"
@@ -1296,7 +1299,7 @@ export default function App(){
             React.createElement("button",{className:"btn bol bsm",disabled:dsCi>=getChunks(dsAn).length-1,onClick:function(){setDsCi(function(p){return Math.min(getChunks(dsAn).length-1,p+1);});}},">" ),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(dsAn);toast2("Sve kopirano!");}},"Sve")
           ),
-          dsSt==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){setDsPaste("");setDsAn("");setDsSt("idle");setDsCi(0);setDsPitanja("");}},"\u21BB Nova analiza")
+          dsSt==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){setDsPaste("");setDsAn("");setDsSt("idle");setDsCi(0);setDsPitanja("");setDsClientName("");}},"\u21BB Nova analiza")
         )
       ),
 
@@ -1304,6 +1307,7 @@ export default function App(){
       tab==="pitanja"&&React.createElement("div",{className:"sec"},
         React.createElement("div",{className:"stitle"},"Pitanja Klijenta"),
         React.createElement("div",{className:"card card-hi"},
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime klijenta"),React.createElement("input",{value:pqClientName,onChange:function(e){setPqClientName(e.target.value);},placeholder:"Npr. Karolina"})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"),React.createElement("textarea",{value:pqPrev,onChange:function(e){setPqPrev(e.target.value);},placeholder:"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pqQuest,onChange:function(e){setPqQuest(e.target.value);},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
           React.createElement("button",{className:"btn bgd bfull",onClick:doPqGen,disabled:pqSt==="generating"||!pqPrev.trim()||!pqQuest.trim()},
@@ -1321,7 +1325,7 @@ export default function App(){
             React.createElement("button",{className:"btn bol bsm",disabled:pqCi>=getChunks(pqAn).length-1,onClick:function(){setPqCi(function(p){return Math.min(getChunks(pqAn).length-1,p+1);});}},">"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pqAn);toast2("Sve kopirano!");}},"Sve")
           ),
-          pqSt==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){setPqPrev("");setPqQuest("");setPqAn("");setPqSt("idle");setPqCi(0);}},"\u21BB Nova analiza")
+          pqSt==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){setPqPrev("");setPqQuest("");setPqAn("");setPqSt("idle");setPqCi(0);setPqClientName("");}},"\u21BB Nova analiza")
         )
       ),
 
