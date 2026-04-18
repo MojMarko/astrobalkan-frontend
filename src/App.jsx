@@ -240,17 +240,28 @@ export default function App(){
   var [analyses,setAnalyses]=useState([]);
   var [toast,setToast]=useState("");
   var [dsSlots,setDsSlots]=useState([
-    {paste:"",pitanja:"",clientName:"",an:"",st:"idle",ci:0,jobId:null},
-    {paste:"",pitanja:"",clientName:"",an:"",st:"idle",ci:0,jobId:null},
-    {paste:"",pitanja:"",clientName:"",an:"",st:"idle",ci:0,jobId:null}
+    {paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
+    {paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
+    {paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null}
   ]);
   function upDs(idx,fn){setDsSlots(function(prev){var nv=prev.slice();nv[idx]=fn(nv[idx]);return nv;});}
   var [pqSlots,setPqSlots]=useState([
-    {prev:"",quest:"",clientName:"",an:"",st:"idle",ci:0,jobId:null},
-    {prev:"",quest:"",clientName:"",an:"",st:"idle",ci:0,jobId:null},
-    {prev:"",quest:"",clientName:"",an:"",st:"idle",ci:0,jobId:null}
+    {prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
+    {prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
+    {prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null}
   ]);
   function upPq(idx,fn){setPqSlots(function(prev){var nv=prev.slice();nv[idx]=fn(nv[idx]);return nv;});}
+  var [clientsCache,setClientsCache]=useState([]);
+  var [clientsLoaded,setClientsLoaded]=useState(false);
+  async function loadClients(){
+    if(clientsLoaded)return;
+    try{
+      var r=await fetch(API+"/api/clients");
+      var d=await r.json();
+      setClientsCache(d.clients||[]);
+      setClientsLoaded(true);
+    }catch(e){console.warn("loadClients failed:",e.message);}
+  }
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
   var [bazaSearch,setBazaSearch]=useState("");
@@ -297,6 +308,7 @@ export default function App(){
 
   useEffect(function(){
     if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
+    if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients();
   },[tab]);
 
   function toast2(m){setToast(m);setTimeout(function(){setToast("");},3000);}
@@ -754,7 +766,7 @@ export default function App(){
     var ri=idx;
     try{
       // Submit job to backend for background processing
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||""})});
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed to create job");
       // Save job ID in slot and localStorage
@@ -773,17 +785,17 @@ export default function App(){
   // DOWNSELL GEN - prima idx (0, 1, ili 2) za jedan od 3 slota
   async function doDsGen(idx){
     var ds=dsSlots[idx];
-    if(!ds.paste.trim())return;
+    if(!ds.paste.trim()&&!ds.clientId)return;
     upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
     var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
-    var snap=ds.paste,pr=getPr("ds"),isHR=country==="hr";
+    var snap=ds.paste||"(istorijat klijenta ce backend automatski povuci na osnovu client_id)",pr=getPr("ds"),isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
     var sys="WRITE IN ENGLISH. The text will be translated to Serbian later.\n\nYou are "+aName+", a top female astrologer with 30 years of experience. Write as feminine voice.\n\nTASK: Based on the client analysis, write EXACT PERIODS for the next 12 months with specific dates. You may reference transits and planets as these are concrete forecast data.\n\nWRITING STYLE: Write as a warm, living person talking to the client. Each period should be a natural paragraph of 5-6 sentences. Dates must be concrete and written within sentences without breaking.\n\nFORBIDDEN:\n- Uppercase section titles (APRIL MAY 2026 etc)\n- Bullet lists\n- Short paragraphs of 1-2 sentences\n- Markdown symbols ## ** ---\n- Guessing chart positions for other people without their exact time/place ('najverovatnije', 'verovatno Jarcu ili Vodniku')\n\nSTRUCTURE: Write period by period as natural paragraphs. Each period has a concrete date and description of what will happen. Be direct and brutally honest.\n\nLENGTH: Minimum 1200 words. Develop each period in detail with minimum 5-6 sentences.\n\nIf questions reference other people (child, partner) without full birth data, use Sun sign only (from date) and focus on client's own chart dynamics with that person. NEVER ask for more data from client.\n\nDo NOT write any greeting or closing. No 'Thank you'. The analysis ends with the last period.\n\nToday is: "+todayStr+".";
     try{
       var usrContent=pr+"\n\nANALIZA KLIJENTA:\n"+snap;
       if(ds.pitanja.trim())usrContent+="\n\nDODATNA PITANJA KLIJENTA:\n"+ds.pitanja+"\nOdgovori i na ova pitanja opsirno i detaljno.";
       var dsName=ds.clientName.trim()||"Downsell";
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:"Downsell - "+dsName,job_type:"downsell",user_id:user&&user.id||""})});
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upDs(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -819,7 +831,7 @@ export default function App(){
   // PITANJA GEN - prima idx (0, 1, 2)
   async function doPqGen(idx){
     var pq=pqSlots[idx];
-    if(!pq.prev.trim()||!pq.quest.trim())return;
+    if((!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim())return;
     upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
     var isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
@@ -827,9 +839,10 @@ export default function App(){
     var pqPr=custPr[country]&&custPr[country].pitanja?custPr[country].pitanja:"";
     var sys=pqPr||("WRITE IN ENGLISH. The text will be translated to Serbian later.\n\nYou are "+aName+", a top female astrologer with 30 years of experience. Write as feminine voice.\n\nTODAY'S DATE: "+todayStr+". Current year is "+today.getFullYear()+". All forecasts must be for "+today.getFullYear()+" and "+(today.getFullYear()+1)+". NEVER write about past years as present.\n\nTASK: The client sent their previous analysis and has additional questions. Answer ONLY the asked questions, thoroughly and in detail.\n\n*** CRITICAL - HANDLING QUESTIONS ABOUT OTHER PEOPLE ***\nIf a question references ANOTHER person (e.g. 'my son born 29.09.2013'):\n- Use whatever data IS provided. Do NOT ask for more data.\n- If only birth date given: Discuss Sun sign only. Do NOT mention Moon or Ascendant.\n- NEVER hedge ('najverovatnije', 'verovatno', 'mozda').\n- Focus on client's own chart dynamics with this person.\n\nWRITING STYLE: Write warmly, emotionally and directly. No uppercase titles. No bullet lists. Each answer in paragraph form with 6-8 sentences. LENGTH: Minimum 1000 words. Develop each question thoroughly.\n\nFORBIDDEN:\n- Uppercase section titles\n- Bullet lists\n- Planet names/houses in text\n- Hedging\n- Asking for more data\n\nDo NOT write greeting or closing. Just answer.");
     try{
-      var pqUsr="Today is "+todayStr+", year "+today.getFullYear()+".\n\nPREVIOUS ANALYSIS:\n"+pq.prev+"\n\nCLIENT QUESTIONS:\n"+pq.quest;
+      var pqPrevText=pq.prev.trim()||"(istorijat klijenta ce backend automatski povuci na osnovu client_id)";
+      var pqUsr="Today is "+todayStr+", year "+today.getFullYear()+".\n\nPREVIOUS ANALYSIS:\n"+pqPrevText+"\n\nCLIENT QUESTIONS:\n"+pq.quest;
       var pqName=pq.clientName.trim()||"Pitanja";
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:"D. Pitanja - "+pqName,job_type:"pitanja",user_id:user&&user.id||""})});
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null})});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upPq(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -1312,15 +1325,30 @@ export default function App(){
       ["downsell1","downsell2","downsell3"].indexOf(tab)>=0&&(function(){
         var dsIdx=parseInt(tab.slice(-1))-1;
         var ds=dsSlots[dsIdx];
+        var dsMatches=clientsCache.filter(function(c){
+          if(!ds.clientName||ds.clientId)return false;
+          return c.name&&c.name.toLowerCase().indexOf(ds.clientName.toLowerCase())===0;
+        }).slice(0,5);
         return React.createElement("div",{className:"sec"},
           React.createElement("div",{className:"stitle"},"Downsell "+(dsIdx+1)),
           React.createElement("div",{className:"card card-hi"},
             React.createElement("div",{className:"ct"},"Generiši Analizu Perioda"),
-            React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Nalepi gotovu analizu od ranije iz Messengera kako bi mogla napisati Downsell analizu."),
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime klijenta"),React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v});});},placeholder:"Npr. Karolina"})),
-            React.createElement("div",{className:"fld"},React.createElement("textarea",{value:ds.paste,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{paste:v});});},style:{minHeight:"110px"},placeholder:"Nalepi prethodnu analizu klijenta..."})),
+            React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Ako je klijent vec u bazi, izaberi ga iz liste i istorijat ce se automatski povuci. Inace nalepi prethodnu analizu rucno."),
+            React.createElement("div",{className:"fld",style:{position:"relative"}},
+              React.createElement("label",null,"Ime klijenta"),
+              React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();},placeholder:"Npr. Karolina"}),
+              dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
+                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});toast2("Klijent izabran - istorijat ce se povuci automatski");}},
+                  React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
+                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date||"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
+                );})
+              )
+            ),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum rodjenja klijenta (za uparivanje)"),React.createElement("input",{type:"date",value:ds.clientBirthDate,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientBirthDate:v,clientId:null});});}})),
+            ds.clientId&&React.createElement("div",{style:{padding:"8px 10px",background:"rgba(220,180,80,0.1)",borderLeft:"3px solid var(--gd2)",borderRadius:"4px",marginBottom:"10px",fontSize:"11px",color:"var(--mt)"}},"\u2713 Klijent prepoznat. Istorijat (sve prethodne analize, downsell, pitanja) ce se automatski povuci pri generisanju."),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza"+(ds.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:ds.paste,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{paste:v});});},style:{minHeight:"110px"},placeholder:ds.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu klijenta..."})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:ds.pitanja,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{pitanja:v});});},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
-            React.createElement("button",{className:"btn bgd bfull",onClick:function(){doDsGen(dsIdx);},disabled:ds.st==="generating"||!ds.paste.trim()},
+            React.createElement("button",{className:"btn bgd bfull",onClick:function(){doDsGen(dsIdx);},disabled:ds.st==="generating"||(!ds.paste.trim()&&!ds.clientId)},
               ds.st==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generiši Analizu Perioda"
             )
           ),
@@ -1335,7 +1363,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:ds.ci>=getChunks(ds.an).length-1,onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(ds.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(ds.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
+            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
       })(),
@@ -1344,13 +1372,29 @@ export default function App(){
       ["pitanja1","pitanja2","pitanja3"].indexOf(tab)>=0&&(function(){
         var pqIdx=parseInt(tab.slice(-1))-1;
         var pq=pqSlots[pqIdx];
+        var pqMatches=clientsCache.filter(function(c){
+          if(!pq.clientName||pq.clientId)return false;
+          return c.name&&c.name.toLowerCase().indexOf(pq.clientName.toLowerCase())===0;
+        }).slice(0,5);
         return React.createElement("div",{className:"sec"},
           React.createElement("div",{className:"stitle"},"D. Pitanja "+(pqIdx+1)),
           React.createElement("div",{className:"card card-hi"},
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime klijenta"),React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v});});},placeholder:"Npr. Karolina"})),
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"),React.createElement("textarea",{value:pq.prev,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{prev:v});});},placeholder:"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
+            React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Ako je klijent vec u bazi, izaberi ga iz liste i istorijat ce se automatski povuci. Inace nalepi prethodnu analizu rucno."),
+            React.createElement("div",{className:"fld",style:{position:"relative"}},
+              React.createElement("label",null,"Ime klijenta"),
+              React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();},placeholder:"Npr. Karolina"}),
+              pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
+                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});toast2("Klijent izabran - istorijat ce se povuci automatski");}},
+                  React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
+                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date||"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
+                );})
+              )
+            ),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum rodjenja klijenta (za uparivanje)"),React.createElement("input",{type:"date",value:pq.clientBirthDate,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientBirthDate:v,clientId:null});});}})),
+            pq.clientId&&React.createElement("div",{style:{padding:"8px 10px",background:"rgba(220,180,80,0.1)",borderLeft:"3px solid var(--gd2)",borderRadius:"4px",marginBottom:"10px",fontSize:"11px",color:"var(--mt)"}},"\u2713 Klijent prepoznat. Istorijat (sve prethodne analize, downsell, pitanja) ce se automatski povuci pri generisanju."),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"+(pq.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:pq.prev,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{prev:v});});},placeholder:pq.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pq.quest,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{quest:v});});},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
-            React.createElement("button",{className:"btn bgd bfull",onClick:function(){doPqGen(pqIdx);},disabled:pq.st==="generating"||!pq.prev.trim()||!pq.quest.trim()},
+            React.createElement("button",{className:"btn bgd bfull",onClick:function(){doPqGen(pqIdx);},disabled:pq.st==="generating"||(!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim()},
               pq.st==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generisi Odgovore"
             )
           ),
@@ -1365,7 +1409,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:pq.ci>=getChunks(pq.an).length-1,onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(pq.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pq.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
+            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
       })(),
