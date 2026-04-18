@@ -538,6 +538,13 @@ export default function App(){
             var moonP=chart.planets.find(function(p){return p.name==="Mesec";});
             chart.sunSign=sunP?sunP.sign:"";chart.moonSign=moonP?moonP.sign:"";
             chart.source="swisseph";
+            // If no birth time provided, null out ascendant and houses (they require exact time)
+            if(!timeStr){
+              chart.ascSign="Nepoznato";
+              chart.ascDeg="0";
+              chart.houses=[];
+              chart.planets.forEach(function(p){p.house=null;});
+            }
             console.log("SwissEph OK:",chart.planets.length,"planets,",chart.aspects.length,"aspects,",chart.houses.length,"houses, asc="+chart.ascSign+" "+chart.ascDeg+"°");
             // Fetch transits data from astrology-api in background (non-blocking)
             chart.solarReturn=null;
@@ -687,7 +694,9 @@ export default function App(){
     if(sl.pch&&sl.partner&&sl.partner.datum){
       var pp=sl.pch.planets.map(function(p){return p.name+": "+p.sign+(p.house?" ("+p.house+". kuca)":"");}).join("\n");
       var pa=sl.pch.aspects.map(function(a){return a.p1+" "+a.aspect+" "+a.p2+" (orb: "+a.orb+"°)";}).join("\n");
-      pTxt="\n\nPARTNER: "+(sl.partner.ime||"Partner")+", "+sl.partner.datum+(sl.partner.vreme?", "+sl.partner.vreme:"")+(sl.partner.mesto?", "+sl.partner.mesto:"")+"\nSunce: "+sl.pch.sunSign+", Mesec: "+sl.pch.moonSign+", Asc: "+sl.pch.ascSign+"\nPlanete:\n"+pp+"\nAspekti:\n"+pa;
+      var pHasTime=sl.partner.vreme&&sl.partner.vreme.trim().length>0;
+      var pAscInfo=pHasTime&&sl.pch.ascSign&&sl.pch.ascSign!=="Nepoznato"?", Asc: "+sl.pch.ascSign:"";
+      pTxt="\n\nPARTNER: "+(sl.partner.ime||"Partner")+", "+sl.partner.datum+(sl.partner.vreme?", "+sl.partner.vreme:"")+(sl.partner.mesto?", "+sl.partner.mesto:"")+"\nSunce: "+sl.pch.sunSign+", Mesec: "+sl.pch.moonSign+pAscInfo+"\nPlanete:\n"+pp+"\nAspekti:\n"+pa;
     }
     var tMap={ljubav:"ljubav i partnerstvo",posao:"posao i karijeru",godisnja:"godišnju prognozu",sinastija:"sinastriju",tranziti:"tranzite"};
     var typeLbl=sl.types.map(function(t){return tMap[t]||t;}).join(", ");
