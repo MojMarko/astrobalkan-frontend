@@ -100,29 +100,48 @@ function belgradeTime(d){return d.toLocaleTimeString("sr-RS",{timeZone:"Europe/B
 function belgradeDateTime(d){return belgradeDate(d)+", "+belgradeTime(d);}
 function belgradeRawDate(d){var fmt=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"});return fmt.format(d);}
 
-// DateInput3 - 3 odvojena polja za dan/mesec/godinu. Vrednost se drzi kao YYYY-MM-DD string.
+// DateInput3 - 3 odvojena polja za dan/mesec/godinu. Interno drzi DD/MM/GGGG lokalno, onChange dobija YYYY-MM-DD samo kad su sva 3 popunjena.
 function DateInput3(props){
-  var value=props.value||"";
-  var parts=value.split("-");
-  var y=parts[0]||"",m=parts[1]||"",d=parts[2]||"";
-  function build(newD,newM,newY){
-    var dd=(newD||"").replace(/\D/g,"").slice(0,2);
-    var mm=(newM||"").replace(/\D/g,"").slice(0,2);
-    var yy=(newY||"").replace(/\D/g,"").slice(0,4);
-    if(dd&&mm&&yy.length===4){
-      var padD=dd.padStart(2,"0"),padM=mm.padStart(2,"0");
-      props.onChange(yy+"-"+padM+"-"+padD);
+  var initParts=(props.value||"").split("-");
+  var initY=initParts[0]||"",initM=(initParts[1]||"").replace(/^0/,""),initD=(initParts[2]||"").replace(/^0/,"");
+  var ddState=React.useState(initD),dd=ddState[0],setDD=ddState[1];
+  var mmState=React.useState(initM),mm=mmState[0],setMM=mmState[1];
+  var yyState=React.useState(initY),yy=yyState[0],setYY=yyState[1];
+  var lastSyncRef=React.useRef(props.value||"");
+  React.useEffect(function(){
+    // Sinhronizuj interno state sa props.value kad se spolja promeni (npr. Nova analiza clear)
+    var v=props.value||"";
+    if(v===lastSyncRef.current)return;
+    lastSyncRef.current=v;
+    if(!v){setDD("");setMM("");setYY("");return;}
+    var p=v.split("-");
+    if(p.length===3){
+      setYY(p[0]||"");
+      setMM((p[1]||"").replace(/^0/,""));
+      setDD((p[2]||"").replace(/^0/,""));
+    }
+  },[props.value]);
+  function emit(nd,nm,ny){
+    var cd=(nd||"").replace(/\D/g,"").slice(0,2);
+    var cm=(nm||"").replace(/\D/g,"").slice(0,2);
+    var cy=(ny||"").replace(/\D/g,"").slice(0,4);
+    if(cd&&cm&&cy.length===4){
+      var padD=cd.padStart(2,"0"),padM=cm.padStart(2,"0");
+      var out=cy+"-"+padM+"-"+padD;
+      lastSyncRef.current=out;
+      props.onChange(out);
     }else{
-      props.onChange("");
+      // nepotpuno — ako je props.value imao nesto, pozovi onChange("") tako da clientId reset radi
+      if(props.value){lastSyncRef.current="";props.onChange("");}
     }
   }
   var inputStyle={background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",padding:"8px",color:"var(--tx)",fontFamily:"'Jost',sans-serif",fontSize:"14px",textAlign:"center",width:"100%"};
   return React.createElement("div",{style:{display:"flex",gap:"6px",alignItems:"center"}},
-    React.createElement("input",{type:"number",min:1,max:31,placeholder:"DD",value:d.replace(/^0/,""),onChange:function(e){build(e.target.value,m,y);},style:Object.assign({},inputStyle,{flex:"0 0 60px"}),inputMode:"numeric"}),
+    React.createElement("input",{type:"text",placeholder:"DD",value:dd,onChange:function(e){var v=e.target.value.replace(/\D/g,"").slice(0,2);setDD(v);emit(v,mm,yy);},style:Object.assign({},inputStyle,{flex:"0 0 60px"}),inputMode:"numeric",maxLength:2}),
     React.createElement("span",{style:{color:"var(--mt)"}},"."),
-    React.createElement("input",{type:"number",min:1,max:12,placeholder:"MM",value:m.replace(/^0/,""),onChange:function(e){build(d,e.target.value,y);},style:Object.assign({},inputStyle,{flex:"0 0 60px"}),inputMode:"numeric"}),
+    React.createElement("input",{type:"text",placeholder:"MM",value:mm,onChange:function(e){var v=e.target.value.replace(/\D/g,"").slice(0,2);setMM(v);emit(dd,v,yy);},style:Object.assign({},inputStyle,{flex:"0 0 60px"}),inputMode:"numeric",maxLength:2}),
     React.createElement("span",{style:{color:"var(--mt)"}},"."),
-    React.createElement("input",{type:"number",min:1900,max:2100,placeholder:"GGGG",value:y,onChange:function(e){build(d,m,e.target.value);},style:Object.assign({},inputStyle,{flex:"1"}),inputMode:"numeric"})
+    React.createElement("input",{type:"text",placeholder:"GGGG",value:yy,onChange:function(e){var v=e.target.value.replace(/\D/g,"").slice(0,4);setYY(v);emit(dd,mm,v);},style:Object.assign({},inputStyle,{flex:"1"}),inputMode:"numeric",maxLength:4})
   );
 }
 
@@ -332,7 +351,6 @@ export default function App(){
   },[]);
   var [clientsCache,setClientsCache]=useState([]);
   var [clientsLoaded,setClientsLoaded]=useState(false);
-  var [seenDone,setSeenDone]=useState({});
   async function loadClients(){
     if(clientsLoaded)return;
     try{
@@ -389,8 +407,6 @@ export default function App(){
   useEffect(function(){
     if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
     if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients();
-    // mark this slot as seen so "done" badge disappears
-    if(tab)setSeenDone(function(prev){var nv=Object.assign({},prev);nv[tab]=true;return nv;});
   },[tab]);
 
   function toast2(m){setToast(m);setTimeout(function(){setToast("");},3000);}
@@ -781,7 +797,6 @@ export default function App(){
   async function doGen(idx){
     var sl=slots[idx];if(!sl||!sl.ch)return;
     upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0});});
-    setSeenDone(function(prev){var nv=Object.assign({},prev);nv["a"+(idx+1)]=false;return nv;});
     var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
     var ptxt=sl.ch.planets.map(function(p){return p.name+": "+p.sign+" "+p.degInSign+"°"+(p.house?" ("+p.house+". kuca)":"");}).join("\n");
     var atxt=sl.ch.aspects.map(function(a){return a.p1+" "+a.aspect+" "+a.p2+" (orb: "+a.orb+"°)";}).join("\n");
@@ -870,7 +885,6 @@ export default function App(){
     var ds=dsSlots[idx];
     if(!ds.paste.trim()&&!ds.clientId)return;
     upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
-    setSeenDone(function(prev){var nv=Object.assign({},prev);nv["downsell"+(idx+1)]=false;return nv;});
     var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
     var snap=ds.paste||"(istorijat klijenta ce backend automatski povuci na osnovu client_id)",pr=getPr("ds"),isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
@@ -921,7 +935,6 @@ export default function App(){
     var pq=pqSlots[idx];
     if((!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim())return;
     upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
-    setSeenDone(function(prev){var nv=Object.assign({},prev);nv["pitanja"+(idx+1)]=false;return nv;});
     var isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
     var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
@@ -1250,7 +1263,7 @@ export default function App(){
           React.createElement("button",{className:"btn bol bsm",onClick:function(){doGen(idx);},disabled:busy},"\u21BA")
         ),
         // NOVA ANALIZA dugme
-        s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});setSeenDone(function(prev){var nv=Object.assign({},prev);nv["a"+(idx+1)]=true;return nv;});}},"\u21BB Nova analiza")
+        s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});}},"\u21BB Nova analiza")
       )
     );
   }
@@ -1452,7 +1465,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:ds.ci>=getChunks(ds.an).length-1,onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(ds.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(ds.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});setSeenDone(function(prev){var nv=Object.assign({},prev);nv["downsell"+(dsIdx+1)]=true;return nv;});}},"\u21BB Nova analiza")
+            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
       })(),
@@ -1498,7 +1511,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:pq.ci>=getChunks(pq.an).length-1,onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(pq.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pq.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});setSeenDone(function(prev){var nv=Object.assign({},prev);nv["pitanja"+(pqIdx+1)]=true;return nv;});}},"\u21BB Nova analiza")
+            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
       })(),
@@ -1619,7 +1632,7 @@ export default function App(){
             isDone=sp.st==="done"&&!!sp.an;
           }
           var showRun=isGen&&!isActive;
-          var showDone=isDone&&!isActive&&!seenDone[n.id];
+          var showDone=isDone&&!isActive;
           return React.createElement("button",{key:n.id,className:"bnav-btn "+(isActive?"on":""),onClick:function(){setTab(n.id);}},
             React.createElement("span",{className:"bnav-ico"},n.icon,
               showRun&&React.createElement("span",{className:"ndot-run"}),
