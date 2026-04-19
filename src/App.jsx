@@ -1197,7 +1197,7 @@ export default function App(){
           React.createElement("button",{className:"btn bol bsm",onClick:function(){doGen(idx);},disabled:busy},"\u21BA")
         ),
         // NOVA ANALIZA dugme
-        s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});}},"\u21BB Nova analiza")
+        s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});setSeenDone(function(prev){var nv=Object.assign({},prev);nv["a"+(idx+1)]=true;return nv;});}},"\u21BB Nova analiza")
       )
     );
   }
@@ -1399,7 +1399,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:ds.ci>=getChunks(ds.an).length-1,onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(ds.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(ds.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
+            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});setSeenDone(function(prev){var nv=Object.assign({},prev);nv["downsell"+(dsIdx+1)]=true;return nv;});}},"\u21BB Nova analiza")
           )
         );
       })(),
@@ -1445,7 +1445,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:pq.ci>=getChunks(pq.an).length-1,onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(pq.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pq.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
+            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});setSeenDone(function(prev){var nv=Object.assign({},prev);nv["pitanja"+(pqIdx+1)]=true;return nv;});}},"\u21BB Nova analiza")
           )
         );
       })(),
