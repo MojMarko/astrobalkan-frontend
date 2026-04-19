@@ -261,22 +261,75 @@ export default function App(){
   var [lerr,setLerr]=useState(""); var [lsuc,setLsuc]=useState("");
   var [showCtr,setShowCtr]=useState(false);
   var [tab,setTab]=useState("a1");
-  var [slots,setSlots]=useState([emptySlot(),emptySlot(),emptySlot()]);
+  // Persist slots to localStorage tako da ne nestanu kad korisnik zatvori app
+  function loadSlots(key,fallback){try{var raw=localStorage.getItem(key);if(!raw)return fallback;var parsed=JSON.parse(raw);if(Array.isArray(parsed)&&parsed.length===fallback.length)return parsed;return fallback;}catch(e){return fallback;}}
+  var emptyDs={paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};
+  var emptyPq={prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};
+  var [slots,setSlots]=useState(function(){return loadSlots("ab_slots",[emptySlot(),emptySlot(),emptySlot()]);});
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
   var [toast,setToast]=useState("");
-  var [dsSlots,setDsSlots]=useState([
-    {paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
-    {paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
-    {paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null}
-  ]);
+  var [dsSlots,setDsSlots]=useState(function(){return loadSlots("ab_dsSlots",[emptyDs,emptyDs,emptyDs]);});
   function upDs(idx,fn){setDsSlots(function(prev){var nv=prev.slice();nv[idx]=fn(nv[idx]);return nv;});}
-  var [pqSlots,setPqSlots]=useState([
-    {prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
-    {prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null},
-    {prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null}
-  ]);
+  var [pqSlots,setPqSlots]=useState(function(){return loadSlots("ab_pqSlots",[emptyPq,emptyPq,emptyPq]);});
   function upPq(idx,fn){setPqSlots(function(prev){var nv=prev.slice();nv[idx]=fn(nv[idx]);return nv;});}
+  useEffect(function(){try{localStorage.setItem("ab_slots",JSON.stringify(slots));}catch(e){}},[slots]);
+  useEffect(function(){try{localStorage.setItem("ab_dsSlots",JSON.stringify(dsSlots));}catch(e){}},[dsSlots]);
+  useEffect(function(){try{localStorage.setItem("ab_pqSlots",JSON.stringify(pqSlots));}catch(e){}},[pqSlots]);
+  // Resume polling ako neki slot jos uvek ima status "generating" posle restart-a app-a
+  useEffect(function(){
+    slots.forEach(function(s,idx){
+      if(s&&s.status==="generating"&&s.jobId){
+        (async function(){
+          try{
+            var resp=await fetch(API+"/api/generate/"+s.jobId);
+            if(!resp.ok)return;
+            var job=await resp.json();
+            if(job.status==="done"){
+              var finalText=fmtText(job.serbian_text||"");
+              upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:finalText,jobId:null});});
+            }else if(job.status==="error"){
+              upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:job.serbian_text||"Greska pri generisanju."});});
+            }
+          }catch(e){console.warn("Resume A"+(idx+1)+" failed:",e.message);}
+        })();
+      }
+    });
+    dsSlots.forEach(function(s,idx){
+      if(s&&s.st==="generating"&&s.jobId){
+        (async function(){
+          try{
+            var resp=await fetch(API+"/api/generate/"+s.jobId);
+            if(!resp.ok)return;
+            var job=await resp.json();
+            if(job.status==="done"){
+              var ft=fmtText(job.serbian_text||"");
+              upDs(idx,function(cur){return Object.assign({},cur,{an:ft,st:"done",jobId:null});});
+            }else if(job.status==="error"){
+              upDs(idx,function(cur){return Object.assign({},cur,{an:job.serbian_text||"Greska.",st:"done"});});
+            }
+          }catch(e){console.warn("Resume DS"+(idx+1)+" failed:",e.message);}
+        })();
+      }
+    });
+    pqSlots.forEach(function(s,idx){
+      if(s&&s.st==="generating"&&s.jobId){
+        (async function(){
+          try{
+            var resp=await fetch(API+"/api/generate/"+s.jobId);
+            if(!resp.ok)return;
+            var job=await resp.json();
+            if(job.status==="done"){
+              var ft=fmtText(job.serbian_text||"");
+              upPq(idx,function(cur){return Object.assign({},cur,{an:ft,st:"done",jobId:null});});
+            }else if(job.status==="error"){
+              upPq(idx,function(cur){return Object.assign({},cur,{an:job.serbian_text||"Greska.",st:"done"});});
+            }
+          }catch(e){console.warn("Resume Pq"+(idx+1)+" failed:",e.message);}
+        })();
+      }
+    });
+  },[]);
   var [clientsCache,setClientsCache]=useState([]);
   var [clientsLoaded,setClientsLoaded]=useState(false);
   var [seenDone,setSeenDone]=useState({});
