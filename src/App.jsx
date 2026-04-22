@@ -170,7 +170,7 @@ async function parseMsg(text){
   var MAX_RETRIES=4;
   for(var attempt=0;attempt<MAX_RETRIES;attempt++){
     try{
-      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5-20250929",max_tokens:1500,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}]})});
+      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:1500,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}]})});
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       if(d.error&&(d.error.type==="overloaded_error"||d.error.type==="rate_limit_error"||(d.error.message||"").toLowerCase().indexOf("overload")>=0)){
@@ -1081,7 +1081,7 @@ export default function App(){
 
   async function translateToSerbian(englishText){
     try{
-      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5-20250929",max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
+      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
       if(!resp.ok)return englishText;
       var d=await resp.json();
       var t=(d.content&&d.content[0]&&d.content[0].text)||englishText;
