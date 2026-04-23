@@ -106,7 +106,9 @@ function getChunks(text,max){
   return ch.filter(function(x){return x.length>0;});
 }
 function cpText(t){var el=document.createElement("textarea");el.value=t;el.style.cssText="position:fixed;left:-9999px;top:0;opacity:0;";document.body.appendChild(el);el.focus();el.select();el.setSelectionRange(0,99999);document.execCommand("copy");document.body.removeChild(el);}
-function belgradeDate(d){return d.toLocaleDateString("sr-RS",{timeZone:"Europe/Belgrade"});}
+// fmtDMY: returns a date as DD.MM.YYYY (zero-padded, Europe/Belgrade timezone). Standard format across UI.
+function fmtDMY(d){var p=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);var dd="",mm="",yy="";for(var i=0;i<p.length;i++){if(p[i].type==="day")dd=p[i].value;else if(p[i].type==="month")mm=p[i].value;else if(p[i].type==="year")yy=p[i].value;}return dd+"."+mm+"."+yy;}
+function belgradeDate(d){return fmtDMY(d);}
 function belgradeTime(d){return d.toLocaleTimeString("sr-RS",{timeZone:"Europe/Belgrade",hour:"2-digit",minute:"2-digit"});}
 function belgradeDateTime(d){return belgradeDate(d)+", "+belgradeTime(d);}
 function belgradeRawDate(d){var fmt=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"});return fmt.format(d);}
@@ -808,7 +810,7 @@ export default function App(){
   async function doGen(idx){
     var sl=slots[idx];if(!sl||!sl.ch)return;
     upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0});});
-    var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
+    var today=new Date(),todayStr=fmtDMY(today);
     var MONTH_EN=["January","February","March","April","May","June","July","August","September","October","November","December"];
     var curYear=today.getFullYear(),curMonth=today.getMonth(),curMonthName=MONTH_EN[curMonth];
     var dateAwareness="\n\n*** CRITICAL - DATE AWARENESS ***\nTODAY: "+todayStr+"\nCURRENT YEAR: "+curYear+"\nCURRENT MONTH: "+curMonthName+" "+curYear+"\n\nSTRICT DATE RULES:\n1. Every date you write in forecasts MUST be AFTER today ("+todayStr+").\n2. Verify each month you mention — if that month has already passed this year, either use the SAME month of "+(curYear+1)+" or skip to a future month.\n   - Example: if today is "+curMonthName+" "+curYear+" and you want 'u martu', March "+curYear+" is past — use 'u martu "+(curYear+1)+"'.\n   - Example: if today is May "+curYear+" and you want 'u januaru', that's past — use 'u januaru "+(curYear+1)+"'.\n3. NEVER write "+(curYear-1)+" or earlier as the current or future year. Current year is "+curYear+".\n4. All forecasts span "+todayStr+" to end of "+(curYear+1)+".\n5. Before writing each date, pause and verify: 'Is this date after "+todayStr+"? Yes → write it. No → shift to "+(curYear+1)+" or skip.'\n6. If the client mentions a FIXED future event (due date, wedding, surgery on specific date), respect that exact date. Do NOT write predictions that contradict or undermine it.\n7. DATE FORMAT — NUMERIC ONLY: every date MUST be written as digits in DD.MM.YYYY format. CORRECT: '20.10.2026.', 'od 5.8. do 15.9.2027.', '15.3.2027.'. FORBIDDEN: spelling out numbers ('dvadesetog oktobra', 'dve hiljade dvadeset šeste'), descriptive phrases without digits ('u petom mesecu', 'krajem drugog meseca'). Day and month as numerals, year as 4 digits. When giving a period, use 'od DD.MM. do DD.MM.YYYY.' or 'DD.MM. — DD.MM.YYYY.'. Descriptive phrases like 'pocetkom maja' or 'sredinom juna' are OK when no specific date is needed — but any number MUST be a digit.\n";
@@ -901,7 +903,7 @@ export default function App(){
     var ds=dsSlots[idx];
     if(!ds.paste.trim()&&!ds.clientId)return;
     upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
-    var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
+    var today=new Date(),todayStr=fmtDMY(today);
     var MONTH_EN_DS=["January","February","March","April","May","June","July","August","September","October","November","December"];
     var curYearDS=today.getFullYear(),curMonthDS=today.getMonth(),curMonthNameDS=MONTH_EN_DS[curMonthDS];
     var dateAwarenessDS="\n\n*** CRITICAL - DATE AWARENESS ***\nTODAY: "+todayStr+"\nCURRENT YEAR: "+curYearDS+"\nCURRENT MONTH: "+curMonthNameDS+" "+curYearDS+"\n\nSTRICT DATE RULES:\n1. Every date you write in forecasts MUST be AFTER today ("+todayStr+").\n2. Verify each month you mention — if that month has already passed this year, either use the SAME month of "+(curYearDS+1)+" or skip to a future month.\n   - Example: if today is "+curMonthNameDS+" "+curYearDS+" and you want 'u martu', March "+curYearDS+" is past — use 'u martu "+(curYearDS+1)+"'.\n3. NEVER write "+(curYearDS-1)+" or earlier as the current or future year. Current year is "+curYearDS+".\n4. All forecasts span "+todayStr+" to end of "+(curYearDS+1)+".\n5. Before writing each date, pause and verify: 'Is this date after "+todayStr+"? Yes → write it. No → shift to "+(curYearDS+1)+" or skip.'\n6. If the client mentions a FIXED future event (due date, wedding, surgery on specific date), respect that exact date. Do NOT write predictions that contradict or undermine it.\n7. DATE FORMAT — NUMERIC ONLY: every date MUST be written as digits in DD.MM.YYYY format. CORRECT: '20.10.2026.', 'od 5.8. do 15.9.2027.', '15.3.2027.'. FORBIDDEN: spelling out numbers ('dvadesetog oktobra', 'dve hiljade dvadeset šeste'), descriptive phrases without digits ('u petom mesecu', 'krajem drugog meseca'). Day and month as numerals, year as 4 digits. When giving a period, use 'od DD.MM. do DD.MM.YYYY.' or 'DD.MM. — DD.MM.YYYY.'. Descriptive phrases like 'pocetkom maja' or 'sredinom juna' are OK when no specific date is needed — but any number MUST be a digit.\n";
@@ -968,7 +970,7 @@ export default function App(){
     upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
     var isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
-    var today=new Date(),todayStr=today.getDate()+"."+(today.getMonth()+1)+"."+today.getFullYear();
+    var today=new Date(),todayStr=fmtDMY(today);
     var MONTH_EN_PQ=["January","February","March","April","May","June","July","August","September","October","November","December"];
     var curYearPQ=today.getFullYear(),curMonthPQ=today.getMonth(),curMonthNamePQ=MONTH_EN_PQ[curMonthPQ];
     var dateAwarenessPQ="\n\n*** CRITICAL - DATE AWARENESS ***\nTODAY: "+todayStr+"\nCURRENT YEAR: "+curYearPQ+"\nCURRENT MONTH: "+curMonthNamePQ+" "+curYearPQ+"\n\nSTRICT DATE RULES:\n1. Every date you mention in answers MUST be AFTER today ("+todayStr+").\n2. Verify each month you mention — if that month has already passed this year, either use the SAME month of "+(curYearPQ+1)+" or skip to a future month.\n3. NEVER write "+(curYearPQ-1)+" or earlier as the current or future year. Current year is "+curYearPQ+".\n4. Answers span "+todayStr+" to end of "+(curYearPQ+1)+".\n5. Before writing each date, pause and verify: 'Is this date after "+todayStr+"? Yes → write it. No → shift to "+(curYearPQ+1)+" or skip.'\n6. If the client mentions a FIXED future event (due date, wedding, surgery), respect that exact date.\n7. DATE FORMAT — NUMERIC ONLY: every date MUST be written as digits in DD.MM.YYYY format. CORRECT: '20.10.2026.', 'od 5.8. do 15.9.2027.'. FORBIDDEN: spelling out numbers ('dvadesetog oktobra', 'dve hiljade dvadeset šeste'), descriptive phrases without digits ('u petom mesecu'). Day and month as numerals, year as 4 digits.\n";
@@ -1575,9 +1577,9 @@ export default function App(){
         (function(){
           var q=bazaSearch.toLowerCase().trim();
           var filtered=myAnalyses;
-          if(q)filtered=filtered.filter(function(a){var bd=a.birthDate||"";var bdSr=bd?new Date(bd).toLocaleDateString("sr"):"";return((a.clientName||"")+" "+(a.sign||"")+" "+(a.date||"")+" "+(a.mesto||"")+" "+bd+" "+bdSr).toLowerCase().indexOf(q)>=0;});
-          if(bazaDateFilter){var dfSr=new Date(bazaDateFilter).toLocaleDateString("sr");filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
-          var dateLabel=bazaDateFilter?new Date(bazaDateFilter).toLocaleDateString("sr"):"";
+          if(q)filtered=filtered.filter(function(a){var bd=a.birthDate||"";var bdSr=bd?fmtDMY(new Date(bd)):"";return((a.clientName||"")+" "+(a.sign||"")+" "+(a.date||"")+" "+(a.mesto||"")+" "+bd+" "+bdSr).toLowerCase().indexOf(q)>=0;});
+          if(bazaDateFilter){var dfSr=fmtDMY(new Date(bazaDateFilter));filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
+          var dateLabel=bazaDateFilter?fmtDMY(new Date(bazaDateFilter)):"";
           return filtered.length===0
             ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter)?"Nema rezultata":"Jos nema sacuvanih analiza."))
             :React.createElement(React.Fragment,null,
