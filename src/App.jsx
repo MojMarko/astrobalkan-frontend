@@ -108,6 +108,8 @@ function getChunks(text,max){
 function cpText(t){var el=document.createElement("textarea");el.value=t;el.style.cssText="position:fixed;left:-9999px;top:0;opacity:0;";document.body.appendChild(el);el.focus();el.select();el.setSelectionRange(0,99999);document.execCommand("copy");document.body.removeChild(el);}
 // fmtDMY: returns a date as DD.MM.YYYY (zero-padded, Europe/Belgrade timezone). Standard format across UI.
 function fmtDMY(d){var p=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);var dd="",mm="",yy="";for(var i=0;i<p.length;i++){if(p[i].type==="day")dd=p[i].value;else if(p[i].type==="month")mm=p[i].value;else if(p[i].type==="year")yy=p[i].value;}return dd+"."+mm+"."+yy;}
+// fmtDMYFromISO: takes a YYYY-MM-DD string from DB and returns DD.MM.YYYY. Returns input as-is if not ISO.
+function fmtDMYFromISO(iso){if(!iso||typeof iso!=="string")return iso||"";var m=iso.match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return iso;return m[3]+"."+m[2]+"."+m[1];}
 function belgradeDate(d){return fmtDMY(d);}
 function belgradeTime(d){return d.toLocaleTimeString("sr-RS",{timeZone:"Europe/Belgrade",hour:"2-digit",minute:"2-digit"});}
 function belgradeDateTime(d){return belgradeDate(d)+", "+belgradeTime(d);}
@@ -1180,7 +1182,7 @@ export default function App(){
           React.createElement("div",{className:"ct"},"Klijent"),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime"),React.createElement("input",{value:s.client.ime,onChange:function(e){upC("ime",e.target.value);},placeholder:"Ime klijenta"})),
           React.createElement("div",{className:"r2"},
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement("input",{type:"date",value:s.client.datum,onChange:function(e){upC("datum",e.target.value);}})),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement(DateInput3,{value:s.client.datum,onChange:function(v){upC("datum",v);}})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Vreme"),React.createElement("input",{type:"time",value:s.client.vreme,onChange:function(e){upC("vreme",e.target.value);}}))
           ),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Mesto"),React.createElement("input",{value:s.client.mesto,onChange:function(e){upC("mesto",e.target.value);},placeholder:"npr. Beograd"})),
@@ -1196,7 +1198,7 @@ export default function App(){
             React.createElement("div",{className:"div1"}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime (opciono)"),React.createElement("input",{value:s.partner.ime,onChange:function(e){upP("ime",e.target.value);},placeholder:"Ime partnera"})),
             React.createElement("div",{className:"r2"},
-              React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement("input",{type:"date",value:s.partner.datum,onChange:function(e){upP("datum",e.target.value);}})),
+              React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement(DateInput3,{value:s.partner.datum,onChange:function(v){upP("datum",v);}})),
               React.createElement("div",{className:"fld"},React.createElement("label",null,"Vreme"),React.createElement("input",{type:"time",value:s.partner.vreme,onChange:function(e){upP("vreme",e.target.value);}}))
             ),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Mesto"),React.createElement("input",{value:s.partner.mesto,onChange:function(e){upP("mesto",e.target.value);},placeholder:"Mesto partnera"})),
@@ -1491,7 +1493,7 @@ export default function App(){
               dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
                 dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});toast2("Klijent izabran - istorijat ce se povuci automatski");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
-                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date||"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
+                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
                 );})
               )
             ),
@@ -1537,7 +1539,7 @@ export default function App(){
               pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
                 pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});toast2("Klijent izabran - istorijat ce se povuci automatski");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
-                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date||"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
+                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
                 );})
               )
             ),
