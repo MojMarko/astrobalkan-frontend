@@ -223,15 +223,12 @@ async function parseMsg(text){
       console.warn("parseMsg empty fields, raw response:",t.slice(0,300));
       return {__error:"AI nije prepoznao podatke - probaj jasniji format"};
     }
-    // FALLBACK za pitanja: ako je prazno ili previse kratko, uzmi raw poruku bez prve linije (koja je obicno osnovni podaci)
+    // FALLBACK za pitanja: ako je AI-jevo ekstrahovano pitanje znatno krace od originalne poruke, vrv je preskocio sadrzaj. Koristi celu originalnu poruku kao fallback.
     var pitanjaTxt=(parsed.pitanja||"").trim();
-    if(pitanjaTxt.length<20){
-      // Ako u ulaznoj poruci ima vise od 50 karaktera slobodnog teksta, stavi celu poruku kao fallback
-      var rawMsg=(text||"").trim();
-      if(rawMsg.length>50){
-        console.warn("parseMsg: 'pitanja' prazno/kratko - fallback na celu poruku");
-        parsed.pitanja=rawMsg;
-      }
+    var rawMsg=(text||"").trim();
+    if(rawMsg.length>80 && pitanjaTxt.length < rawMsg.length * 0.4){
+      console.warn("parseMsg: AI ekstrahovao premalo ("+pitanjaTxt.length+" vs raw "+rawMsg.length+") - fallback na celu poruku");
+      parsed.pitanja=rawMsg;
     }
     console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
     return parsed;
