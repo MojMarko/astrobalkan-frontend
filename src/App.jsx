@@ -242,11 +242,15 @@ async function parseMsg(text){
       console.warn("parseMsg empty fields, raw response:",t.slice(0,300));
       return {__error:"AI nije prepoznao podatke - probaj jasniji format"};
     }
-    // FALLBACK za pitanja: ako je AI-jevo ekstrahovano pitanje znatno krace od originalne poruke, vrv je preskocio sadrzaj. Koristi celu originalnu poruku kao fallback.
+    // FALLBACK za pitanja: agresivno - ako je AI ekstrahovao premalo ili prazno, UVEK uzmi raw poruku.
+    // Kriterijumi:
+    //   - raw > 80 chars (vise od samo osnovnih podataka "Marko 24.04.1987 Beograd")
+    //   - AI pitanja prazno ili < 50 chars ili < 50% raw duzine
     var pitanjaTxt=(parsed.pitanja||"").trim();
     var rawMsg=(text||"").trim();
-    if(rawMsg.length>80 && pitanjaTxt.length < rawMsg.length * 0.4){
-      console.warn("parseMsg: AI ekstrahovao premalo ("+pitanjaTxt.length+" vs raw "+rawMsg.length+") - fallback na celu poruku");
+    var shouldFallback=rawMsg.length>80 && (pitanjaTxt.length<50 || pitanjaTxt.length < rawMsg.length * 0.5);
+    if(shouldFallback){
+      console.warn("parseMsg: pitanja fallback triggered. raw="+rawMsg.length+" ai="+pitanjaTxt.length+" - using raw");
       parsed.pitanja=rawMsg;
     }
     console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
