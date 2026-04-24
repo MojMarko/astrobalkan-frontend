@@ -242,15 +242,13 @@ async function parseMsg(text){
       console.warn("parseMsg empty fields, raw response:",t.slice(0,300));
       return {__error:"AI nije prepoznao podatke - probaj jasniji format"};
     }
-    // FALLBACK za pitanja: agresivno - ako je AI ekstrahovao premalo ili prazno, UVEK uzmi raw poruku.
-    // Kriterijumi:
-    //   - raw > 80 chars (vise od samo osnovnih podataka "Marko 24.04.1987 Beograd")
-    //   - AI pitanja prazno ili < 50 chars ili < 50% raw duzine
+    // FALLBACK za pitanja: NAJAGRESIVNIJI - uvek raw ako je > 30 chars.
+    // "Marko 24.04.1987 Beograd" = ~24 chars. Sve preko toga znaci da ima dodatnih pitanja/komentara.
+    // Raw uvek pobedjuje AI ekstrakciju - astrolog mora da vidi sve sto je klijent napisao.
     var pitanjaTxt=(parsed.pitanja||"").trim();
     var rawMsg=(text||"").trim();
-    var shouldFallback=rawMsg.length>80 && (pitanjaTxt.length<50 || pitanjaTxt.length < rawMsg.length * 0.5);
-    if(shouldFallback){
-      console.warn("parseMsg: pitanja fallback triggered. raw="+rawMsg.length+" ai="+pitanjaTxt.length+" - using raw");
+    if(rawMsg.length>30){
+      console.log("parseMsg: pitanja set to raw msg. raw="+rawMsg.length+" ai="+pitanjaTxt.length);
       parsed.pitanja=rawMsg;
     }
     console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
