@@ -1217,10 +1217,8 @@ export default function App(){
         React.createElement("div",{className:"card"},
           React.createElement("div",{className:"ct"},"Klijent"),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime"),React.createElement("input",{value:s.client.ime,onChange:function(e){upC("ime",e.target.value);},placeholder:"Ime klijenta"})),
-          React.createElement("div",{className:"r2"},
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement("input",{type:"date",value:s.client.datum,onChange:function(e){upC("datum",e.target.value);}})),
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Vreme"),React.createElement("input",{type:"time",value:s.client.vreme,onChange:function(e){upC("vreme",e.target.value);}}))
-          ),
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement(DateInput3,{value:s.client.datum,onChange:function(v){upC("datum",v);}})),
+          React.createElement("div",{className:"fld",style:{maxWidth:"50%"}},React.createElement("label",null,"Vreme"),React.createElement("input",{type:"time",value:s.client.vreme,onChange:function(e){upC("vreme",e.target.value);}})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Mesto"),React.createElement("input",{value:s.client.mesto,onChange:function(e){upC("mesto",e.target.value);},placeholder:"npr. Beograd"})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Napomena (opciono)"),React.createElement("textarea",{value:s.client.napomena||"",onChange:function(e){upC("napomena",e.target.value);},placeholder:"Ukoliko osoba ne zeli analizu za posao ili ljubav, napomeni da ne radim za posao ili ljubav",style:{minHeight:"60px"}})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Pitanja klijenta (opciono)"),React.createElement("textarea",{value:s.client.pitanja,onChange:function(e){upC("pitanja",e.target.value);},placeholder:"Npr: Da li cu se udati za trenutnog partnera?"}))
@@ -1233,10 +1231,8 @@ export default function App(){
           s.hasPart&&React.createElement(React.Fragment,null,
             React.createElement("div",{className:"div1"}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime (opciono)"),React.createElement("input",{value:s.partner.ime,onChange:function(e){upP("ime",e.target.value);},placeholder:"Ime partnera"})),
-            React.createElement("div",{className:"r2"},
-              React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement("input",{type:"date",value:s.partner.datum,onChange:function(e){upP("datum",e.target.value);}})),
-              React.createElement("div",{className:"fld"},React.createElement("label",null,"Vreme"),React.createElement("input",{type:"time",value:s.partner.vreme,onChange:function(e){upP("vreme",e.target.value);}}))
-            ),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum"),React.createElement(DateInput3,{value:s.partner.datum,onChange:function(v){upP("datum",v);}})),
+            React.createElement("div",{className:"fld",style:{maxWidth:"50%"}},React.createElement("label",null,"Vreme"),React.createElement("input",{type:"time",value:s.partner.vreme,onChange:function(e){upP("vreme",e.target.value);}})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Mesto"),React.createElement("input",{value:s.partner.mesto,onChange:function(e){upP("mesto",e.target.value);},placeholder:"Mesto partnera"})),
             !s.partner.datum&&React.createElement("div",{className:"srow"},React.createElement("div",{className:"dot dot-w"}),React.createElement("span",null,"Nepotpuni podaci"))
           )
