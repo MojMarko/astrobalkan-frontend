@@ -109,6 +109,22 @@ function fmtText(text){
   t=t.replace(/\bBila bi potrebna[^.!?]*[.!?]\s*/gi,"");
   t=t.replace(/\bbilo bi potrebno[^.!?]*(karta|podataka|vreme|vremena)[^.!?]*[.!?]\s*/gi,"");
   t=t.replace(/\bNe mogu (da|bez)[^.!?]*(vidim|odredim|precizno|videti)[^.!?]*[.!?]\s*/gi,"");
+  // Zameni engleske reci koje su nekad ostale u srpskom prevodu
+  t=t.replace(/\bFORECAST\b/g,"PROGNOZA");
+  t=t.replace(/\bForecast\b/g,"Prognoza");
+  t=t.replace(/\bforecast\b/g,"prognoza");
+  t=t.replace(/\bANALYSIS\b/g,"ANALIZA");
+  t=t.replace(/\bAnalysis\b/g,"Analiza");
+  t=t.replace(/\banalysis\b/g,"analiza");
+  t=t.replace(/\bREPORT\b/g,"IZVESTAJ");
+  t=t.replace(/\bOVERVIEW\b/g,"PREGLED");
+  t=t.replace(/\bSUMMARY\b/g,"REZIME");
+  t=t.replace(/\bCONCLUSION\b/g,"ZAKLJUCAK");
+  t=t.replace(/\bINSIGHTS\b/g,"UVIDI");
+  t=t.replace(/\bIMPORTANT\b/g,"VAZNO");
+  t=t.replace(/\bWARNING\b/g,"UPOZORENJE");
+  t=t.replace(/\bNOTE\b/g,"NAPOMENA");
+  t=t.replace(/\bJanuary\b/g,"januar").replace(/\bFebruary\b/g,"februar").replace(/\bMarch\b/g,"mart").replace(/\bApril\b/g,"april").replace(/\bMay\b/g,"maj").replace(/\bJune\b/g,"jun").replace(/\bJuly\b/g,"jul").replace(/\bAugust\b/g,"avgust").replace(/\bSeptember\b/g,"septembar").replace(/\bOctober\b/g,"oktobar").replace(/\bNovember\b/g,"novembar").replace(/\bDecember\b/g,"decembar");
   // Ukloni AI "razmisljanje naglas" fraze ("Ne bas, ali otprilike", "Zapravo,", "(ako pretpostavimo)", "(vec u aspektu)")
   t=t.replace(/\s*\(ako pretpostavimo\)/gi,"");
   t=t.replace(/\s*\(vec u aspektu\)/gi,"");
@@ -242,13 +258,15 @@ async function parseMsg(text){
       console.warn("parseMsg empty fields, raw response:",t.slice(0,300));
       return {__error:"AI nije prepoznao podatke - probaj jasniji format"};
     }
-    // FALLBACK za pitanja: NAJAGRESIVNIJI - uvek raw ako je > 30 chars.
-    // "Marko 24.04.1987 Beograd" = ~24 chars. Sve preko toga znaci da ima dodatnih pitanja/komentara.
-    // Raw uvek pobedjuje AI ekstrakciju - astrolog mora da vidi sve sto je klijent napisao.
+    // FALLBACK za pitanja: NAJAGRESIVNIJI - hvati i kratke slucajeve.
+    // Uslovi (OR): raw > 25 chars ILI ima '?' (pitanje) ILI ima newline (vise linija)
+    // Tako da i 'Marko 24.04.1987, ljubav?' (24 chars sa ?) trigger-uje fallback.
     var pitanjaTxt=(parsed.pitanja||"").trim();
     var rawMsg=(text||"").trim();
-    if(rawMsg.length>30){
-      console.log("parseMsg: pitanja set to raw msg. raw="+rawMsg.length+" ai="+pitanjaTxt.length);
+    var hasQ=rawMsg.indexOf("?")>=0;
+    var hasNL=rawMsg.indexOf("\n")>=0;
+    if(rawMsg.length>25 || hasQ || hasNL){
+      console.log("parseMsg: pitanja set to raw msg. raw="+rawMsg.length+" ai="+pitanjaTxt.length+" hasQ="+hasQ+" hasNL="+hasNL);
       parsed.pitanja=rawMsg;
     }
     console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
