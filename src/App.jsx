@@ -137,14 +137,42 @@ function fmtText(text){
 function getChunks(text,max){
   if(!max)max=2900;
   var ch=[],pos=0;
+  function isUpper(c){return !!c&&"ABCDEFGHIJKLMNOPQRSTUVWXYZČĆĐŠŽ".indexOf(c)>=0;}
+  function isSentEnd(i){
+    var c=text[i];
+    if(c!=="."&&c!=="!"&&c!=="?")return false;
+    var n1=text[i+1];
+    if(!n1)return true;
+    if(n1==="\n"||n1==="\r")return true;
+    if(n1===" "||n1==="\t"){
+      var j=i+2;
+      while(j<text.length&&(text[j]===" "||text[j]==="\t"))j++;
+      var nn=text[j];
+      if(!nn||nn==="\n"||nn==="\r")return true;
+      return isUpper(nn);
+    }
+    return false;
+  }
   while(pos<text.length){
     if(pos+max>=text.length){ch.push(text.slice(pos).trim());break;}
-    var end=pos+max;
-    while(end>pos&&text[end]!='.'&&text[end]!='!'&&text[end]!='?')end--;
-    if(end===pos)end=pos+max;else end+=1;
+    var end=-1;
+    for(var i=pos+max;i>pos;i--){if(isSentEnd(i)){end=i+1;break;}}
+    if(end<0){
+      for(var k=pos+max;k>pos;k--){if(text[k]==="\n"){end=k;break;}}
+    }
+    if(end<0){
+      for(var s=pos+max;s>pos;s--){
+        if(text[s]===" "){
+          var prev=text[s-1];
+          if(prev==="."&&/\d/.test(text[s+1]||""))continue;
+          end=s;break;
+        }
+      }
+    }
+    if(end<0)end=pos+max;
     ch.push(text.slice(pos,end).trim());
     pos=end;
-    while(pos<text.length&&text[pos]===' ')pos++;
+    while(pos<text.length&&(text[pos]===" "||text[pos]==="\t"||text[pos]==="\n"||text[pos]==="\r"))pos++;
   }
   return ch.filter(function(x){return x.length>0;});
 }
