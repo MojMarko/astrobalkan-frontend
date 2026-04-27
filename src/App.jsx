@@ -188,6 +188,16 @@ function getChunks(text,max){
   }
   return ch.filter(function(x){return x.length>0;});
 }
+// Analiza chunks + promo poruka kao zaseban poslednji chunk (samo SR, samo realna analiza).
+function getAnalizaChunks(text,country){
+  var ch=getChunks(text);
+  if(!text||country!=="sr")return ch;
+  var t=text.trim();
+  if(t.length<=200)return ch;
+  if(/^(Greska|Generisem)/i.test(t))return ch;
+  ch.push(PROMO_DOWNSELL_SR);
+  return ch;
+}
 function cpText(t){var el=document.createElement("textarea");el.value=t;el.style.cssText="position:fixed;left:-9999px;top:0;opacity:0;";document.body.appendChild(el);el.focus();el.select();el.setSelectionRange(0,99999);document.execCommand("copy");document.body.removeChild(el);}
 // fmtDMY: returns a date as DD.MM.YYYY (zero-padded, Europe/Belgrade timezone). Standard format across UI.
 function fmtDMY(d){var p=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);var dd="",mm="",yy="";for(var i=0;i<p.length;i++){if(p[i].type==="day")dd=p[i].value;else if(p[i].type==="month")mm=p[i].value;else if(p[i].type==="year")yy=p[i].value;}return dd+"."+mm+"."+yy;}
@@ -248,6 +258,7 @@ var PR_SR_MAIN="Ja sam Astrolog Suzana. Na osnovu podataka napisi jednu detaljnu
 var PR_SR_DS="Na osnovu analize napisi TACNE PERIODE u narednih 12 meseci. Fokus: konkretni datumi promena, kada pokrenuti, kada cekati, periodi energije, rizicni periodi, da li ce se planovi realizovati. Pisi na srpskom ekavicom, sa ti, zenski rod, brutalno iskren/a. Bez emojija, bez ## --- **, bez crtica. Konkretni datumi od - do.";
 var PR_HR_MAIN="Ja sam Astrolog Marija. Poslat cu ti podatke o osobi. Na temelju toga napisi jednu detaljnu i opsirnu astrološku analizu, jer si ti vrhunski astrolog s vise od 30 godina iskustva. Analiza treba obuhvatiti ljubav i posao u narednih 12 mjeseci. Na sva izravna pitanja odgovori jasno bez mozda, koristi bit ce i ce. Gledaj aspekte i kuce, posebno 7. kucu. Gledaj orb aspekata. Analizom zapocni imenom osobe. Obracaj se izravno sa ti. Bez emojija, bez crtica, bez ## --- **. Budi brutalno iskren. Pisi na hrvatskom jeziku. Gramaticki ispravno. Na kraju: Hvala ti puno na povjerenju i zelim ti zivot ispunjen mirom, radoscu i srecom.\nAstrolog Marija";
 var PR_HR_DS="Na osnovu analize napisi TOCNE PERIODE u narednih 12 mjeseci. Fokus: konkretni datumi promjena, kada pokrenuti, kada cekati, periodi energije, rizicni periodi, da li ce se planovi ostvariti. Pisi na hrvatskom jeziku, sa ti, brutalno iskren/a. Bez emojija, bez ## --- **, bez crtica. Konkretni datumi od - do.";
+var PROMO_DOWNSELL_SR="Moram još da Vam kažem, pošto ste već poručili analizu kod mene i imam vašu natalnu kartu pa mogu sve da vidim, postoji još jedna stvar koju većina klijenata uzme uz svoju godišnju analizu, a to su tačni periodi u narednih 12 meseci kada Vam se dešavaju ključne promene i da li će se realizovati ono što ste naumili.\n\nDobijate precizno izdvojene periode kada je najbolje da nešto pokrenete, kada da sačekate, kada da iskoristite svoju energiju na maksimum i kada je važno da izbegnete pogrešne poteze, konflikte ili loše odluke. Takođe, kroz tranzite da li će se realizovati nešto što ste naumili.\n\nMogu Vam izdvojiti najvažnije datume i periode za narednih 12 meseci, uz konkretna uputstva šta da radite u tim momentima, kako biste sve što dolazi iskoristili na najbolji način. Uz to dobijate i pravo da postavite 5 dodatnih pitanja.\n\nCena ovog dodatka je 1.000 dinara sa popustom, jer ste već poručili analizu kod mene, a sve Vam šaljem ovde u pisanom obliku preko Messengera, tako da uvek možete da sačuvate i pročitate kada Vam zatreba.\n\nJavite mi kada da vam pošaljem.";
 
 // API ----------------------------------------------------------------------
 // Ukloni iz teksta sve tokene osobe (ime, datum u svim formatima, vreme, mesto).
@@ -1377,7 +1388,7 @@ export default function App(){
     function upC(f,v){upSlot(idx,function(sl){var c=Object.assign({},sl.client);c[f]=v;return Object.assign({},sl,{client:c});});}
     function upP(f,v){upSlot(idx,function(sl){var p=Object.assign({},sl.partner);p[f]=v;return Object.assign({},sl,{partner:p});});}
     var busy=["generating","parsing","computing"].indexOf(s.status)>=0;
-    var ch=s.analysis?getChunks(s.analysis):[];
+    var ch=s.analysis?getAnalizaChunks(s.analysis,country):[];
     var stL=s.status==="idle"?"Ceka":s.status==="parsing"?"AI cita...":s.status==="computing"?"Racunam...":s.status==="generating"?"Generise se...":"Gotovo";
     var stC=s.status==="generating"?"strun":s.status==="done"?"stdone":"stidl";
     var isMess=s.mode==="messenger";
