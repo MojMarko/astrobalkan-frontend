@@ -610,7 +610,7 @@ export default function App(){
     stoGet("analyses",[]).then(setAnalyses);
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
     // Load shared analyses from backend - all users see all
-    fetch(API+"/api/analyses?limit=300").then(function(r){return r.json();}).then(function(d){
+    fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
       if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
       if(typeof d.total==="number")setTotalAnalyses(d.total);
     }).catch(function(e){console.warn("Could not load shared analyses:",e.message);});
@@ -620,7 +620,7 @@ export default function App(){
   useEffect(function(){
     if(tab!=="baza")return;
     var refresh=function(){
-      fetch(API+"/api/analyses?limit=300").then(function(r){return r.json();}).then(function(d){
+      fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
         if(d.analyses)setAnalyses(d.analyses);
         if(typeof d.total==="number")setTotalAnalyses(d.total);
       }).catch(function(){});
