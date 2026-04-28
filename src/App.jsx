@@ -593,6 +593,7 @@ export default function App(){
   var [viewAn,setViewAn]=useState(null);
   var [bazaSearch,setBazaSearch]=useState("");
   var [bazaDateFilter,setBazaDateFilter]=useState("");
+  var [bazaUserFilter,setBazaUserFilter]=useState(""); // filter po korisniku (ownerName ili owner email)
   var [nuData,setNuData]=useState({name:"",email:"",pw:"",country:"sr"});
   var [activeJobs,setActiveJobs]=useState({});
 
@@ -1910,6 +1911,37 @@ export default function App(){
       // BAZA
       tab==="baza"&&React.createElement("div",{className:"sec"},
         React.createElement("div",{className:"stitle"},"Baza Analiza"),
+        // Per-user statistika i filter (klik na pill = filtriraj listu po tom korisniku)
+        (function(){
+          var statsByUser={}; // key -> {key, name, total, analiza, downsell, pitanja}
+          for(var i=0;i<myAnalyses.length;i++){
+            var a=myAnalyses[i];
+            var key=a.ownerName||a.owner||"(nepoznato)";
+            if(!statsByUser[key])statsByUser[key]={key:key,name:key,total:0,analiza:0,downsell:0,pitanja:0};
+            statsByUser[key].total++;
+            var t=(a.types&&a.types[0])||"analiza";
+            if(t==="downsell")statsByUser[key].downsell++;
+            else if(t==="pitanja")statsByUser[key].pitanja++;
+            else statsByUser[key].analiza++;
+          }
+          var pills=Object.keys(statsByUser).map(function(k){return statsByUser[k];}).sort(function(x,y){return y.total-x.total;});
+          if(pills.length===0)return null;
+          return React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"10px"}},
+            pills.map(function(p){
+              var active=bazaUserFilter===p.key;
+              return React.createElement("button",{
+                key:p.key,
+                className:"btn bsm "+(active?"bgd":"bol"),
+                style:{fontSize:"11px",padding:"4px 8px",lineHeight:"1.2",textAlign:"left"},
+                onClick:function(){setBazaUserFilter(active?"":p.key);},
+                title:active?"Klikni da uklonis filter":"Klikni za filter po "+p.name
+              },
+                React.createElement("div",{style:{fontWeight:600}},"\uD83D\uDC64 "+p.name+" "+p.total),
+                React.createElement("div",{style:{fontSize:"9.5px",opacity:0.85,marginTop:"1px"}},p.analiza+" analiza \u00B7 "+p.downsell+" downsell \u00B7 "+p.pitanja+" pitanja")
+              );
+            })
+          );
+        })(),
         React.createElement("div",{className:"fld",style:{marginBottom:"6px"}},React.createElement("input",{value:bazaSearch,onChange:function(e){setBazaSearch(e.target.value);},placeholder:"Pretrazi po imenu, datumu, znaku...",className:"sel-input"})),
         React.createElement("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}},
           React.createElement("label",{style:{fontSize:"10px",color:"var(--mt)"}},"Datum:"),
@@ -1919,13 +1951,14 @@ export default function App(){
         (function(){
           var q=bazaSearch.toLowerCase().trim();
           var filtered=myAnalyses;
+          if(bazaUserFilter)filtered=filtered.filter(function(a){return(a.ownerName||a.owner||"(nepoznato)")===bazaUserFilter;});
           if(q)filtered=filtered.filter(function(a){var bd=a.birthDate||"";var bdSr=bd?fmtDMY(new Date(bd)):"";return((a.clientName||"")+" "+(a.sign||"")+" "+(a.date||"")+" "+(a.mesto||"")+" "+bd+" "+bdSr).toLowerCase().indexOf(q)>=0;});
           if(bazaDateFilter){var dfSr=fmtDMY(new Date(bazaDateFilter));filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
           var dateLabel=bazaDateFilter?fmtDMY(new Date(bazaDateFilter)):"";
           return filtered.length===0
-            ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter)?"Nema rezultata":"Jos nema sacuvanih analiza."))
+            ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter||bazaUserFilter)?"Nema rezultata":"Jos nema sacuvanih analiza."))
             :React.createElement(React.Fragment,null,
-              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(bazaDateFilter?" analiza uradjeno "+dateLabel:q?" pronadjeno":(totalAnalyses>analyses.length?" od "+totalAnalyses+" analiza (prikazano poslednjih "+analyses.length+")":" analiza"))),
+              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(bazaUserFilter?" analiza od "+bazaUserFilter:bazaDateFilter?" analiza uradjeno "+dateLabel:q?" pronadjeno":(totalAnalyses>analyses.length?" od "+totalAnalyses+" analiza (prikazano poslednjih "+analyses.length+")":" analiza"))),
               filtered.map(function(a){
                 return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAn(a);}},
                   React.createElement("div",{className:"acard-top"},
