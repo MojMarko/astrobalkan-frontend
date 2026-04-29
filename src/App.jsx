@@ -1638,7 +1638,8 @@ export default function App(){
           ),
           React.createElement("button",{className:"btn bgd bfull",onClick:function(){doGen(idx);},disabled:busy},
             s.status==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem u pozadini..."):"Generiši Analizu"
-          )
+          ),
+          (s.status!=="done"&&s.status!=="generating")&&(s.parsed||s.paste.trim()||s.client.ime||s.client.datum||s.client.vreme||s.client.mesto||s.hasPart||s.partner.ime||s.partner.datum)&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"8px"},onClick:function(){if(window.confirm("Da li si sigurna? Svi uneti i izracunati podaci ce biti obrisani i ekran ce se vratiti na pocetno stanje.")){upSlot(idx,function(){return emptySlot();});}}},"✖ Ocisti i pocni ispocetka")
         ),
       // ANALYSIS OUTPUT
       s.analysis&&React.createElement("div",{style:{marginTop:"12px"}},
