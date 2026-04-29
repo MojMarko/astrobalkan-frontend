@@ -393,29 +393,38 @@ async function parseMsg(text){
     var parsed=JSON.parse(t.replace(/```json|```/g,"").trim());
     // Fix date format if AI returned DD.MM.YYYY instead of YYYY-MM-DD
     function fixDate(d){if(!d)return"";if(/^\d{4}-\d{2}-\d{2}$/.test(d))return d;var m=d.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");return d;}
-    // Safety net: ako paste sadrzi AM/PM ili srpsku oznaku, prepravi vreme deterministicki (LLM ponekad gresi - vidi 12:10 AM bug)
-    function fixTime12h(rawText,parsedVreme){
-      if(!rawText||!parsedVreme||!/^\d{1,2}:\d{2}$/.test(parsedVreme))return parsedVreme;
-      var m=rawText.match(/(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
-      if(m){
+    // Safety net: ekstrahuj sva vremena iz paste-a deterministicki. Paste je izvor istine,
+    // LLM ponekad konvertuje 00:10 u 12:10 i obrnuto.
+    function extractTimesFromPaste(rawText){
+      if(!rawText)return [];
+      var times=[];
+      var re=/(\d{1,2}):(\d{2})(?:\s*[hH]\b)?(?:\s*(a\.?m\.?|p\.?m\.?|popodne|po\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\s+no[ćc]i|pre\s+podne))?/gi;
+      var m;
+      while((m=re.exec(rawText))!==null){
         var h=parseInt(m[1],10),mn=parseInt(m[2],10);
-        var pm=/p/i.test(m[3]);
-        if(pm){if(h!==12)h+=12;}else{if(h===12)h=0;}
-        return String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0");
+        if(h>23||mn>59)continue;
+        var marker=(m[3]||"").toLowerCase().replace(/\s+/g," ");
+        var pm=/^p\.?m\.?$/.test(marker)||/popodne|po podne|uvece|nave/.test(marker);
+        var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne/.test(marker);
+        if(pm){if(h!==12)h+=12;}
+        else if(am){if(h===12)h=0;}
+        times.push(String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0"));
       }
-      var m2=rawText.match(/(\d{1,2}):(\d{2})\s*(popodne|po\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\s+no[ćc]i|pre\s+podne)/i);
-      if(m2){
-        var h=parseInt(m2[1],10),mn=parseInt(m2[2],10);
-        var marker=m2[3].toLowerCase();
-        var pm=/popodne|po\s+podne|uvece|nave/.test(marker);
-        if(pm){if(h!==12)h+=12;}else{if(h===12)h=0;}
-        return String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0");
-      }
-      if(/u\s+pono[ćc]/i.test(rawText))return "00:00";
-      return parsedVreme;
+      if(times.length===0&&/u\s+pono[ćc]/i.test(rawText))times.push("00:00");
+      return times;
     }
-    if(parsed.klijent){parsed.klijent.datum=fixDate(parsed.klijent.datum);parsed.klijent.vreme=fixTime12h(text,parsed.klijent.vreme);parsed.klijent.zemlja=parsed.klijent.zemlja||"";}
-    if(parsed.partner){parsed.partner.datum=fixDate(parsed.partner.datum);parsed.partner.vreme=fixTime12h(text,parsed.partner.vreme);parsed.partner.zemlja=parsed.partner.zemlja||"";}
+    var pasteTimes=extractTimesFromPaste(text);
+    if(parsed.klijent){
+      parsed.klijent.datum=fixDate(parsed.klijent.datum);
+      if(pasteTimes[0])parsed.klijent.vreme=pasteTimes[0];
+      parsed.klijent.zemlja=parsed.klijent.zemlja||"";
+    }
+    if(parsed.partner){
+      parsed.partner.datum=fixDate(parsed.partner.datum);
+      if(pasteTimes[1])parsed.partner.vreme=pasteTimes[1];
+      parsed.partner.zemlja=parsed.partner.zemlja||"";
+    }
+    console.log("[parseMsg] paste times extracted:",pasteTimes,"klijent.vreme:",parsed.klijent&&parsed.klijent.vreme,"partner.vreme:",parsed.partner&&parsed.partner.vreme);
     // Detect empty result
     var k=parsed.klijent||{};
     if(!k.ime&&!k.datum&&!k.vreme&&!k.mesto){
