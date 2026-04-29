@@ -2084,6 +2084,7 @@ export default function App(){
               if(all.length<=1){cpText(cleanText);toast2("Kopirano 1 analiza!");}
               else{var txt=all.map(function(a){return fmtText(a.analysis||"");}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
+            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Da li si sigurna? Ova analiza ce biti trajno obrisana iz baze."))return;var id=viewAn.id;fetch(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});setViewAn(null);toast2("Analiza obrisana.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 Obrisi"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);}},"\u005aatvori")
           )
         )
