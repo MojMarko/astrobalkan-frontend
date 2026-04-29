@@ -51,10 +51,28 @@ function getHousesEqual(a){var h=[];for(var i=0;i<12;i++)h.push(norm(a+i*30));re
 function inHouse(deg,cusps){for(var i=0;i<12;i++){var s=cusps[i],e=cusps[(i+1)%12];if(s<=e){if(deg>=s&&deg<e)return i+1;}else if(deg>=s||deg<e)return i+1;}return 1;}
 function signOf(deg){return SIGNS[Math.floor(norm(deg)/30)];}
 function degIn(deg){return(norm(deg)%30).toFixed(1);}
-function calcChart(dateStr,timeStr,lat,lon){
+function tzOffsetHours(y,m,d,h,mn,tzName){
+  if(!tzName)return null;
+  try{
+    function offAt(utcMs){
+      var dtf=new Intl.DateTimeFormat('en-US',{timeZone:tzName,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+      var parts=dtf.formatToParts(new Date(utcMs)),mp={};
+      for(var i=0;i<parts.length;i++)mp[parts[i].type]=parts[i].value;
+      var hh=parseInt(mp.hour,10);if(hh===24)hh=0;
+      var pl=Date.UTC(parseInt(mp.year,10),parseInt(mp.month,10)-1,parseInt(mp.day,10),hh,parseInt(mp.minute,10));
+      return(pl-utcMs)/3600000;
+    }
+    var localAsUtc=Date.UTC(y,m-1,d,h,mn);
+    var off1=offAt(localAsUtc);
+    return offAt(localAsUtc-off1*3600000);
+  }catch(e){return null;}
+}
+function calcChart(dateStr,timeStr,lat,lon,tz){
   var parts=dateStr.split("-"),y=parseInt(parts[0]),m=parseInt(parts[1]),d=parseInt(parts[2]);
   var tparts=(timeStr||"12:00").split(":"),h=parseInt(tparts[0]),mn=parseInt(tparts[1]);
-  var J=jd(y,m,d,h+mn/60-lon/15);
+  var off=tzOffsetHours(y,m,d,h,mn,tz||"Europe/Belgrade");
+  var ut=off!=null?(h+mn/60-off):(h+mn/60-lon/15);
+  var J=jd(y,m,d,ut);
   var pos={Sunce:sunLon(J),Mesec:moonLon(J),Merkur:plLon(J,"Mercury"),Venera:plLon(J,"Venus"),Mars:plLon(J,"Mars"),Jupiter:plLon(J,"Jupiter"),Saturn:plLon(J,"Saturn"),Uran:plLon(J,"Uranus"),Neptun:plLon(J,"Neptune"),Pluton:plLon(J,"Pluto")};
   var ad=timeStr?ascLon(J,lat,lon):null,mc=timeStr?mcLon(J,lon):null,hs=ad!=null?getHouses(ad,mc,lat):null;
   var planets=[];
@@ -938,9 +956,13 @@ export default function App(){
       if(!chart||chart.planets.length===0){console.warn("AstroAPI also failed, using local");return null;}
       chart.aspects=parseAspects(aspData||posData);
       // Local houses as last resort
-      var coords=getCoords(cityName);
+      var coords=(lat!=null&&lon!=null)?[lat,lon]:getCoords(cityName);
       var dp=dateStr.split("-"),tp=(timeStr||"12:00").split(":");
-      var J=jd(parseInt(dp[0]),parseInt(dp[1]),parseInt(dp[2]),parseInt(tp[0])+parseInt(tp[1])/60-coords[1]/15);
+      var ofy=parseInt(dp[0]),ofm=parseInt(dp[1]),ofd=parseInt(dp[2]),ofh=parseInt(tp[0]),ofmn=parseInt(tp[1]);
+      var ofTz=tz||getTimezone(cityName);
+      var ofOff=tzOffsetHours(ofy,ofm,ofd,ofh,ofmn,ofTz);
+      var ofUt=ofOff!=null?(ofh+ofmn/60-ofOff):(ofh+ofmn/60-coords[1]/15);
+      var J=jd(ofy,ofm,ofd,ofUt);
       if(timeStr){var ad=ascLon(J,coords[0],coords[1]);var mc=mcLon(J,coords[1]);chart.ascSign=signOf(ad);chart.ascDeg=degIn(ad);var hs=getHouses(ad,mc,coords[0]);chart.houses=hs.map(function(h,i){return{num:i+1,sign:signOf(h),deg:degIn(h)};});}
       chart.solarReturn=null;
       chart.source="astrology-api-v3-fallback";
@@ -988,13 +1010,13 @@ export default function App(){
         // Fallback to local calculation
         console.log("Using local fallback calculation");
         var coords=(clientForCalc.lat!=null&&clientForCalc.lon!=null)?[clientForCalc.lat,clientForCalc.lon]:getCoords(clientForCalc.mesto);
-        c=calcChart(clientForCalc.datum,clientForCalc.vreme,coords[0],coords[1]);
+        c=calcChart(clientForCalc.datum,clientForCalc.vreme,coords[0],coords[1],clientForCalc.timezone||getTimezone(clientForCalc.mesto));
         console.log("Local calc result:",c?c.planets.length+" planets":"null");
       }
       var pc=null;
       if(sl.hasPart&&partnerForCalc.datum){
         try{pc=await callAstroAPI(partnerForCalc.datum,partnerForCalc.vreme,partnerForCalc.mesto,partnerForCalc.lat,partnerForCalc.lon,partnerForCalc.timezone);}catch(e){console.error("Partner callAstroAPI crashed:",e);}
-        if(!pc){var pc2=(partnerForCalc.lat!=null&&partnerForCalc.lon!=null)?[partnerForCalc.lat,partnerForCalc.lon]:getCoords(partnerForCalc.mesto);pc=calcChart(partnerForCalc.datum,partnerForCalc.vreme,pc2[0],pc2[1]);}
+        if(!pc){var pc2=(partnerForCalc.lat!=null&&partnerForCalc.lon!=null)?[partnerForCalc.lat,partnerForCalc.lon]:getCoords(partnerForCalc.mesto);pc=calcChart(partnerForCalc.datum,partnerForCalc.vreme,pc2[0],pc2[1],partnerForCalc.timezone||getTimezone(partnerForCalc.mesto));}
       }
       console.log("doCalc DONE, planets:",c?c.planets.length:0,"aspects:",c?c.aspects.length:0);
       upSlot(idx,function(s){return Object.assign({},s,{ch:c,pch:pc,status:"idle"});});
