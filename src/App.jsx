@@ -846,11 +846,31 @@ export default function App(){
   var TZ_MAP={london:"Europe/London",paris:"Europe/Paris","new york":"America/New_York",dubai:"Asia/Dubai"};
   function getTimezone(cityName){if(!cityName)return"Europe/Belgrade";var k=cityName.toLowerCase().trim();var tzKeys=Object.keys(TZ_MAP);for(var i=0;i<tzKeys.length;i++){if(k.indexOf(tzKeys[i])>=0||tzKeys[i].indexOf(k)>=0)return TZ_MAP[tzKeys[i]];}return"Europe/Belgrade";}
 
+  // ULTRA-DEFANZIVAN normalizator: bilo koji ulazni timeStr → cisti HH:MM 24h format
+  function normalizeTime(timeStr){
+    if(!timeStr)return"";
+    var s=String(timeStr).trim().toLowerCase();
+    // Pokupi prvi H:MM (sa opcionalnim AM/PM ili srpskom oznakom)
+    var m=s.match(/(\d{1,2}):(\d{2})(?:\s*[h])?(?:\s*(a\.?m\.?|p\.?m\.?|popodne|po\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\s+no[ćc]i|pre\s+podne))?/i);
+    if(!m)return"";
+    var h=parseInt(m[1],10),mn=parseInt(m[2],10);
+    if(isNaN(h)||isNaN(mn)||h>23||mn>59)return"";
+    var marker=(m[3]||"").toLowerCase().replace(/\s+/g," ");
+    var pm=/^p\.?m\.?$/.test(marker)||/popodne|po podne|uvece|nave/.test(marker);
+    var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne/.test(marker);
+    if(pm){if(h!==12)h+=12;}
+    else if(am){if(h===12)h=0;}
+    return String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0");
+  }
   function makeBirthData(dateStr,timeStr,cityName,lat,lon,tz){
-    var p=dateStr.split("-"),dt=(timeStr||"12:00").split(":");
+    var p=dateStr.split("-");
+    var clean=normalizeTime(timeStr)||"12:00";
+    var dt=clean.split(":");
     var hasGeo=(lat!=null&&lon!=null);
     var coords=hasGeo?[lat,lon]:getCoords(cityName);
-    return{year:parseInt(p[0]),month:parseInt(p[1]),day:parseInt(p[2]),hour:parseInt(dt[0]),minute:parseInt(dt[1]),latitude:coords[0],longitude:coords[1],timezone:tz||getTimezone(cityName)};
+    var bd={year:parseInt(p[0]),month:parseInt(p[1]),day:parseInt(p[2]),hour:parseInt(dt[0]),minute:parseInt(dt[1]),latitude:coords[0],longitude:coords[1],timezone:tz||getTimezone(cityName)};
+    console.log("[makeBirthData] input timeStr=",JSON.stringify(timeStr),"normalized=",clean,"→ hour:",bd.hour,"minute:",bd.minute);
+    return bd;
   }
 
   async function astroPost(endpoint,body){
