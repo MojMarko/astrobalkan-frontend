@@ -364,7 +364,7 @@ function extractTimesFromPaste(rawText){
     var h=parseInt(m[1],10),mn=parseInt(m[2],10);
     if(h>23||mn>59)continue;
     var marker=(m[3]||"").toLowerCase().replace(/\s+/g," ");
-    var pm=/^p\.?m\.?$/.test(marker)||/popodne|po podne|uvece|nave/.test(marker);
+    var pm=/^p\.?m\.?$/.test(marker)||/^(popodne|po podne|uvece|nave[čc]e|navece)$/.test(marker);
     var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne/.test(marker);
     if(pm){if(h!==12)h+=12;}
     else if(am){if(h===12)h=0;}
@@ -856,7 +856,7 @@ export default function App(){
     var h=parseInt(m[1],10),mn=parseInt(m[2],10);
     if(isNaN(h)||isNaN(mn)||h>23||mn>59)return"";
     var marker=(m[3]||"").toLowerCase().replace(/\s+/g," ");
-    var pm=/^p\.?m\.?$/.test(marker)||/popodne|po podne|uvece|nave/.test(marker);
+    var pm=/^p\.?m\.?$/.test(marker)||/^(popodne|po podne|uvece|nave[čc]e|navece)$/.test(marker);
     var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne/.test(marker);
     if(pm){if(h!==12)h+=12;}
     else if(am){if(h===12)h=0;}
@@ -1179,7 +1179,7 @@ export default function App(){
           // Skip if this person is the partner (already in pTxt)
           if(sl.partner&&sl.partner.datum&&pp.datum===sl.partner.datum)continue;
           try{
-            var pCh=await callAstroAPI(pp.datum,pp.vreme||"",pp.mesto||"Beograd");
+            var pCh=await callAstroAPI(pp.datum,pp.vreme||"",pp.mesto||sl.client.mesto||"Beograd");
             if(pCh)extraCharts.push({person:pp,chart:pCh,hasTime:!!pp.vreme,hasPlace:!!pp.mesto});
           }catch(eX){console.warn("Extra chart failed for "+(pp.ime||"?")+":",eX.message);}
         }
