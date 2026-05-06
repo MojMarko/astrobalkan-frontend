@@ -371,6 +371,22 @@ function extractTimesFromPaste(rawText){
     times.push(String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0"));
   }
   if(times.length===0&&/u\s+pono[ćc]/i.test(rawText))times.push("00:00");
+  // Fallback: "5 ujutru", "7 popodne", "u 3 nocu" - sat bez minuta + srpska/EN oznaka
+  if(times.length===0){
+    var re2=/\b(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.|popodne|po\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|sati\s+ujutru|sati\s+popodne|sati\s+uvece|sati\s+no[ćc]u)\b/gi;
+    var m2;
+    while((m2=re2.exec(rawText))!==null){
+      var h2=parseInt(m2[1],10);
+      if(h2>23)continue;
+      var mk=(m2[2]||"").toLowerCase().replace(/\s+/g," ");
+      var pm2=/^pm$|^p\.m\.$|popodne|po podne|uvece|nave/.test(mk);
+      var am2=/^am$|^a\.m\.$|ujutru|ujutro|no[ćc]u/.test(mk);
+      if(pm2){if(h2!==12)h2+=12;}
+      else if(am2){if(h2===12)h2=0;}
+      times.push(String(h2).padStart(2,"0")+":00");
+      if(times.length>=2)break;
+    }
+  }
   return times;
 }
 async function parseMsg(text){
@@ -658,8 +674,9 @@ export default function App(){
         }
       }).catch(function(){});
     });
-    stoGet("analyses",[]).then(setAnalyses);
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
+    // Cleanup: ukloni stari "analyses" cache iz localStorage (sad samo u memoriji)
+    try{localStorage.removeItem("analyses");}catch(e){}
     // Load shared analyses from backend - all users see all
     fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
       if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
@@ -833,6 +850,18 @@ export default function App(){
         upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
         toast2(p.__error);
       }else if(p){
+        // Detektuj broj datuma u sirovom paste-u (DD.MM.YYYY ili DD/MM/YYYY)
+        var rawDates=(s.paste.match(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g)||[]).length;
+        // Ako je paste imao 2+ datuma a parser nije postavio partnera - upozori i pokusaj fallback
+        var partnerMissing=rawDates>=2&&!p.imaPartnera&&(!p.partner||!p.partner.datum);
+        if(partnerMissing){
+          toast2("⚠ Detektovana 2+ osobe u poruci - parser je vratio samo jednu. Proveri ručno.");
+        }
+        // Detektuj vreme u sirovom paste-u ali parser nije izvukao
+        var pasteHasTime=/\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(am|pm|popodne|ujutru|uvece|nocu|noću)\b/i.test(s.paste);
+        if(pasteHasTime&&p.klijent&&!p.klijent.vreme){
+          toast2("⚠ U poruci postoji vreme ali parser ga nije prepoznao - proveri rucno.");
+        }
         var newClient=Object.assign({},s.client,p.klijent||{},{pitanja:p.pitanja||""});
         var newPartner=p.imaPartnera?Object.assign({},s.partner,p.partner||{}):s.partner;
         // Auto geocode (paralelno, ne ceka analizu)
@@ -1373,7 +1402,7 @@ export default function App(){
             setAnalyses(function(prev){
               if(prev.some(function(a){return a.jobId===dsJobId;}))return prev;
               var now=new Date();
-              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
+              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
             });
             toast2("Downsell "+(idx+1)+" gotov!");
           }else if(j.status==="error"){clearInterval(dsInterval);upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
@@ -1436,7 +1465,7 @@ export default function App(){
             setAnalyses(function(prev){
               if(prev.some(function(a){return a.jobId===pqJobId;}))return prev;
               var now=new Date();
-              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
+              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
             });
             toast2("D. Pitanja "+(idx+1)+" gotova!");
           }else if(j.status==="error"){clearInterval(pqInterval);upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
@@ -1477,7 +1506,7 @@ export default function App(){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
             var na={id:"j"+Date.now(),jobId:jobId,clientName:job.client_name||"",sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),birthDate:meta&&meta.birthDate||"",mesto:meta&&meta.mesto||"",types:[job.job_type||"analiza"],analysis:finalText,country:country,owner:user&&user.email};
-            var upd=[na].concat(prev).slice(0,200);stoSet("analyses",upd);return upd;
+            var upd=[na].concat(prev).slice(0,200);return upd;
           });
           toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");
         }else if(job.status==="error"){
