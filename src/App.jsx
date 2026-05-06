@@ -564,6 +564,8 @@ export default function App(){
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
   var [totalAnalyses,setTotalAnalyses]=useState(0);
+  var [trashItems,setTrashItems]=useState([]);
+  var [bazaView,setBazaView]=useState("active"); // "active" | "trash"
   var [toast,setToast]=useState("");
   var [dsSlots,setDsSlots]=useState(function(){return loadSlots("ab_dsSlots",[emptyDs,emptyDs,emptyDs]);});
   function upDs(idx,fn){setDsSlots(function(prev){var nv=prev.slice();nv[idx]=fn(nv[idx]);return nv;});}
@@ -678,6 +680,18 @@ export default function App(){
     var interval=setInterval(refresh,15000); // refresh every 15 sec
     return function(){clearInterval(interval);};
   },[tab]);
+
+  // Ucitaj korpu kad korisnik prebaci na "trash" view
+  function loadTrash(){
+    if(!user||!user.id)return;
+    fetch(API+"/api/analyses/trash",{headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+      .then(function(r){return r.json();})
+      .then(function(d){if(d&&d.items)setTrashItems(d.items);})
+      .catch(function(e){console.warn("loadTrash failed:",e.message);});
+  }
+  useEffect(function(){
+    if(tab==="baza"&&bazaView==="trash")loadTrash();
+  },[tab,bazaView]);
 
   useEffect(function(){
     var t=setTimeout(function(){setShowSplash(false);},4000);
@@ -1999,7 +2013,56 @@ export default function App(){
 
       // BAZA
       tab==="baza"&&React.createElement("div",{className:"sec"},
-        React.createElement("div",{className:"stitle"},"Baza Analiza"),
+        React.createElement("div",{className:"stitle"},bazaView==="trash"?"🗑 Korpa":"Baza Analiza"),
+        // Toggle: Aktivne / Korpa
+        React.createElement("div",{style:{display:"flex",gap:"6px",marginBottom:"10px"}},
+          React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},"📁 Aktivne ("+analyses.length+")"),
+          React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":""))
+        ),
+        // KORPA view
+        bazaView==="trash"&&(function(){
+          if(trashItems.length===0)return React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"🗑"),React.createElement("p",null,"Korpa je prazna."));
+          return React.createElement(React.Fragment,null,
+            React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},trashItems.length+" obrisanih analiza. Mozes ih vratiti ili trajno obrisati."),
+            trashItems.map(function(a){
+              return React.createElement("div",{key:a.id,className:"acard",style:{opacity:0.85}},
+                React.createElement("div",{className:"acard-top"},
+                  React.createElement("div",{className:"acard-name"},(a.clientName||"Nepoznat")+" · "+(a.jobType||"analiza")),
+                  React.createElement("div",{className:"acard-date",style:{color:"var(--red)"}},"obrisano: "+a.deletedAt)
+                ),
+                (a.ownerName||a.owner)&&React.createElement("div",{style:{fontSize:"9.5px",color:"var(--gd)",marginTop:"2px",fontStyle:"italic"}},"Generisao: "+(a.ownerName||a.owner)),
+                React.createElement("div",{className:"acard-prev"},fmtText(a.analysis||"")),
+                React.createElement("div",{style:{display:"flex",gap:"6px",marginTop:"8px"}},
+                  React.createElement("button",{className:"btn bgd bsm",onClick:function(e){
+                    e.stopPropagation();
+                    fetch(API+"/api/analyses/"+a.id+"/restore",{method:"POST",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+                      .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
+                      .then(function(res){
+                        if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri vracanju.");return;}
+                        setTrashItems(function(prev){return prev.filter(function(x){return x.id!==a.id;});});
+                        // Refresh aktivnih analiza
+                        fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){if(d.analyses)setAnalyses(d.analyses);}).catch(function(){});
+                        toast2("Analiza vracena.");
+                      }).catch(function(){toast2("Greska pri vracanju.");});
+                  }},"↩ Vrati"),
+                  React.createElement("button",{className:"btn brd bsm",onClick:function(e){
+                    e.stopPropagation();
+                    if(!window.confirm("Trajno obrisati ovu analizu? Ovo se NE moze opozvati."))return;
+                    fetch(API+"/api/analyses/"+a.id+"/permanent",{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+                      .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
+                      .then(function(res){
+                        if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska.");return;}
+                        setTrashItems(function(prev){return prev.filter(function(x){return x.id!==a.id;});});
+                        toast2("Trajno obrisano.");
+                      }).catch(function(){toast2("Greska.");});
+                  }},"🗑 Trajno obrisi")
+                )
+              );
+            })
+          );
+        })(),
+        // AKTIVNE - postojeci kod ide samo ako bazaView === "active"
+        bazaView==="active"&&(function(){return React.createElement(React.Fragment,null,
         // Per-user statistika i filter (klik na pill = filtriraj listu po tom korisniku)
         (function(){
           var statsByUser={}; // key -> {key, name, total, analiza, downsell, pitanja}
@@ -2061,6 +2124,7 @@ export default function App(){
               })
             );
         })()
+        );})()
       ),
 
       // PROMPT
@@ -2172,7 +2236,7 @@ export default function App(){
               if(all.length<=1){cpText(cleanText);toast2("Kopirano 1 analiza!");}
               else{var txt=all.map(function(a){return fmtText(a.analysis||"");}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
-            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Da li si sigurna? Ova analiza ce biti trajno obrisana iz baze."))return;var id=viewAn.id;fetch(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});setViewAn(null);toast2("Analiza obrisana.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 Obrisi"),
+            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;var id=viewAn.id;fetch(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});setViewAn(null);toast2("Premesteno u korpu.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 U korpu"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);}},"\u005aatvori")
           )
         )
