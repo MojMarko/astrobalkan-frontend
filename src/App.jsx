@@ -675,8 +675,8 @@ export default function App(){
       }).catch(function(){});
     });
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
-    // Cleanup: ukloni stari "analyses" cache iz localStorage (sad samo u memoriji)
-    try{localStorage.removeItem("analyses");}catch(e){}
+    // Inicijalno ucitaj kesirane analize (brz prikaz dok server fetch radi)
+    stoGet("analyses",[]).then(function(arr){if(arr&&arr.length>0)setAnalyses(arr);});
     // Load shared analyses from backend - all users see all
     fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
       if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
@@ -1402,7 +1402,7 @@ export default function App(){
             setAnalyses(function(prev){
               if(prev.some(function(a){return a.jobId===dsJobId;}))return prev;
               var now=new Date();
-              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
+              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
             });
             toast2("Downsell "+(idx+1)+" gotov!");
           }else if(j.status==="error"){clearInterval(dsInterval);upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
@@ -1465,7 +1465,7 @@ export default function App(){
             setAnalyses(function(prev){
               if(prev.some(function(a){return a.jobId===pqJobId;}))return prev;
               var now=new Date();
-              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
+              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
             });
             toast2("D. Pitanja "+(idx+1)+" gotova!");
           }else if(j.status==="error"){clearInterval(pqInterval);upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
@@ -1506,7 +1506,7 @@ export default function App(){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
             var na={id:"j"+Date.now(),jobId:jobId,clientName:job.client_name||"",sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),birthDate:meta&&meta.birthDate||"",mesto:meta&&meta.mesto||"",types:[job.job_type||"analiza"],analysis:finalText,country:country,owner:user&&user.email};
-            var upd=[na].concat(prev).slice(0,200);return upd;
+            var upd=[na].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
           });
           toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");
         }else if(job.status==="error"){
