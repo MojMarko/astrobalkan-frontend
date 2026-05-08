@@ -91,6 +91,15 @@ var CITIES={beograd:[44.8176,20.4633],"novi sad":[45.2671,19.8335],nis:[43.3209,
 function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase().trim();var keys=Object.keys(CITIES);for(var i=0;i<keys.length;i++){if(k.indexOf(keys[i])>=0||keys[i].indexOf(k)>=0)return CITIES[keys[i]];}return[44.8176,20.4633];}
 
 // TEXT UTILS ---------------------------------------------------------------
+// Normalizuj string za pretragu: lowercase + ukloni dijakritike (š→s, č→c, ž→z, ć→c, đ→d).
+// Tako "sasa" pronalazi "Saša", "djordje" → "Đorđe", itd.
+function normSearch(s){
+  if(!s)return "";
+  var t=s.toLowerCase()
+    .replace(/đ/g,"d").replace(/ž/g,"z").replace(/č/g,"c").replace(/ć/g,"c").replace(/š/g,"s")
+    .replace(/dj/g,"d"); // korisnik kuca "djordje" za "Đorđe"
+  try{return t.normalize("NFD").replace(/[̀-ͯ]/g,"");}catch(e){return t;}
+}
 function fmtText(text){
   if(!text)return text;
   // Replace Cyrillic characters with Latin equivalents
@@ -645,14 +654,16 @@ export default function App(){
     });
   },[]);
   var [clientsCache,setClientsCache]=useState([]);
-  var [clientsLoaded,setClientsLoaded]=useState(false);
-  async function loadClients(){
-    if(clientsLoaded)return;
+  var [clientsLoadedAt,setClientsLoadedAt]=useState(0);
+  async function loadClients(force){
+    // Refresh ako je proteklo > 30 sek od poslednjeg ucitavanja (ili force)
+    var age=Date.now()-clientsLoadedAt;
+    if(!force&&clientsLoadedAt>0&&age<30000)return;
     try{
       var r=await fetch(API+"/api/clients");
       var d=await r.json();
       setClientsCache(d.clients||[]);
-      setClientsLoaded(true);
+      setClientsLoadedAt(Date.now());
     }catch(e){console.warn("loadClients failed:",e.message);}
   }
   var [editPr,setEditPr]=useState("main");
@@ -1953,10 +1964,19 @@ export default function App(){
       ["downsell1","downsell2","downsell3"].indexOf(tab)>=0&&(function(){
         var dsIdx=parseInt(tab.slice(-1))-1;
         var ds=dsSlots[dsIdx];
-        var dsMatches=clientsCache.filter(function(c){
-          if(!ds.clientName||ds.clientId)return false;
-          return c.name&&c.name.toLowerCase().indexOf(ds.clientName.toLowerCase())===0;
-        }).slice(0,5);
+        var dsMatches=(function(){
+          if(!ds.clientName||ds.clientId)return [];
+          var q=normSearch(ds.clientName.trim());
+          if(!q)return [];
+          var starts=[],contains=[];
+          clientsCache.forEach(function(c){
+            if(!c.name)return;
+            var n=normSearch(c.name);
+            if(n.indexOf(q)===0)starts.push(c);
+            else if(n.indexOf(q)>0)contains.push(c);
+          });
+          return starts.concat(contains).slice(0,20);
+        })();
         return React.createElement("div",{className:"sec"},
           React.createElement("div",{className:"stitle"},"Downsell "+(dsIdx+1)),
           React.createElement("div",{className:"card card-hi"},
@@ -2000,10 +2020,19 @@ export default function App(){
       ["pitanja1","pitanja2","pitanja3"].indexOf(tab)>=0&&(function(){
         var pqIdx=parseInt(tab.slice(-1))-1;
         var pq=pqSlots[pqIdx];
-        var pqMatches=clientsCache.filter(function(c){
-          if(!pq.clientName||pq.clientId)return false;
-          return c.name&&c.name.toLowerCase().indexOf(pq.clientName.toLowerCase())===0;
-        }).slice(0,5);
+        var pqMatches=(function(){
+          if(!pq.clientName||pq.clientId)return [];
+          var q=normSearch(pq.clientName.trim());
+          if(!q)return [];
+          var starts=[],contains=[];
+          clientsCache.forEach(function(c){
+            if(!c.name)return;
+            var n=normSearch(c.name);
+            if(n.indexOf(q)===0)starts.push(c);
+            else if(n.indexOf(q)>0)contains.push(c);
+          });
+          return starts.concat(contains).slice(0,20);
+        })();
         return React.createElement("div",{className:"sec"},
           React.createElement("div",{className:"stitle"},"D. Pitanja "+(pqIdx+1)),
           React.createElement("div",{className:"card card-hi"},
