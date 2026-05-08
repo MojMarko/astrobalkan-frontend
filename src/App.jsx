@@ -398,14 +398,14 @@ function extractTimesFromPaste(rawText){
   }
   return times;
 }
-async function parseMsg(text){
+async function parseMsg(text,provider){
   var systemPrompt=`Izvuci podatke o osobama iz poruke i vrati SAMO JSON bez ikakvog teksta oko njega.\n\n*** NAJVAZNIJE - PROCITAJ PRE SVEGA OSTALOG ***\nPolje "pitanja" u JSON-u je NAJKRITICNIJI izlaz ovog zadatka. Astrolog na osnovu ovog polja zna sta da odgovori klijentu. Ako ovde izostavis ili skratis bilo sta, klijent NECE dobiti odgovor na svoje pitanje i sve pada u vodu.\n\nSVAKO pitanje, briga, tema, osoba, emocija ili zahtev koji klijent pomene MORA da se nadje u polju "pitanja", sa punim detaljima.\n\n*** CATCH-ALL PRAVILO ZA "pitanja" ***\nSve sto u poruci NIJE cisti podatak (ime klijenta, datum rodjenja, vreme rodjenja, mesto rodjenja) OBAVEZNO ide u polje "pitanja". Ovo ukljucuje:\n- Svaku recenicu teksta koju klijent napise\n- Sva pitanja ("da li", "kada", "hoce li", "sta")\n- Sve brige, emocije, strahove, nadanja\n- Pominjanje drugih osoba (deca, muz, roditelji, prijatelji) i sta klijent zeli da zna o njima\n- Sva podrucja zivota (posao, ljubav, zdravlje, novac, putovanja, selidba, sud, skola)\n- Napomene, dodatne informacije, kontekst koji klijent daje\n\nKada izvlacis podatke: prvo izvuci ime/datum/vreme/mesto u odgovarajuca polja, zatim SVE preostalo sto ima ikakvog smisla ide u "pitanja" polje.\n\nPolje "pitanja" sme biti prazno SAMO u jednom slucaju: cela poruka je striktno samo "Ime Datum Vreme Mesto" bez bilo kakvog drugog teksta. Ako postoji IJEDNA slobodna recenica — OBAVEZNO u "pitanja".\n\nKada si u dilemi "da li ovo ide u pitanja ili ne" — UVEK stavi u pitanja. Bolje je imati vise nego premalo.\n\n*** IMENA - KOPIRAJ KARAKTER PO KARAKTER ***\nSva imena (klijenta, partnera, trecih osoba) KOPIRAJ TACNO ONAKO kako su napisana u ulaznoj poruci, karakter po karakter. NIKAD ne zamenjuj slicna ali razlicita imena:\n- Milka ≠ Milica (to su DVA RAZLICITA imena). Ako je u poruci 'Milka', napisi 'Milka' u JSON-u, NIKADA 'Milica'.\n- Maja ≠ Marija. Ako je u poruci 'Maja', napisi 'Maja', ne 'Marija'.\n- Vanja ≠ Vanesa. Ana ≠ Anja ≠ Anica. Nada ≠ Nadica. Mira ≠ Mirjana.\nKLjUCNO: pre vracanja JSON, ponovo procitaj originalno ime iz poruke i proveri da si ga zapisao SLOVO ZA SLOVO. Ne "pametno ispravljaj" imena koja ti deluju neobicno - klijenti bolje znaju svoje ime od tebe.\n\nFormat odgovora:\n{"klijent":{"ime":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":"","zemlja":""},"partner":{"ime":"","datum":"YYYY-MM-DD","vreme":"","mesto":"","zemlja":""},"imaPartnera":false,"pitanja":""}\n\n*** OBAVEZNO - polje "zemlja" mora postojati u SVIM JSON objektima (klijent i partner), cak i u primerima nize gde nije eksplicitno prikazano. Ako ne mozes da odredis zemlju, vrati prazan string "".\n\nKLJUCNA PRAVILA:\n1. Prva osoba u poruci = KLIJENT\n2. *** PARTNER polje je ISKLJUCIVO za ROMANTICNOG partnera ***\n   - PARTNER = muz, zena, suprug, supruga, decko, devojka, verenik, verenica, partner, partnerka, momak, dragi, draga, bivsi, bivsa (romanticni kontekst)\n   - Postavi imaPartnera=true i popuni partner objekat SAMO ako je druga osoba eksplicitno romanticni partner\n   - NIKAD partner polje ne popunjavaj za: sin, cerka, kcerka, kci, beba, dete, deca, brat, sestra, tata, otac, mama, majka, baba, deda, unuk, unuka, tetka, ujak, stric, ujna, strina, rodjak, rodjaka, prijatelj, prijateljica, kolega, koleginica, sef, komsija, komsinica\n3. Ako u poruci postoji OSOBA KOJA NIJE ROMANTICNI PARTNER (npr. sin, cerka, brat, prijatelj itd.) - NJEN datum/ime/mesto NE ide u partner polje, nego u "pitanja" polje kao kontekst za klijenta: "Klijent pita za [sin/cerka/brat] [ime] rodjen/a [datum] u [mesto]". Tako astrolog zna o kome klijent pita.\n4. Ako druga osoba nema oznaku odnosa (samo ime + datum, npr. "Marko 24.04.1987\\nJelena 27.05.2006") - PRETPOSTAVI da je romanticni partner i postavi imaPartnera=true.\n5. datum MORA biti YYYY-MM-DD u izlazu (1987-04-24)\n6. vreme MORA biti HH:MM u izlazu (10:40)\n7. mesto - samo grad bez drzave (npr. "Subotica", NIKADA "Subotica, Srbija")\n8. zemlja - puno ime drzave na srpskom: Srbija, Hrvatska, Bosna i Hercegovina, Crna Gora, Severna Makedonija, Slovenija, Madjarska, Austrija, Nemacka, Italija, Bugarska, Rumunija, Grcka, Turska, Albanija, Kosovo, itd. Pravila kako odrediti zemlju:\n   - Ako poruka eksplicitno pominje drzavu ("Subotica, Srbija") → koristi tu drzavu.\n   - Ako grad jednoznacno pripada jednoj drzavi (Beograd→Srbija, Zagreb→Hrvatska, Sarajevo→Bosna i Hercegovina, Podgorica→Crna Gora, Skopje→Severna Makedonija, Ljubljana→Slovenija, Banja Luka→Bosna i Hercegovina, Mostar→Bosna i Hercegovina, Novi Sad→Srbija, Nis→Srbija, Split→Hrvatska, Rijeka→Hrvatska, Pristina→Kosovo) → odredi po gradu.\n   - Ako je grad ambivalentan ili ne mozes odrediti → ostavi prazan string "".\n   - NIKAD ne pisi skracenice (BiH→Bosna i Hercegovina, CG→Crna Gora, MK→Severna Makedonija).\n9. Ako cela poruka pocinje sa "Moja cerka", "Moj sin", "Moj brat" itd. - analiza JE za tu osobu, pa klijent ime=cerka Ana / sin Marko itd. (ukljuci rec odnosa u ime). imaPartnera=false.\n10. REDOSLED POLJA NIJE VAZAN - ime/datum/vreme/mesto/zemlja mogu doci bilo kojim redom\n\nTOLERANTNI FORMATI ZA DATUM (sve ovo prepoznaj kao datum i konvertuj u YYYY-MM-DD):\n- 24.04.1987 ili 24/04/1987 ili 24-04-1987 → 1987-04-24\n- 4.1.2000 ili 4/1/2000 → 2000-01-04\n- 24 04 1987 (razmaci umesto tacaka) → 1987-04-24\n- 4 1 95 ili 4.1.95 (2-cifrena godina) → za godine 00-30 dodaj 2000 (95→1995, 05→2005), za 31-99 dodaj 1900 (95→1995, 87→1987)\n- 24041987 (bez separatora, DDMMYYYY, 8 cifara) → 1987-04-24\n- 4011987 (bez separatora, DMMYYYY, 7 cifara) → 1987-01-04\n- 2752006 (bez separatora, 7 cifara, DMYYYY) → 2006-05-27 (27 dan, 5 mesec, 2006 godina)\n- 321995 ili 3021995 (D.M.YYYY bez separatora) → 1995-02-03\n- 1987-04-24 (vec ispravan) → 1987-04-24\n- BITNO: ako je broj 6 cifara → pokusa D M YYYY (1.2.1995 = 121995), ako je 7 → DD M YYYY ili D MM YYYY, ako je 8 → DD MM YYYY\n\nTOLERANTNI FORMATI ZA VREME (sve ovo prepoznaj kao vreme i konvertuj u HH:MM):\n- 10:40 → 10:40\n- 10.40 (tacka umesto dvotacke) → 10:40\n- 10 40 (razmak) → 10:40\n- 10h40 ili 10-40 → 10:40\n- 5:40 ili 5.40 ili 5 40 (jedna cifra sat) → 05:40\n- 540 (bez separatora, 3 cifre) → 05:40\n- 1040 (bez separatora, 4 cifre) → 10:40\n- 00:10 ili 0:10 (ponoc + 10 min) → 00:10 NIKAD 12:10\n- 00:30 ili 0:30 (ponoc + 30 min) → 00:30 NIKAD 12:30\n- 12:10 (podne + 10 min, bez AM/PM oznake) → 12:10\n- 12:10 AM ili 12:10 a.m. → 00:10 (ponoc + 10 min, NE 12:10!)\n- 12:00 AM → 00:00 (ponoc)\n- 12:30 AM → 00:30\n- 1:00 AM ili 1 AM → 01:00\n- 6:30 AM → 06:30\n- 11:59 AM → 11:59\n- 12:00 PM → 12:00 (podne)\n- 12:10 PM → 12:10\n- 1:00 PM → 13:00\n- 5:30 PM → 17:30\n- 11:30 PM → 23:30\n\n*** OBAVEZNO PRAVILO ZA AM/PM (engleski 12-casovni format) ***\nAko u poruci nadjes broj sa 'AM'/'PM'/'a.m.'/'p.m.' (bilo kojim slovima):\n- AM: ako je sat 12 → 00, inace zadrzi sat (sa zero-padding ako je 1 cifra)\n- PM: ako je sat 12 → 12, inace dodaj 12 na sat\nKRITICNO: 12:10 AM = 00:10 (ponoc), NIKAD 12:10. Ovo je najcesca greska.\nKRITICNO: 12:10 PM = 12:10 (podne).\n\n*** SRPSKE OZNAKE VREMENA (isto kao AM/PM) ***\n- 'ujutru' / 'ujutro' / 'pre podne' → AM (sati 1-11 ostaju, 12 postaje 00)\n- 'popodne' / 'po podne' → PM (sati 1-11 dodaju 12, 12 ostaje 12)\n- 'uvece' / 'naveče' / 'navece' → PM (skoro uvek 18-23)\n- 'nocu' / 'noću' / 'u noci' / 'u noći' → AM (1-4 ostaju, 12 postaje 00)\n- 'u ponoc' / 'u ponoć' → 00:00\n- 'u podne' / 'oko podneva' → 12:00\nPRIMERI: '5:30 popodne' → 17:30; '5 ujutru' → 05:00; '11:30 uvece' → 23:30; '2:15 nocu' → 02:15; '12 u ponoc' → 00:00; '12 u podne' → 12:00.\n\n*** KRITICNO - PONOC NIJE PODNE ***\nVreme 00:00, 00:10, 0:30 itd. JE PONOC (sredina noci). NIKAD ne konvertuj 00:XX u 12:XX. Sistem koristi 24-casovni format: 00 = ponoc, 12 = podne. Ako klijent napise 'rodjena u ponoc' → 00:00. Ako napise 'rodjena u podne' → 12:00.\n\nPREPOZNAJ po formatu:\n- Broj vezan sa tackama/crticama/razmacima koji izgleda kao datum = DATUM\n- 6-8 cifara u nizu koje mogu da formiraju datum = DATUM (konvertuj)\n- Brojevi 0-23 za sate i 0-59 za minute odvojeni separatorom = VREME\n- 3-4 cifre u nizu koje mogu biti HHMM = VREME\n- Reci sa velikim pocetnim slovom koje su imena (Marko, Ana, Suzana, Jovana, Jelena) = IME\n- Gradovi (Beograd, Nis, Doboj, Novi Sad, Sarajevo, Zagreb, Banja Luka, Bijeljina, Tuzla, Mostar itd) = MESTO\n\nPRIMERI:\n\nUnos: "Marko 24.04.1987 10:40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24.04.1987 10.40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24 04 1987 10 40 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 24041987 1040 Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1987-04-24","vreme":"10:40","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 4.1.2000 5.40 Doboj"\nIzlaz: {"klijent":{"ime":"Marko","datum":"2000-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4 1 95 5 40 Doboj Marko"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1995-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4 1 95 5 40 Doboj Marko\\n2752006 Jelena"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1995-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"Jelena","datum":"2006-05-27","vreme":"","mesto":""},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ana 321995 1420 Nis"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-02-03","vreme":"14:20","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "4.1.2000 Marko 5.40 Doboj\\n27.5.2006 Jelena"\nIzlaz: {"klijent":{"ime":"Marko","datum":"2000-01-04","vreme":"05:40","mesto":"Doboj"},"partner":{"ime":"Jelena","datum":"2006-05-27","vreme":"","mesto":""},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ana, 15.07.1995, Nis\\nMarko, 20.03.1990, Beograd"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"Marko","datum":"1990-03-20","vreme":"","mesto":"Beograd"},"imaPartnera":true,"pitanja":""}\n\nUnos: "Ja sam Ana 15.07.1995 Nis, moj muz je Marko 20.03.1990 Beograd"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"Marko","datum":"1990-03-20","vreme":"","mesto":"Beograd"},"imaPartnera":true,"pitanja":""}\n\nUnos: "Moja cerka Ana, 15.07.1995 u 14:20 u Nisu"\nIzlaz: {"klijent":{"ime":"cerka Ana","datum":"1995-07-15","vreme":"14:20","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Karolina 24.04.1987 Beograd, moj sin Marko 5.6.2010"\nIzlaz: {"klijent":{"ime":"Karolina","datum":"1987-04-24","vreme":"","mesto":"Beograd"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":"Klijent pita za sina Marka rodjenog 05.06.2010."}\n\nUnos: "Ana 15.07.1995 Nis, moja cerka Milica 12.03.2018"\nIzlaz: {"klijent":{"ime":"Ana","datum":"1995-07-15","vreme":"","mesto":"Nis"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":"Klijent pita za cerku Milicu rodjenu 12.03.2018."}\n\nUnos: "Ja sam Jovana 20.11.1988, pita me brat Petar 5.3.1985 za posao"\nIzlaz: {"klijent":{"ime":"Jovana","datum":"1988-11-20","vreme":"","mesto":""},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":"Klijent pita za brata Petra rodjenog 05.03.1985, interesuje ga posao."}\n\nUnos: "Marina 3.5.1990 Novi Sad, tata Milan 8.8.1960"\nIzlaz: {"klijent":{"ime":"Marina","datum":"1990-05-03","vreme":"","mesto":"Novi Sad"},"partner":{"ime":"","datum":"","vreme":"","mesto":""},"imaPartnera":false,"pitanja":"Klijent pita za tatu Milana rodjenog 08.08.1960."}\n\nUnos: "Irena 17.3.1976 00:10 Cacak"\nIzlaz: {"klijent":{"ime":"Irena","datum":"1976-03-17","vreme":"00:10","mesto":"Cacak","zemlja":"Srbija"},"partner":{"ime":"","datum":"","vreme":"","mesto":"","zemlja":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 5.5.1990 Beograd, rodjen u 0:30 ujutru"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1990-05-05","vreme":"00:30","mesto":"Beograd","zemlja":"Srbija"},"partner":{"ime":"","datum":"","vreme":"","mesto":"","zemlja":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Irena 17.3.1976 12:10 AM Cacak"\nIzlaz: {"klijent":{"ime":"Irena","datum":"1976-03-17","vreme":"00:10","mesto":"Cacak","zemlja":"Srbija"},"partner":{"ime":"","datum":"","vreme":"","mesto":"","zemlja":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Marko 5.5.1990 5:30 PM Beograd"\nIzlaz: {"klijent":{"ime":"Marko","datum":"1990-05-05","vreme":"17:30","mesto":"Beograd","zemlja":"Srbija"},"partner":{"ime":"","datum":"","vreme":"","mesto":"","zemlja":""},"imaPartnera":false,"pitanja":""}\n\nUnos: "Ana 1.1.2000 5:30 popodne Nis"\nIzlaz: {"klijent":{"ime":"Ana","datum":"2000-01-01","vreme":"17:30","mesto":"Nis","zemlja":"Srbija"},"partner":{"ime":"","datum":"","vreme":"","mesto":"","zemlja":""},"imaPartnera":false,"pitanja":""}\n\n*** KRITICNO - POLJE "pitanja" MORA BITI KOMPLETNO ***\nPolje "pitanja" u JSON-u je OD NAJVECE VAZNOSTI. Astrolog na osnovu ovog polja zna na sta da odgovori. Ako ovde nesto izostavis ili skratis, klijent NECE dobiti odgovor na svoje pitanje.\n\nOBAVEZNA PRAVILA za "pitanja":\n1. Ekstrahuj SVAKO pitanje, brigu, zahtev ili temu koju klijent pominje. NIKADA ne preskaci pitanje jer izgleda slicno prethodnom.\n2. Zadrzi SVE konkretne detalje: imena drugih osoba, datumi rodjenja, specificne brige (zdravlje, brak, posao, deca, novac, penzija, selidba, sud itd).\n3. Za SVAKU osobu koju klijent pominje (dete, muz, brat, tata, prijatelj, sestra), zapisi u zasebnoj recenici sa PUNIM KONTEKSTOM (ime, datum rodjenja ako je dostupan, sta klijent zeli da zna o toj osobi).\n4. Ako klijent spominje zabrinutost, emociju ili strah, prenesi to ('zabrinuta je za', 'plasi se da', 'zeli da zna da li', 'interesuje je').\n5. Ako klijent trazi savet ili odluku ('da li da', 'kada da', 'hoce li'), prenesi to kao direktno pitanje.\n6. Kombinuj samo ako je vise pitanja o ISTOJ osobi/temi; razdvoj ako su o razlicitim osobama ili temama.\n7. Koristi srpski ekavicu, jasne recenice. Bez dvotacki, bez listi sa crticama. Svaka tema jedna recenica, razdvojene razmakom.\n\nPRIMERI DETALJNE EKSTRAKCIJE:\n\nUnos (deo poruke): "Imam sina Marka 05.07.2018, zanima me kako mu je u skoli i da li ce imati problema sa ponasanjem. Takodje brine me zdravlje mog muza, ima probleme sa srcem zadnjih godina. I da li cu uspeti da dobijem invalidsku penziju na koju sam aplicirala u martu?"\n\nIspravna ekstrakcija za polje "pitanja":\n"Klijent pita za sina Marka rodjenog 05.07.2018, interesuje je kako mu je u skoli i da li ce imati problema sa ponasanjem. Klijent brine za zdravlje muza koji ima problema sa srcem zadnjih godina. Klijent pita da li ce uspeti da dobije invalidsku penziju na koju je aplicirala u martu."\n\nLOSA ekstrakcija (NE RADITI OVAKO): "Klijent pita za sina i muza i penziju." (PREVISE KRATKO, izgubljeni svi detalji!)\n\nDrugi primer:\nUnos: "Pita me cerka Milica 10.05.1993 hoce li imati dece i kada, i da li ce se udati za sadasnjeg momka. I sestra Dragica 14.12.1975 ima neki sud oko nasledstva pa je zanima hoce li dobiti parnicu."\n\nIspravna ekstrakcija:\n"Klijent pita za cerku Milicu rodjenu 10.05.1993, zanima je hoce li imati dece i kada, i da li ce se udati za sadasnjeg momka. Klijent pita za sestru Dragicu rodjenu 14.12.1975 koja ima sudski spor oko nasledstva, interesuje je hoce li dobiti parnicu."\n\nAko ne razumes neki deo poruke, PRENESI GA KAKO JESTE umesto da skratis ili izbacis. Bolje je da astrolog dobije malo nejasan detalj nego da ne zna uopste da postoji.\n\n*** KRITICNO - SELF-CHECK PRE VRACANJA JSON ***\nPre nego sto vratis JSON, OBAVEZNO izvedi sledece korake:\n1. Ponovo procitaj kompletnu klijentovu poruku od pocetka do kraja.\n2. Izbroj koliko distinkcnih TEMA (osoba, briga, pitanja, emocija, zahteva) je klijent pomenuo.\n3. Broj recenica/tema u tvom "pitanja" polju treba da odgovara broju tema iz poruke.\n4. Za svaku pomenutu osobu (dete, muz, roditelj, prijatelj, bivsi partner) — proveri da li je zabelezena sa imenom, datumom i konkretnim pitanjem klijenta.\n5. Za svako pomenuto podrucje zivota (posao, ljubav, zdravlje, novac, penzija, selidba, sud, deca) — proveri da li je u polju "pitanja".\n6. Ako bilo sta nedostaje, DOPUNI polje "pitanja" pre vracanja JSON.\n\nPrimer self-check-a: klijentova poruka pominje SINA, MUZA i PENZIJU (3 teme). Tvoj "pitanja" mora da ima 3 distinkcne recenice — po jednu za svaku temu.\n\nAko si posle self-check-a video da nesto nedostaje a vec pises JSON — STANI, popravi polje "pitanja", tek onda vrati JSON.\n\nVAZNO: Vrati iskljucivo JSON, bez komentara, bez markdown formatiranja. Ako neki podatak nedostaje ostavi prazan string. Nikad ne ostavljaj sve polja prazna ako ima informacija.`;
   // Retry up to 4 times with increasing backoff if overloaded
   var d=null,lastError=null;
   var MAX_RETRIES=4;
   for(var attempt=0;attempt<MAX_RETRIES;attempt++){
     try{
-      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}]})});
+      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})});
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       var errLow=(d.error&&(d.error.message||"")).toLowerCase();
@@ -426,12 +426,14 @@ async function parseMsg(text){
   }
   if(!d||d.error||d.type==="error"||!(d.content&&d.content[0]&&d.content[0].text)){
     console.error("parseMsg final Anthropic error:",JSON.stringify(lastError||d||{}).slice(0,500));
-    var errMsg=(lastError&&lastError.message)||(d&&d.error&&d.error.message)||"Nepoznata";
+    var errObj=(d&&d.error)||lastError||{};
+    var errMsg=errObj.message||"Nepoznata";
     var lowMsg=(errMsg||"").toLowerCase();
-    if(lowMsg.indexOf("overload")>=0||lowMsg.indexOf("too busy")>=0||lowMsg.indexOf("try again")>=0||lowMsg.indexOf("rate limit")>=0){
-      errMsg="DeepSeek servisi su trenutno preopterećeni. Sačekaj minut i probaj ponovo.";
+    var isOverload=!!errObj._overload||lowMsg.indexOf("overload")>=0||lowMsg.indexOf("too busy")>=0||lowMsg.indexOf("try again")>=0||lowMsg.indexOf("rate limit")>=0||lowMsg.indexOf("nije dostupan")>=0;
+    if(isOverload){
+      errMsg="DeepSeek trenutno nije dostupan.";
     }
-    return {__error:errMsg};
+    return {__error:errMsg,__overload:isOverload,__geminiAvailable:!!errObj._gemini_available};
   }
   var t=(d.content&&d.content[0]&&d.content[0].text)||"";
   if(!t){
@@ -672,6 +674,8 @@ export default function App(){
   }
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
+  // Overload modal: kad DeepSeek padne, prikazuje pop-up sa Gemini dugmetom
+  var [overloadPrompt,setOverloadPrompt]=useState(null); // {payload, retryFn, geminiAvailable}
   var [bazaSearch,setBazaSearch]=useState("");
   var [bazaDateFilter,setBazaDateFilter]=useState("");
   var [bazaUserFilter,setBazaUserFilter]=useState(""); // filter po korisniku (ownerName ili owner email)
@@ -856,14 +860,20 @@ export default function App(){
   }
 
   // PARSE
-  async function doParse(idx){
-    var s=slots[idx];if(!s.paste.trim())return;
-    upSlot(idx,function(s){return Object.assign({},s,{status:"parsing"});});
+  async function doParse(idx,provider){
+    var s=slots[idx];if(!s.paste.trim()&&!s.rawPaste)return;
+    var pasteText=s.paste.trim()||s.rawPaste||"";
+    upSlot(idx,function(s){return Object.assign({},s,{status:"parsing",parseOverload:null});});
     try{
-      var p=await parseMsg(s.paste);
+      var p=await parseMsg(pasteText,provider);
       if(p&&p.__error){
-        upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
-        toast2(p.__error);
+        if(p.__overload){
+          // Sacuvaj paste tako da Gemini retry moze ponovo da ga koristi
+          upSlot(idx,function(s){return Object.assign({},s,{status:"idle",parseOverload:{message:p.__error,geminiAvailable:p.__geminiAvailable},rawPaste:s.paste||s.rawPaste});});
+        }else{
+          upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
+          toast2(p.__error);
+        }
       }else if(p){
         // Detektuj broj datuma u sirovom paste-u (DD.MM.YYYY ili DD/MM/YYYY)
         var rawDates=(s.paste.match(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g)||[]).length;
@@ -1344,8 +1354,9 @@ export default function App(){
     usr+="\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu po promptu.");
     var ri=idx;
     try{
+      var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
       // Submit job to backend for background processing
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null})});
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(genPayload)});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed to create job");
       // Save job ID in slot and localStorage
@@ -1353,12 +1364,88 @@ export default function App(){
       var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
       jobs["a"+(ri+1)]={id:jobData.id,clientName:sl.client.ime,tab:"a"+(ri+1),idx:ri};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
-      // Start polling
-      pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto});
+      // Start polling - prosledi payload za eventual Gemini retry
+      pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload});
     }catch(err){
       console.error("doGen error:",err);
       upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
     }
+  }
+
+  // POMOCNI: pokreni polling za downsell job (koristi se i za inicijalni i za Gemini retry)
+  function startDsPoll(idx,jobId,dsName,originalPayload){
+    var dsKey="ds"+(idx+1);
+    var dsInterval=setInterval(async function(){
+      try{
+        var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+        if(!jbs[dsKey]){clearInterval(dsInterval);return;}
+        var r=await fetch(API+"/api/generate/"+jobId);var j=await r.json();
+        if(j.status==="generating")upDs(idx,function(s){return Object.assign({},s,{an:"Generisem analizu..."});});
+        else if(j.status==="translating")upDs(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
+        else if(j.status==="done"){
+          clearInterval(dsInterval);
+          var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
+          var ft=fmtText(j.serbian_text||"");
+          upDs(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
+          setAnalyses(function(prev){
+            if(prev.some(function(a){return a.jobId===jobId;}))return prev;
+            var now=new Date();
+            var upd=[{id:"d"+Date.now(),jobId:jobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
+          });
+          toast2("Downsell "+(idx+1)+" gotov!");
+        }else if(j.status==="error"){
+          clearInterval(dsInterval);
+          var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));
+          if(j._overload&&originalPayload){
+            upDs(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
+            setOverloadPrompt({type:"downsell",geminiAvailable:!!j._gemini_available,retryFn:function(){
+              var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
+              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+            }});
+          }else{
+            upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
+          }
+        }
+      }catch(e){}
+    },3000);
+  }
+
+  // POMOCNI: pokreni polling za pitanja job (koristi se i za inicijalni i za Gemini retry)
+  function startPqPoll(idx,jobId,pqName,originalPayload){
+    var pqKey="pq"+(idx+1);
+    var pqInterval=setInterval(async function(){
+      try{
+        var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+        if(!jbs[pqKey]){clearInterval(pqInterval);return;}
+        var r=await fetch(API+"/api/generate/"+jobId);var j=await r.json();
+        if(j.status==="generating")upPq(idx,function(s){return Object.assign({},s,{an:"Generisem odgovore..."});});
+        else if(j.status==="translating")upPq(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
+        else if(j.status==="done"){
+          clearInterval(pqInterval);
+          var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
+          var ft=fmtText(j.serbian_text||"");
+          upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
+          setAnalyses(function(prev){
+            if(prev.some(function(a){return a.jobId===jobId;}))return prev;
+            var now=new Date();
+            var upd=[{id:"q"+Date.now(),jobId:jobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
+          });
+          toast2("D. Pitanja "+(idx+1)+" gotova!");
+        }else if(j.status==="error"){
+          clearInterval(pqInterval);
+          var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));
+          if(j._overload&&originalPayload){
+            upPq(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
+            setOverloadPrompt({type:"pitanja",geminiAvailable:!!j._gemini_available,retryFn:function(){
+              var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
+              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+            }});
+          }else{
+            upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
+          }
+        }
+      }catch(e){}
+    },3000);
   }
 
   // DOWNSELL GEN - prima idx (0, 1, ili 2) za jedan od 3 slota
@@ -1395,7 +1482,8 @@ export default function App(){
         "Sada napisi NOVU prognozu počev od "+todayStr+" nadalje. Ne pominji prošle datume kao budućnost.";
       if(hasDsPitanja)usrContent+="\n\nDODATNA PITANJA KLIJENTA (OBAVEZNO ODGOVORI NA SVAKO, BEZ IZUZETKA):\n"+ds.pitanja+"\n\nOdgovori na svako pitanje posebno, u sekciji 'Odgovori na tvoja pitanja'. Pitanja su SUSTINA ovog Downsell-a — bez odgovora na pitanja analiza je bezvredna. Koristi 'bice' i 'ce', nikad 'mozda'.";
       var dsName=ds.clientName.trim()||"";
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null})});
+      var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upDs(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -1404,27 +1492,7 @@ export default function App(){
       jobs[dsKey]={id:jobData.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
-      var dsInterval=setInterval(async function(){
-        try{
-          var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
-          if(!jbs[dsKey]){clearInterval(dsInterval);return;}
-          var r=await fetch(API+"/api/generate/"+dsJobId);var j=await r.json();
-          if(j.status==="generating")upDs(idx,function(s){return Object.assign({},s,{an:"Generisem analizu..."});});
-          else if(j.status==="translating")upDs(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
-          else if(j.status==="done"){
-            clearInterval(dsInterval);
-            var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
-            var ft=fmtText(j.serbian_text||"");
-            upDs(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
-            setAnalyses(function(prev){
-              if(prev.some(function(a){return a.jobId===dsJobId;}))return prev;
-              var now=new Date();
-              var upd=[{id:"d"+Date.now(),jobId:dsJobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
-            });
-            toast2("Downsell "+(idx+1)+" gotov!");
-          }else if(j.status==="error"){clearInterval(dsInterval);upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
-        }catch(e){}
-      },3000);
+      startDsPoll(idx,dsJobId,dsName,dsPayload);
     }catch(e){upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
@@ -1460,7 +1528,8 @@ export default function App(){
         "Sada odgovori na klijentova pitanja ispod, koristeci NOVE prognoze pocev od "+todayStr+" nadalje.\n\n"+
         "CLIENT QUESTIONS:\n"+pq.quest;
       var pqName=pq.clientName.trim()||"";
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null})});
+      var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
+      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upPq(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -1468,28 +1537,7 @@ export default function App(){
       var pqKey="pq"+(idx+1);
       jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
-      var pqJobId=jobData.id;
-      var pqInterval=setInterval(async function(){
-        try{
-          var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
-          if(!jbs[pqKey]){clearInterval(pqInterval);return;}
-          var r=await fetch(API+"/api/generate/"+pqJobId);var j=await r.json();
-          if(j.status==="generating")upPq(idx,function(s){return Object.assign({},s,{an:"Generisem odgovore..."});});
-          else if(j.status==="translating")upPq(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
-          else if(j.status==="done"){
-            clearInterval(pqInterval);
-            var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
-            var ft=fmtText(j.serbian_text||"");
-            upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
-            setAnalyses(function(prev){
-              if(prev.some(function(a){return a.jobId===pqJobId;}))return prev;
-              var now=new Date();
-              var upd=[{id:"q"+Date.now(),jobId:pqJobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
-            });
-            toast2("D. Pitanja "+(idx+1)+" gotova!");
-          }else if(j.status==="error"){clearInterval(pqInterval);upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});var jbs3=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs3[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));}
-        }catch(e){}
-      },3000);
+      startPqPoll(idx,jobData.id,pqName,pqPayload);
     }catch(e){upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
@@ -1530,10 +1578,33 @@ export default function App(){
           toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");
         }else if(job.status==="error"){
           clearInterval(interval);
-          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:job.serbian_text||"Greska pri generisanju."});});
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");
           if(tabKey)delete jbs2[tabKey];
           localStorage.setItem("activeJobs",JSON.stringify(jbs2));
+          // OVERLOAD: DeepSeek pao - iskoci modal sa Gemini dugmetom
+          if(job._overload&&meta&&meta.payload){
+            if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"idle",analysis:""});});
+            setOverloadPrompt({
+              type:"analiza",
+              geminiAvailable:!!job._gemini_available,
+              retryFn:function(){
+                var newPayload=Object.assign({},meta.payload,{provider:"gemini"});
+                fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)})
+                  .then(function(r){return r.json();})
+                  .then(function(d){
+                    if(!d||!d.id){toast2("Gemini greska: "+(d&&d.error&&d.error.message||"nepoznato"));return;}
+                    if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{jobId:d.id,status:"generating",analysis:"Generisem sa Gemini..."});});
+                    var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+                    if(tabKey){jobs[tabKey]={id:d.id,clientName:meta&&meta.clientName||"",tab:tabKey,idx:slotIdx};localStorage.setItem("activeJobs",JSON.stringify(jobs));}
+                    pollJob(d.id,slotIdx,tabKey,meta);
+                    toast2("Pokrećem sa Gemini backup-om...");
+                  })
+                  .catch(function(e){toast2("Greska: "+e.message);});
+              }
+            });
+          }else{
+            if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:job.serbian_text||"Greska pri generisanju."});});
+          }
         }
       }catch(e){console.warn("Poll error:",e.message);}
     },3000);
@@ -1650,6 +1721,16 @@ export default function App(){
         ),
         React.createElement("button",{className:"btn bpu bfull",onClick:function(){doParse(idx);},disabled:busy||!s.paste.trim()},
           s.status==="parsing"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," AI cita..."):"\u2746 Prepoznaj Sve Automatski"
+        ),
+        // OVERLOAD UI: DeepSeek pao - dugme za Gemini fallback
+        s.parseOverload&&React.createElement("div",{style:{marginTop:"10px",padding:"12px",background:"rgba(255,180,80,.1)",border:"1px solid rgba(255,180,80,.4)",borderRadius:"8px"}},
+          React.createElement("div",{style:{fontSize:"12px",color:"var(--gd2)",fontWeight:600,marginBottom:"4px"}},"\u26a0 DeepSeek trenutno nije dostupan"),
+          React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.5"}},s.parseOverload.geminiAvailable?"Mo\u017ee\u0161 poku\u0161ati sa Gemini backup AI-em \u2014 koristi iste prompt-ove i daje isti kvalitet.":"Gemini backup nije konfigurisan na serveru. Sa\u010dekaj 1-2 minuta i poku\u0161aj DeepSeek ponovo."),
+          React.createElement("div",{style:{display:"flex",gap:"6px"}},
+            s.parseOverload.geminiAvailable&&React.createElement("button",{className:"btn bgd bsm",onClick:function(){upSlot(idx,function(s){return Object.assign({},s,{paste:s.paste||s.rawPaste||"",parseOverload:null});});setTimeout(function(){doParse(idx,"gemini");},50);}},"\u2728 Poku\u0161aj sa Gemini"),
+            React.createElement("button",{className:"btn bol bsm",onClick:function(){upSlot(idx,function(s){return Object.assign({},s,{parseOverload:null});});}},"Otka\u017ei"),
+            !s.parseOverload.geminiAvailable&&React.createElement("button",{className:"btn bgd bsm",onClick:function(){upSlot(idx,function(s){return Object.assign({},s,{parseOverload:null});});setTimeout(function(){doParse(idx);},50);}},"\u21bb Probaj DeepSeek ponovo")
+          )
         )
       ),
       // PARSED OK
@@ -2308,6 +2389,21 @@ export default function App(){
         )
       );
     })(),
+
+    overloadPrompt&&React.createElement("div",{className:"modal-bg",onClick:function(){setOverloadPrompt(null);}},
+      React.createElement("div",{className:"modal",style:{maxWidth:"480px",margin:"auto"},onClick:function(e){e.stopPropagation();}},
+        React.createElement("div",{className:"modal-title",style:{color:"#ffb84d"}},"⚠ DeepSeek trenutno nije dostupan"),
+        React.createElement("p",{style:{fontSize:"13px",color:"var(--mt)",lineHeight:"1.6",marginBottom:"16px"}},
+          overloadPrompt.geminiAvailable
+            ?"DeepSeek API je preopterećen. Možeš pokušati sa Gemini backup AI-em — koristi iste prompt-ove i daje isti kvalitet."
+            :"Gemini backup AI nije konfigurisan na serveru. Sačekaj 1-2 minuta i pokušaj DeepSeek ponovo."
+        ),
+        React.createElement("div",{style:{display:"flex",gap:"8px",justifyContent:"flex-end"}},
+          React.createElement("button",{className:"btn bol bsm",onClick:function(){setOverloadPrompt(null);}},"Otkaži"),
+          overloadPrompt.geminiAvailable&&React.createElement("button",{className:"btn bgd bsm",onClick:function(){var fn=overloadPrompt.retryFn;setOverloadPrompt(null);if(fn)fn();}},"✨ Pokušaj sa Gemini")
+        )
+      )
+    ),
 
     toast&&React.createElement("div",{className:"toast"},toast)
   );
