@@ -1479,7 +1479,7 @@ export default function App(){
       jobs["a"+(ri+1)]={id:jobData.id,clientName:sl.client.ime,tab:"a"+(ri+1),idx:ri};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       // Start polling - prosledi payload za eventual Gemini retry
-      pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload});
+      pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload,isSinastrija:!!isSinastrija});
     }catch(err){
       console.error("doGen error:",err);
       upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
@@ -1537,7 +1537,7 @@ export default function App(){
         else if(j.status==="done"){
           clearInterval(pqInterval);
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
-          var ft=fmtText(j.serbian_text||"");
+          var ft=applyClosing(fmtText(j.serbian_text||""),"pitanja");
           upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
@@ -1659,6 +1659,33 @@ export default function App(){
     }catch(e){upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
+  // Garantovano dopisuje fiksni zavrsetak sa email adresom na kraj generisanog
+  // teksta. Deterministicki - ne zavisi od toga sta je AI napisao. Idempotentno.
+  function applyClosing(text,jobType,isSinastrija){
+    var t=(text||"");
+    var emailLine="E-mail: astrologsuzana@gmail.com";
+    if(jobType==="pitanja"){
+      if(t.indexOf("astrologsuzana@gmail.com")>=0)return t.replace(/\s+$/,"");
+      return t.replace(/\s+$/,"")+"\n\nHvala ti na poverenju i svako dobro.\n\n"+emailLine;
+    }
+    // analiza: ukloni eventualni zaostali "Today is: ..." red na kraju (AI artefakt)
+    t=t.replace(/\n+[ \t]*Today is:[^\n]*\s*$/i,"");
+    if(t.indexOf("astrologsuzana@gmail.com")>=0)return t.replace(/\s+$/,"");
+    var sigRe=/\n+[ \t]*Astrolog (?:Suzana|Marija)\b[^\n]*\s*$/i;
+    if(sigRe.test(t)){
+      // ubaci email red pre postojeceg potpisa, recenicu zavrsetka ne diraj
+      return t.replace(sigRe,function(match){
+        return "\n\n\n"+emailLine+"\n"+match.replace(/^\s+/,"").replace(/\s+$/,"");
+      });
+    }
+    // potpis ne postoji (prevod skracen/iskvaren) - dopisi ceo kanonski zavrsetak
+    var aName=country==="hr"?"Marija":"Suzana";
+    var closingSentence=isSinastrija
+      ?"Hvala ti puno na poverenju i želim ti odnos ispunjen ljubavlju, razumevanjem i radošću."
+      :"Hvala ti puno na poverenju i želim ti život ispunjen mirom, radošću i srećom.";
+    return t.replace(/\s+$/,"")+"\n\n"+closingSentence+"\n\n\n"+emailLine+"\nAstrolog "+aName+" ❤️";
+  }
+
   // TRANSLATE TO SERBIAN
   // POLL JOB STATUS
   function pollJob(jobId,slotIdx,tabKey,meta){
@@ -1683,6 +1710,9 @@ export default function App(){
           localStorage.setItem("activeJobs",JSON.stringify(jbs));
 
           var finalText=fmtText(job.serbian_text||"");
+          var jt=job.job_type||"analiza";
+          if(jt==="analiza")finalText=applyClosing(finalText,"analiza",meta&&meta.isSinastrija);
+          else if(jt==="pitanja")finalText=applyClosing(finalText,"pitanja");
           if(slotIdx!==null){
             upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:finalText,jobId:null});});
           }
