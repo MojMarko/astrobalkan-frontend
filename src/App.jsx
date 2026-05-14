@@ -536,11 +536,46 @@ async function parseMsg(text,provider){
     return parsed;
   }catch(e){console.error("parseMsg JSON error:",e,t.slice(0,200));return {__error:"AI odgovor nije valjan JSON: "+t.slice(0,100)};}
 }
+// Deterministicko vezivanje: svako ime se veze za datum koji mu je NAJBLIZI u
+// sirovom tekstu (prednost datumu odmah posle imena). Ispravlja slucaj kada LLM
+// zameni koji datum ide uz koju osobu. Tekst je izvor istine.
+function bindDatesToNames(rawText,persons){
+  if(!rawText||!persons||persons.length===0)return persons;
+  var raw=String(rawText);
+  var dates=[];
+  var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
+  while((m=dRe.exec(raw))!==null){
+    var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=m[3];
+    var yN=y.length===2?(parseInt(y,10)<=30?2000+parseInt(y,10):1900+parseInt(y,10)):parseInt(y,10);
+    if(d>=1&&d<=31&&mo>=1&&mo<=12){
+      dates.push({iso:yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"),pos:m.index});
+    }
+  }
+  if(dates.length===0)return persons;
+  persons.forEach(function(p){
+    if(!p||!p.ime)return;
+    var ni=raw.toLowerCase().indexOf(String(p.ime).toLowerCase());
+    if(ni<0)return; // ime nije u tekstu - zadrzi LLM rezultat
+    var best=null,bestScore=Infinity;
+    dates.forEach(function(dt){
+      var dist=Math.abs(dt.pos-ni);
+      var score=dt.pos>=ni?dist:dist+1000; // penal za datum koji je PRE imena
+      if(score<bestScore){bestScore=score;best=dt;}
+    });
+    if(best&&best.iso!==p.datum){
+      console.warn("bindDatesToNames: ispravljen datum za "+p.ime+": "+p.datum+" -> "+best.iso);
+      p.datum=best.iso;
+    }
+  });
+  var seen={};
+  persons.forEach(function(p){if(p&&p.datum){if(seen[p.datum])console.warn("bindDatesToNames: dve osobe imaju isti datum "+p.datum+" (moguca zamena/duplikat)");seen[p.datum]=true;}});
+  return persons;
+}
 // Iz teksta "Pitanja klijenta" izvuce listu osoba koje imaju bar datum rodjenja.
 // Vraca [] ako nema nikoga, ili [{ime, odnos, datum, vreme, mesto}, ...].
 async function parsePersonsFromPitanja(text){
   if(!text||text.trim().length<10)return [];
-  var systemPrompt=`Iz poruke izvuci listu svih osoba koje su pomenute SA BAREM DATUMOM RODJENJA. Vrati SAMO JSON niz, bez ikakvog teksta oko njega.\n\nFormat: [{"ime":"","odnos":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""}, ...]\n\nPRAVILA:\n1. "ime" je ime osobe (Marko, Milica, Ana...).\n2. "odnos" je tip odnosa: 'sin', 'cerka', 'brat', 'sestra', 'tata', 'mama', 'muz', 'zena', 'partner', 'bivsi partner', 'prijatelj', 'tetka', 'ujak', 'kolega', 'unuk', 'unuka' itd. Ako odnos nije jasan iz teksta, ostavi prazan string "".\n3. "datum" mora biti YYYY-MM-DD format. Ako u tekstu pise "12.05.2018" konvertuj u "2018-05-12".\n4. "vreme" je opcionalno. Ako je u tekstu pomenuto vreme rodjenja (npr. "u 14:30", "10.40", "u podne") konvertuj u HH:MM. Ako nije pomenuto, ostavi prazan string "". KRITICNO AM/PM PRAVILO: '12:XX AM' = 00:XX (ponoc), '12:XX PM' = 12:XX (podne), 'X:XX PM' (X=1-11) → dodaj 12 na sat (5:30 PM = 17:30), 'X:XX AM' (X=1-11) ostaje uz zero-padding (5:30 AM = 05:30). Srpske oznake: 'popodne'/'uvece' = PM, 'ujutru'/'nocu' = AM, 'u ponoc' = 00:00, 'u podne' = 12:00. NIKAD 00:XX ne pretvaraj u 12:XX.\n5. "mesto" je opcionalno. Ako je u tekstu pomenut grad rodjenja (npr. "Beograd", "Novi Sad"), zapisi ga. Ako nije pomenuto, ostavi prazan string "".\n6. UKLJUCI svakoga sa datumom rodjenja, BEZ obzira na odnos.\n7. NE UKLJUCUJ osobe koje nemaju datum rodjenja u tekstu (npr. "muz mi je bolestan" bez datuma — preskoci).\n8. Ako nema nikoga sa datumom, vrati prazan niz [].\n\nPRIMERI:\n\nUnos: "Imam sina Marka 12.05.2018 14:30 Beograd, kakav je?"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"}]\n\nUnos: "Cerka Milica 10.05.1993, sestra Dragica 14.12.1975"\nIzlaz: [{"ime":"Milica","odnos":"cerka","datum":"1993-05-10","vreme":"","mesto":""},{"ime":"Dragica","odnos":"sestra","datum":"1975-12-14","vreme":"","mesto":""}]\n\nUnos: "Marko 12.05.2018 14:30 Beograd\\nMilica 03.09.2020 09:15 Novi Sad"\nIzlaz: [{"ime":"Marko","odnos":"","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"},{"ime":"Milica","odnos":"","datum":"2020-09-03","vreme":"09:15","mesto":"Novi Sad"}]\n\nUnos: "muza mi se nesto desilo, brine me kako mu je"\nIzlaz: []\n\nUnos: "Imam dvoje dece, sina Marka 5.7.2018 i cerku Anu 3.9.2020 oboje rodjeni u Beogradu"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-07-05","vreme":"","mesto":"Beograd"},{"ime":"Ana","odnos":"cerka","datum":"2020-09-03","vreme":"","mesto":"Beograd"}]\n\nVAZNO: Vrati SAMO JSON niz, bez markdown formatiranja, bez komentara. Ako nema nikoga vrati [].`;
+  var systemPrompt=`Iz poruke izvuci listu svih osoba koje su pomenute SA BAREM DATUMOM RODJENJA. Vrati SAMO JSON niz, bez ikakvog teksta oko njega.\n\nFormat: [{"ime":"","odnos":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""}, ...]\n\nPRAVILA:\n1. "ime" je ime osobe (Marko, Milica, Ana...).\n2. "odnos" je tip odnosa: 'sin', 'cerka', 'brat', 'sestra', 'tata', 'mama', 'muz', 'zena', 'partner', 'bivsi partner', 'prijatelj', 'tetka', 'ujak', 'kolega', 'unuk', 'unuka' itd. Ako odnos nije jasan iz teksta, ostavi prazan string "".\n3. "datum" mora biti YYYY-MM-DD format. Ako u tekstu pise "12.05.2018" konvertuj u "2018-05-12".\n4. "vreme" je opcionalno. Ako je u tekstu pomenuto vreme rodjenja (npr. "u 14:30", "10.40", "u podne") konvertuj u HH:MM. Ako nije pomenuto, ostavi prazan string "". KRITICNO AM/PM PRAVILO: '12:XX AM' = 00:XX (ponoc), '12:XX PM' = 12:XX (podne), 'X:XX PM' (X=1-11) → dodaj 12 na sat (5:30 PM = 17:30), 'X:XX AM' (X=1-11) ostaje uz zero-padding (5:30 AM = 05:30). Srpske oznake: 'popodne'/'uvece' = PM, 'ujutru'/'nocu' = AM, 'u ponoc' = 00:00, 'u podne' = 12:00. NIKAD 00:XX ne pretvaraj u 12:XX.\n5. "mesto" je opcionalno. Ako je u tekstu pomenut grad rodjenja (npr. "Beograd", "Novi Sad"), zapisi ga. Ako nije pomenuto, ostavi prazan string "".\n6. UKLJUCI svakoga sa datumom rodjenja, BEZ obzira na odnos.\n7. NE UKLJUCUJ osobe koje nemaju datum rodjenja u tekstu (npr. "muz mi je bolestan" bez datuma — preskoci).\n8. Ako nema nikoga sa datumom, vrati prazan niz [].\n\n*** KRITICNO - NE MESAJ IMENA I DATUME ***\nSvako ime MORA da ostane vezano za datum koji se u tekstu pojavljuje NAJBLIZE tom imenu (skoro uvek odmah posle imena). Ako tekst kaze "Katarina 2.1.2010 ... Milena 4.5.2010", onda je Katarina=2010-01-02 i Milena=2010-05-04 — NIKADA obrnuto. POGRESNO bi bilo vratiti Katarinu sa 2010-05-04. Pre nego sto vratis JSON, proveri za svako ime da je dobilo datum koji mu je u tekstu najblizi.\n\nPRIMERI:\n\nUnos: "Imam sina Marka 12.05.2018 14:30 Beograd, kakav je?"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"}]\n\nUnos: "Cerka Milica 10.05.1993, sestra Dragica 14.12.1975"\nIzlaz: [{"ime":"Milica","odnos":"cerka","datum":"1993-05-10","vreme":"","mesto":""},{"ime":"Dragica","odnos":"sestra","datum":"1975-12-14","vreme":"","mesto":""}]\n\nUnos: "Marko 12.05.2018 14:30 Beograd\\nMilica 03.09.2020 09:15 Novi Sad"\nIzlaz: [{"ime":"Marko","odnos":"","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"},{"ime":"Milica","odnos":"","datum":"2020-09-03","vreme":"09:15","mesto":"Novi Sad"}]\n\nUnos: "muza mi se nesto desilo, brine me kako mu je"\nIzlaz: []\n\nUnos: "Imam dvoje dece, sina Marka 5.7.2018 i cerku Anu 3.9.2020 oboje rodjeni u Beogradu"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-07-05","vreme":"","mesto":"Beograd"},{"ime":"Ana","odnos":"cerka","datum":"2020-09-03","vreme":"","mesto":"Beograd"}]\n\nVAZNO: Vrati SAMO JSON niz, bez markdown formatiranja, bez komentara. Ako nema nikoga vrati [].`;
   try{
     var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:systemPrompt,messages:[{role:"user",content:text}],max_tokens:2000})});
     var j=await resp.json();
@@ -553,6 +588,7 @@ async function parsePersonsFromPitanja(text){
     if(!Array.isArray(arr))return [];
     // Filter out persons without proper datum
     arr=arr.filter(function(p){return p&&p.datum&&/^\d{4}-\d{2}-\d{2}$/.test(p.datum);});
+    arr=bindDatesToNames(text,arr);
     console.log("parsePersonsFromPitanja: found "+arr.length+" person(s)");
     return arr;
   }catch(e){console.warn("parsePersonsFromPitanja error:",e.message);return [];}
@@ -1331,7 +1367,7 @@ export default function App(){
     var MONTH_EN=["January","February","March","April","May","June","July","August","September","October","November","December"];
     var curYear=today.getFullYear(),curMonth=today.getMonth(),curMonthName=MONTH_EN[curMonth];
     var dateAwareness="\n\n*** CRITICAL - DATE AWARENESS ***\nTODAY: "+todayStr+"\nCURRENT YEAR: "+curYear+"\nCURRENT MONTH: "+curMonthName+" "+curYear+"\n\nSTRICT DATE RULES:\n1. Every date you write in forecasts MUST be AFTER today ("+todayStr+").\n2. Verify each month you mention — if that month has already passed this year, either use the SAME month of "+(curYear+1)+" or skip to a future month.\n   - Example: if today is "+curMonthName+" "+curYear+" and you want 'u martu', March "+curYear+" is past — use 'u martu "+(curYear+1)+"'.\n   - Example: if today is May "+curYear+" and you want 'u januaru', that's past — use 'u januaru "+(curYear+1)+"'.\n3. NEVER write "+(curYear-1)+" or earlier as the current or future year. Current year is "+curYear+".\n4. All forecasts span "+todayStr+" to end of "+(curYear+1)+".\n5. Before writing each date, pause and verify: 'Is this date after "+todayStr+"? Yes → write it. No → shift to "+(curYear+1)+" or skip.'\n6. If the client mentions a FIXED future event (due date, wedding, surgery on specific date), respect that exact date. Do NOT write predictions that contradict or undermine it.\n7. DATE FORMAT — NUMERIC ONLY: every date MUST be written as digits in DD.MM.YYYY format. CORRECT: '20.10.2026.', 'od 5.8. do 15.9.2027.', '15.3.2027.'. FORBIDDEN: spelling out numbers ('dvadesetog oktobra', 'dve hiljade dvadeset šeste'), descriptive phrases without digits ('u petom mesecu', 'krajem drugog meseca'). Day and month as numerals, year as 4 digits. When giving a period, use 'od DD.MM. do DD.MM.YYYY.' or 'DD.MM. — DD.MM.YYYY.'. Descriptive phrases like 'pocetkom maja' or 'sredinom juna' are OK when no specific date is needed — but any number MUST be a digit.\n";
-    var personContext="\n*** CRITICAL - PERSON CONTEXT SEPARATION ***\nThe main client is: "+(sl.client.ime||"client")+".\n- ALL forecasts, predictions, love/work/health statements refer to THIS CLIENT unless text explicitly says otherwise.\n- If the context mentions OTHER people (child, partner, parent, sibling, friend, ex), keep their contexts strictly SEPARATED.\n- NEVER attribute the client's situation to another person.\n- NEVER attribute another person's situation (pregnancy, illness, marriage, new job) to the client.\n- If an event is about the client's daughter, write it AS ABOUT THE DAUGHTER, not as about the client.\n- When in doubt whose life an event belongs to, re-read the context carefully before writing.\n";
+    var personContext="\n*** CRITICAL - PERSON CONTEXT SEPARATION ***\nThe main client is: "+(sl.client.ime||"client")+".\n- ALL forecasts, predictions, love/work/health statements refer to THIS CLIENT unless text explicitly says otherwise.\n- If the context mentions OTHER people (child, partner, parent, sibling, friend, ex), keep their contexts strictly SEPARATED.\n- NEVER attribute the client's situation to another person.\n- NEVER attribute another person's situation (pregnancy, illness, marriage, new job) to the client.\n- If an event is about the client's daughter, write it AS ABOUT THE DAUGHTER, not as about the client.\n- When in doubt whose life an event belongs to, re-read the context carefully before writing.\n- Each additional person has EXACTLY their own birth date and their own chart, listed in the 'VEZIVANJE OSOBA IZ PITANJA' table. NEVER recompute, swap, or guess dates between people — use that table verbatim to know which date and chart belongs to which name.\n";
     var ptxt=hasClientChart?sl.ch.planets.map(function(p){return p.name+": "+p.sign+" "+p.degInSign+"°"+(p.house?" ("+p.house+". kuca)":"");}).join("\n"):"";
     var atxt=hasClientChart?sl.ch.aspects.map(function(a){return a.p1+" "+a.aspect+" "+a.p2+" (orb: "+a.orb+"°)";}).join("\n"):"";
     var pTxt="";
@@ -1402,6 +1438,17 @@ export default function App(){
         extraChartsText+="\n["+(ix+1)+"] "+(ep.ime||"Osoba")+(ep.odnos?" ("+ep.odnos+")":"")+", rodjen/a "+dmy+(ep.vreme?" u "+ep.vreme:"")+(ep.mesto?", "+ep.mesto:"")+noteStr+"\nSunce: "+ech.sunSign+", Mesec: "+ech.moonSign+eAsc+"\nPlanete:\n"+ePlanets+(eAspects?"\nAspekti:\n"+eAspects:"")+"\n";
       });
     }
+    // Deterministicka tabela vezivanja ime -> indeks karte. AI ne sme sam da korelira
+    // sirov tekst pitanja sa kartama (tu se datumi mesaju).
+    var bindingText="";
+    if(extraCharts.length>0){
+      bindingText="\n\nVEZIVANJE OSOBA IZ PITANJA (OBAVEZNO koristi ovu tabelu, NE preracunavaj datume sam):\n";
+      extraCharts.forEach(function(ec,ix){
+        var bdmy=ec.person.datum.split("-").reverse().join(".");
+        bindingText+="- Kada klijent u pitanjima pomene \""+(ec.person.ime||"Osoba")+"\" → to je OSOBA ["+(ix+1)+"] iz DODATNE OSOBE, rodjena "+bdmy+", Sunce: "+ec.chart.sunSign+". Koristi ISKLJUCIVO kartu ["+(ix+1)+"] za tu osobu.\n";
+      });
+      bindingText+="NIKADA ne mesaj datume ni karte izmedju ovih osoba. Svaka osoba ima TACNO svoj datum i svoju kartu.\n";
+    }
     var treceOsobe=["cerka","kcerka","ćerka","kćerka","sin","brat","sestra","zet","snaha","muz","muž","supruga","mama","tata","majka","otac","prijatelj","prijateljica","komsija","komšija","komsinca","komšinica","tetka","stric","ujak"];
     var imeLow=(sl.client.ime||"").toLowerCase().trim();
     var isTrece=treceOsobe.some(function(r){return imeLow.indexOf(r)>=0;});
@@ -1418,7 +1465,7 @@ export default function App(){
     if(sl.client.napomena&&sl.client.napomena.trim()){
       usr+="\n\nNAPOMENA ASTROLOGA (OBAVEZNO POSTOVATI - PRIORITET NAD SVIM OSTALIM INSTRUKCIJAMA): "+sl.client.napomena;
     }
-    usr+="\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu po promptu.");
+    usr+=bindingText+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu po promptu.");
     var ri=idx;
     try{
       var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
