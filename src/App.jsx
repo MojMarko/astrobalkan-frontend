@@ -1659,31 +1659,40 @@ export default function App(){
     }catch(e){upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
-  // Garantovano dopisuje fiksni zavrsetak sa email adresom na kraj generisanog
-  // teksta. Deterministicki - ne zavisi od toga sta je AI napisao. Idempotentno.
+  // Garantovano dopisuje fiksni zavrsetak sa savet-rečenicom i email adresom na
+  // kraj generisanog teksta. Deterministicki - ne zavisi od toga sta AI napise.
+  // Idempotentno.
   function applyClosing(text,jobType,isSinastrija){
     var t=(text||"");
     var emailLine="E-mail: astrologsuzana@gmail.com";
+    var saveAdvice="Savetujem ti još da ovu analizu sačuvaš negde u beleške ako se slučajno izbriše ovde, da imaš negde drugo sačuvano.";
     if(jobType==="pitanja"){
-      if(t.indexOf("astrologsuzana@gmail.com")>=0)return t.replace(/\s+$/,"");
-      return t.replace(/\s+$/,"")+"\n\nHvala ti na poverenju i svako dobro.\n\n"+emailLine;
+      if(t.indexOf("Savetujem ti")>=0)return t.replace(/\s+$/,"");
+      return t.replace(/\s+$/,"")+"\n\n"+saveAdvice+"\n\nHvala ti na poverenju i svako dobro.\n\n"+emailLine;
     }
-    // analiza: ukloni eventualni zaostali "Today is: ..." red na kraju (AI artefakt)
+    // analiza: ukloni zaostali "Today is:" red (AI artefakt)
     t=t.replace(/\n+[ \t]*Today is:[^\n]*\s*$/i,"");
-    if(t.indexOf("astrologsuzana@gmail.com")>=0)return t.replace(/\s+$/,"");
+    var hasEmail=t.indexOf("astrologsuzana@gmail.com")>=0;
+    var hasAdvice=t.indexOf("Savetujem ti")>=0;
+    if(hasEmail&&hasAdvice)return t.replace(/\s+$/,"");
+    var hvalaRe=/(\n+[ \t]*)(Hvala ti [^\n]*(?:poverenju|povjerenju)[^\n]*)/i;
     var sigRe=/\n+[ \t]*Astrolog (?:Suzana|Marija)\b[^\n]*\s*$/i;
-    if(sigRe.test(t)){
-      // ubaci email red pre postojeceg potpisa, recenicu zavrsetka ne diraj
-      return t.replace(sigRe,function(match){
-        return "\n\n\n"+emailLine+"\n"+match.replace(/^\s+/,"").replace(/\s+$/,"");
-      });
+    if(hvalaRe.test(t)&&sigRe.test(t)){
+      // normalan put: ubaci savetujemski pre "Hvala ti puno" i email pre potpisa
+      if(!hasAdvice)t=t.replace(hvalaRe,function(_,nl,rest){return nl+saveAdvice+"\n\n"+rest;});
+      if(!hasEmail)t=t.replace(sigRe,function(match){return "\n\n\n"+emailLine+"\n"+match.replace(/^\s+/,"").replace(/\s+$/,"");});
+      return t.replace(/\s+$/,"");
     }
-    // potpis ne postoji (prevod skracen/iskvaren) - dopisi ceo kanonski zavrsetak
+    // fallback (potpis ili hvala fali, npr. skracen prevod): strip eventualne
+    // delimicne ostatke pa dopisi ceo kanonski zavrsetak
+    t=t.replace(/\n+[ \t]*Savetujem ti[\s\S]*$/i,"");
+    t=t.replace(/\n+[ \t]*Hvala ti [^\n]*(?:poverenju|povjerenju)[\s\S]*$/i,"");
+    t=t.replace(/\n+[ \t]*Astrolog (?:Suzana|Marija)[\s\S]*$/i,"");
     var aName=country==="hr"?"Marija":"Suzana";
     var closingSentence=isSinastrija
       ?"Hvala ti puno na poverenju i želim ti odnos ispunjen ljubavlju, razumevanjem i radošću."
       :"Hvala ti puno na poverenju i želim ti život ispunjen mirom, radošću i srećom.";
-    return t.replace(/\s+$/,"")+"\n\n"+closingSentence+"\n\n\n"+emailLine+"\nAstrolog "+aName+" ❤️";
+    return t.replace(/\s+$/,"")+"\n\n"+saveAdvice+"\n\n"+closingSentence+"\n\n\n"+emailLine+"\nAstrolog "+aName+" ❤️";
   }
 
   // TRANSLATE TO SERBIAN
