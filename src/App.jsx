@@ -634,6 +634,14 @@ async function parsePersonsFromPitanja(text){
     // Filter out persons without proper datum
     arr=arr.filter(function(p){return p&&p.datum&&/^\d{4}-\d{2}-\d{2}$/.test(p.datum);});
     arr=bindDatesToNames(text,arr);
+    // Notify ops ako su jos uvek duplikati datuma (defenzivna mreza nije uspela)
+    if(arr.length>=2){
+      var dseen={},dups=[];
+      arr.forEach(function(p){if(p&&p.datum){if(dseen[p.datum]&&dups.indexOf(p.datum)<0)dups.push(p.datum);dseen[p.datum]=true;}});
+      if(dups.length>0){
+        notifyOps("date_duplicate","Vise osoba ima isti datum posle bind-a: "+dups.join(", "),{persons:arr.map(function(p){return {ime:p.ime,datum:p.datum};}),textSnippet:String(text).slice(0,250)});
+      }
+    }
     console.log("parsePersonsFromPitanja: found "+arr.length+" person(s)");
     return arr;
   }catch(e){console.warn("parsePersonsFromPitanja error:",e.message);return [];}
@@ -642,6 +650,19 @@ async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
 var API="https://astrobalkan-backend.onrender.com";
+
+// Ops alerting: kad god defenzivna mreza okine u browseru (preskoceno pitanje,
+// partner propusten, duplikat datuma) — javi backendu, on preusmerava na Discord.
+// Nikad ne sme da pukne — wrap u try; .catch na fetch.
+function notifyOps(category,message,context){
+  try{
+    fetch(API+"/api/alert-ops",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({category:String(category||"generic").slice(0,50),message:String(message||"").slice(0,500),context:context||undefined})
+    }).catch(function(e){console.warn("notifyOps fetch failed:",e&&e.message);});
+  }catch(e){console.warn("notifyOps internal:",e&&e.message);}
+}
 
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
@@ -1017,6 +1038,7 @@ export default function App(){
         if(!p.imaPartnera&&dateMatches.length<2&&(probablyMultiPerson||explicitPartnerWord)){
           var why=explicitPartnerWord?"pominje partnera":"ima vise linija";
           toast2("⚠ Paste "+why+" ali parser je vratio samo jednu osobu. Proveri rucno i dodaj partnera ako treba.");
+          notifyOps("partner_missing","Parser vratio jednu osobu, paste "+why,{pasteSnippet:String(s.paste).slice(0,250),dateMatchCount:dateMatches.length,klijent:p.klijent&&p.klijent.ime});
         }
         var partnerMissing=dateMatches.length>=2&&!p.imaPartnera&&(!p.partner||!p.partner.datum);
         if(partnerMissing){
@@ -1816,6 +1838,7 @@ export default function App(){
                 var warn="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nA+" od "+nQ+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja — moguce je da nedostaje neko pitanje.\n\n———\n\n";
                 finalText=warn+finalText;
                 console.warn("Q&A check: "+nA+"/"+nQ+" answered — warning prepended");
+                notifyOps("qa_skipped","AI preskocio pitanja: "+nA+"/"+nQ,{clientName:meta&&meta.clientName,jobId:jobId,pitanjaSnippet:String(meta&&meta.pitanja||"").slice(0,250)});
               }else{
                 console.log("Q&A check: "+nA+"/"+nQ+" answered — OK");
               }
