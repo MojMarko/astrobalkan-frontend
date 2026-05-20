@@ -539,9 +539,38 @@ async function parseMsg(text,provider){
 // Deterministicko vezivanje: svako ime se veze za datum koji mu je NAJBLIZI u
 // sirovom tekstu (prednost datumu odmah posle imena). Ispravlja slucaj kada LLM
 // zameni koji datum ide uz koju osobu. Tekst je izvor istine.
+// Ako vise osoba dobije isti datum a u tekstu ima dovoljno DISTINKTIH datuma,
+// radi preraspodelu (greedy bipartite match) da svaka osoba dobije svoj datum.
+// Nadji poziciju imena u tekstu, TOLERANTNO na srpske padeze.
+// LLM vraca nominativ ("Marko"), a tekst cesto ima akuzativ/genitiv ("sina Marka",
+// "cerku Milicu"). Exact indexOf bi promasio i datum se ne bi vezao za osobu.
+// Strategija: prvo exact, pa koren imena (bez zavrsnog samoglasnika) + do 2 sufiksna slova.
+function findNamePos(rawLower,nameLower){
+  if(!rawLower||!nameLower)return -1;
+  var esc0=nameLower.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  // 1) tacno ime uz granicu reci + do 2 padezna slova (Marko, Markom). Granica
+  //    reci sprecava lazno poklapanje unutar duze reci (Ana unutar "Stefana").
+  try{
+    var reExact=new RegExp("\\b"+esc0+"[a-zčćđšž]{0,2}\\b");
+    var m0=reExact.exec(rawLower);
+    if(m0)return m0.index;
+  }catch(e){}
+  // 2) koren bez zavrsnog samoglasnika (Marko->Marka/Marku, Milica->Milicu)
+  var vowels="aeiou";
+  var stem=nameLower;
+  if(stem.length>2&&vowels.indexOf(stem.charAt(stem.length-1))>=0)stem=stem.slice(0,-1);
+  if(stem.length<2)return -1;
+  var esc=stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  try{
+    var re=new RegExp("\\b"+esc+"[a-zčćđšž]{0,2}\\b");
+    var mm=re.exec(rawLower);
+    return mm?mm.index:-1;
+  }catch(e){return -1;}
+}
 function bindDatesToNames(rawText,persons){
   if(!rawText||!persons||persons.length===0)return persons;
   var raw=String(rawText);
+  var rawLow=raw.toLowerCase();
   var dates=[];
   var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
   while((m=dRe.exec(raw))!==null){
@@ -551,15 +580,19 @@ function bindDatesToNames(rawText,persons){
       dates.push({iso:yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"),pos:m.index});
     }
   }
-  if(dates.length===0)return persons;
+  // Dedupliraj datume iz teksta — isti datum dvaput u tekstu ne pravi dva "slota"
+  var seenDates={},uniqDates=[];
+  dates.forEach(function(dt){if(!seenDates[dt.iso]){seenDates[dt.iso]=true;uniqDates.push(dt);}});
+  if(uniqDates.length===0)return persons;
+  // Pass 1: per-osoba najblizi datum (bez constraints-a, prati LLM strategiju)
   persons.forEach(function(p){
     if(!p||!p.ime)return;
-    var ni=raw.toLowerCase().indexOf(String(p.ime).toLowerCase());
-    if(ni<0)return; // ime nije u tekstu - zadrzi LLM rezultat
+    var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
+    if(ni<0)return;
     var best=null,bestScore=Infinity;
-    dates.forEach(function(dt){
+    uniqDates.forEach(function(dt){
       var dist=Math.abs(dt.pos-ni);
-      var score=dt.pos>=ni?dist:dist+1000; // penal za datum koji je PRE imena
+      var score=dt.pos>=ni?dist:dist+1000;
       if(score<bestScore){bestScore=score;best=dt;}
     });
     if(best&&best.iso!==p.datum){
@@ -567,8 +600,47 @@ function bindDatesToNames(rawText,persons){
       p.datum=best.iso;
     }
   });
+  // Pass 2: detektuj duplikate i preraspodeli ako u tekstu ima dovoljno
+  // distinktih datuma. Greedy bipartite match po skoru rastojanja.
+  var datumCounts={};
+  persons.forEach(function(p){if(p&&p.datum)datumCounts[p.datum]=(datumCounts[p.datum]||0)+1;});
+  var hasDup=Object.keys(datumCounts).some(function(k){return datumCounts[k]>1;});
+  var personsWithName=persons.filter(function(p){return p&&p.ime&&findNamePos(rawLow,String(p.ime).toLowerCase())>=0;});
+  if(hasDup&&uniqDates.length>=personsWithName.length){
+    console.warn("bindDatesToNames: duplikati detektovani, pokrecem preraspodelu");
+    var pairs=[];
+    persons.forEach(function(p,pi){
+      if(!p||!p.ime)return;
+      var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
+      if(ni<0)return;
+      uniqDates.forEach(function(dt,di){
+        var dist=Math.abs(dt.pos-ni);
+        var score=dt.pos>=ni?dist:dist+1000;
+        pairs.push({pi:pi,di:di,score:score});
+      });
+    });
+    pairs.sort(function(a,b){return a.score-b.score;});
+    var usedDi={},assignedPi={};
+    pairs.forEach(function(pair){
+      if(assignedPi[pair.pi]||usedDi[pair.di])return;
+      var oldDatum=persons[pair.pi].datum;
+      var newDatum=uniqDates[pair.di].iso;
+      if(oldDatum!==newDatum){
+        console.warn("bindDatesToNames: preraspodela za "+persons[pair.pi].ime+": "+oldDatum+" -> "+newDatum);
+        persons[pair.pi].datum=newDatum;
+      }
+      assignedPi[pair.pi]=true;
+      usedDi[pair.di]=true;
+    });
+  }
+  // Pass 3: krajnji warning ako su jos uvek duplikati (tekst nema dovoljno datuma)
   var seen={};
-  persons.forEach(function(p){if(p&&p.datum){if(seen[p.datum])console.warn("bindDatesToNames: dve osobe imaju isti datum "+p.datum+" (moguca zamena/duplikat)");seen[p.datum]=true;}});
+  persons.forEach(function(p){
+    if(p&&p.datum){
+      if(seen[p.datum])console.error("bindDatesToNames: jos uvek duplikat datum "+p.datum+" za "+p.ime+" (tekst verovatno nema dovoljno datuma — astrolog mora rucno proveriti)");
+      seen[p.datum]=true;
+    }
+  });
   return persons;
 }
 // Iz teksta "Pitanja klijenta" izvuce listu osoba koje imaju bar datum rodjenja.
@@ -589,14 +661,62 @@ async function parsePersonsFromPitanja(text){
     // Filter out persons without proper datum
     arr=arr.filter(function(p){return p&&p.datum&&/^\d{4}-\d{2}-\d{2}$/.test(p.datum);});
     arr=bindDatesToNames(text,arr);
+    // Notify ops ako su jos uvek duplikati datuma (defenzivna mreza nije uspela)
+    if(arr.length>=2){
+      var dseen={},dups=[];
+      arr.forEach(function(p){if(p&&p.datum){if(dseen[p.datum]&&dups.indexOf(p.datum)<0)dups.push(p.datum);dseen[p.datum]=true;}});
+      if(dups.length>0){
+        notifyOps("date_duplicate","Vise osoba ima isti datum posle bind-a: "+dups.join(", "),{persons:arr.map(function(p){return {ime:p.ime,datum:p.datum};}),textSnippet:String(text).slice(0,250)});
+      }
+    }
     console.log("parsePersonsFromPitanja: found "+arr.length+" person(s)");
     return arr;
   }catch(e){console.warn("parsePersonsFromPitanja error:",e.message);return [];}
+}
+// Deterministicki suncev znak iz datuma (izracunato u podne, mesto nebitno za Sunce).
+// Daleko pouzdanije nego da LLM racuna znak u glavi.
+function sunSignForDate(iso){
+  if(!iso||!/^\d{4}-\d{2}-\d{2}$/.test(iso))return "";
+  try{var c=calcChart(iso,"12:00",44.8176,20.4633,"Europe/Belgrade");return(c&&c.sunSign)||"";}catch(e){return "";}
+}
+// Sastavi blok TACNIH astroloskih podataka (suncev znak po osobi) za Downsell/Pitanja,
+// gde se karte inace ne racunaju pa LLM pogresno pogadja znak i mesa datume i osobe.
+async function buildPersonSignFacts(questionsText,clientName,clientBirthDate){
+  var lines=[];
+  var cn=(clientName||"").trim();
+  var seen={};
+  if(clientBirthDate&&/^\d{4}-\d{2}-\d{2}$/.test(clientBirthDate)){
+    var cs=sunSignForDate(clientBirthDate);
+    if(cs){lines.push("- Klijent"+(cn?" ("+cn+")":"")+", rodjen/a "+fmtDMYFromISO(clientBirthDate)+": Sunce u "+cs);seen[clientBirthDate]=true;}
+  }
+  try{
+    var persons=await parsePersonsFromPitanja(questionsText||"");
+    persons.forEach(function(p){
+      if(!p||!p.datum||seen[p.datum])return;
+      var s=sunSignForDate(p.datum);
+      if(s){lines.push("- "+(p.ime||"Osoba")+(p.odnos?" ("+p.odnos+")":"")+", rodjen/a "+fmtDMYFromISO(p.datum)+": Sunce u "+s);seen[p.datum]=true;}
+    });
+  }catch(e){console.warn("buildPersonSignFacts:",e.message);}
+  if(lines.length===0)return "";
+  return "\n\n*** TACNI ASTROLOSKI PODACI (izracunato precizno — koristi ISKLJUCIVO ove znakove) ***\nZa svaku osobu ispod naveden je TACAN suncev znak. Kada pominjes znak neke od ovih osoba, koristi TACNO ovaj znak. NIKADA ne racunaj znak sam i ne pogadjaj. Pazi koji datum pripada kojoj osobi — ne mesaj ih.\n"+lines.join("\n")+"\n";
 }
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
 var API="https://astrobalkan-backend.onrender.com";
+
+// Ops alerting: kad god defenzivna mreza okine u browseru (preskoceno pitanje,
+// partner propusten, duplikat datuma) — javi backendu, on preusmerava na Discord.
+// Nikad ne sme da pukne — wrap u try; .catch na fetch.
+function notifyOps(category,message,context){
+  try{
+    fetch(API+"/api/alert-ops",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({category:String(category||"generic").slice(0,50),message:String(message||"").slice(0,500),context:context||undefined})
+    }).catch(function(e){console.warn("notifyOps fetch failed:",e&&e.message);});
+  }catch(e){console.warn("notifyOps internal:",e&&e.message);}
+}
 
 // LOGO ---------------------------------------------------------------------
 function Logo(props){
@@ -958,10 +1078,21 @@ export default function App(){
         }
       }else if(p){
         // Detektuj sve datume sa pozicijom u sirovom paste-u (za auto-partner ekstrakciju)
-        var dateRe=/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/g;
+        // Tolerantni separatori: . / - razmak — isto kao parser, da ne propustimo paste sa razmacima
+        var dateRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g;
         var dateMatches=[],dm;
         while((dm=dateRe.exec(s.paste))!==null){
           dateMatches.push({pos:dm.index,full:dm[0],day:dm[1],month:dm[2],year:dm[3]});
+        }
+        // Defenzivni signal: paste ima vise linija ili pominje partner-keyword,
+        // a parser je vratio samo jednu osobu - vrlo verovatno bag
+        var newlineCount=(s.paste.match(/\n/g)||[]).length;
+        var probablyMultiPerson=newlineCount>=1&&s.paste.trim().length>20;
+        var explicitPartnerWord=/\b(muz|muža|muza|žena|zena|supruga|suprug|partner|partnera|partnerka|decko|dečko|devojka|verenik|verenica|bivši|bivsi|bivša|bivsa|dragi|draga)\b/i.test(s.paste);
+        if(!p.imaPartnera&&dateMatches.length<2&&(probablyMultiPerson||explicitPartnerWord)){
+          var why=explicitPartnerWord?"pominje partnera":"ima vise linija";
+          toast2("⚠ Paste "+why+" ali parser je vratio samo jednu osobu. Proveri rucno i dodaj partnera ako treba.");
+          notifyOps("partner_missing","Parser vratio jednu osobu, paste "+why,{pasteSnippet:String(s.paste).slice(0,250),dateMatchCount:dateMatches.length,klijent:p.klijent&&p.klijent.ime});
         }
         var partnerMissing=dateMatches.length>=2&&!p.imaPartnera&&(!p.partner||!p.partner.datum);
         if(partnerMissing){
@@ -977,6 +1108,13 @@ export default function App(){
             var ctxBefore=s.paste.slice(Math.max(0,second.pos-60),second.pos);
             var nameMatches=ctxBefore.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/g);
             var partnerIme=nameMatches?nameMatches[nameMatches.length-1]:"";
+            // Fallback: ime moze biti POSLE datuma ("27.5.2006 Jelena") — uzmi prvu
+            // veliko-pisanu rec u 40 chars posle datuma (preskoci mesto ako je grad poznat)
+            if(!partnerIme){
+              var ctxAfter=s.paste.slice(second.pos+second.full.length,second.pos+second.full.length+40);
+              var afterMatch=ctxAfter.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/);
+              if(afterMatch)partnerIme=afterMatch[1];
+            }
             if(partnerIme){
               // Datum normalizacija
               var yr=second.year.length===2?(parseInt(second.year)<=30?"20"+second.year:"19"+second.year):second.year;
@@ -1014,7 +1152,7 @@ export default function App(){
         toast2("Podaci prepoznati!");
         Promise.all([geoClientP,geoPartnerP]).then(function(geo){
           upSlot(idx,function(s){return Object.assign({},s,{client:Object.assign({},s.client,geo[0]),partner:p.imaPartnera?Object.assign({},s.partner,geo[1]):s.partner});});
-        });
+        }).catch(function(geoErr){console.warn("geocode failed (ignorisem, ne sme da blokira analizu):",geoErr&&geoErr.message);});
       }else{upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});toast2("Nije prepoznato.");}
     }catch(e){upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});toast2("Greska: "+(e.message||"nepoznata"));}
   }
@@ -1479,7 +1617,7 @@ export default function App(){
       jobs["a"+(ri+1)]={id:jobData.id,clientName:sl.client.ime,tab:"a"+(ri+1),idx:ri};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       // Start polling - prosledi payload za eventual Gemini retry
-      pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload,isSinastrija:!!isSinastrija});
+      pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload,isSinastrija:!!isSinastrija,pitanja:sl.client.pitanja||""});
     }catch(err){
       console.error("doGen error:",err);
       upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
@@ -1487,7 +1625,7 @@ export default function App(){
   }
 
   // POMOCNI: pokreni polling za downsell job (koristi se i za inicijalni i za Gemini retry)
-  function startDsPoll(idx,jobId,dsName,originalPayload){
+  function startDsPoll(idx,jobId,dsName,originalPayload,questionsText){
     var dsKey="ds"+(idx+1);
     var dsInterval=setInterval(async function(){
       try{
@@ -1500,6 +1638,15 @@ export default function App(){
           clearInterval(dsInterval);
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
           var ft=fmtText(j.serbian_text||"");
+          try{
+            if(questionsText&&questionsText.trim().length>10){
+              var nQds=countClientQuestions(questionsText),nAds=countAnswersInAnalysis(ft);
+              if(nQds>=2&&nAds<nQds-1){
+                ft="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nAds+" od "+nQds+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja.\n\n———\n\n"+ft;
+                notifyOps("qa_skipped_downsell","Downsell preskocio pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText).slice(0,250)});
+              }
+            }
+          }catch(eQ){console.warn("DS Q&A check:",eQ&&eQ.message);}
           upDs(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
@@ -1514,7 +1661,7 @@ export default function App(){
             upDs(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"downsell",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -1525,7 +1672,7 @@ export default function App(){
   }
 
   // POMOCNI: pokreni polling za pitanja job (koristi se i za inicijalni i za Gemini retry)
-  function startPqPoll(idx,jobId,pqName,originalPayload){
+  function startPqPoll(idx,jobId,pqName,originalPayload,questionsText){
     var pqKey="pq"+(idx+1);
     var pqInterval=setInterval(async function(){
       try{
@@ -1538,6 +1685,15 @@ export default function App(){
           clearInterval(pqInterval);
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
           var ft=applyClosing(fmtText(j.serbian_text||""),"pitanja");
+          try{
+            if(questionsText&&questionsText.trim().length>10){
+              var nQpq=countClientQuestions(questionsText),nApq=(ft.match(/\?/g)||[]).length;
+              if(nQpq>=2&&nApq<nQpq-1){
+                ft="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nApq+" od "+nQpq+" pitanja klijenta. Proveri pre slanja — moguce je da nedostaje neko pitanje.\n\n———\n\n"+ft;
+                notifyOps("qa_skipped_pitanja","D.Pitanja preskocila pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText).slice(0,250)});
+              }
+            }
+          }catch(eQ){console.warn("PQ Q&A check:",eQ&&eQ.message);}
           upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
@@ -1552,7 +1708,7 @@ export default function App(){
             upPq(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"pitanja",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -1598,6 +1754,7 @@ export default function App(){
         "Sada napisi NOVU prognozu počev od "+todayStr+" nadalje. Ne pominji prošle datume kao budućnost.";
       if(hasDsPitanja)usrContent+="\n\nDODATNA PITANJA KLIJENTA (OBAVEZNO ODGOVORI NA SVAKO, BEZ IZUZETKA):\n"+ds.pitanja+"\n\nOdgovori na svako pitanje posebno, u sekciji 'Odgovori na tvoja pitanja'. Pitanja su SUSTINA ovog Downsell-a — bez odgovora na pitanja analiza je bezvredna. Koristi 'bice' i 'ce', nikad 'mozda'.";
       var dsName=ds.clientName.trim()||"";
+      try{var dsFacts=await buildPersonSignFacts(ds.pitanja||"",dsName,ds.clientBirthDate);if(dsFacts)usrContent+=dsFacts;}catch(eF){console.warn("ds astro facts:",eF.message);}
       var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
       var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)});
       var jobData=await resp.json();
@@ -1608,7 +1765,7 @@ export default function App(){
       jobs[dsKey]={id:jobData.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
-      startDsPoll(idx,dsJobId,dsName,dsPayload);
+      startDsPoll(idx,dsJobId,dsName,dsPayload,ds.pitanja||"");
     }catch(e){upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
@@ -1646,6 +1803,7 @@ export default function App(){
         "Sada odgovori na klijentova pitanja ispod, koristeci NOVE prognoze pocev od "+todayStr+" nadalje.\n\n"+
         "CLIENT QUESTIONS:\n"+pq.quest;
       var pqName=pq.clientName.trim()||"";
+      try{var pqFacts=await buildPersonSignFacts(pq.quest||"",pqName,pq.clientBirthDate);if(pqFacts)pqUsr+=pqFacts;}catch(eF){console.warn("pq astro facts:",eF.message);}
       var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
       var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)});
       var jobData=await resp.json();
@@ -1655,7 +1813,7 @@ export default function App(){
       var pqKey="pq"+(idx+1);
       jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
-      startPqPoll(idx,jobData.id,pqName,pqPayload);
+      startPqPoll(idx,jobData.id,pqName,pqPayload,pq.quest||"");
     }catch(e){upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
@@ -1697,6 +1855,34 @@ export default function App(){
 
   // TRANSLATE TO SERBIAN
   // POLL JOB STATUS
+  // Q&A post-validacija: broji pitanja klijenta vs odgovore u analizi.
+  // Sluzi kao defenzivna mreza kad AI preskoci neko pitanje.
+  function countClientQuestions(pitanjaText){
+    if(!pitanjaText)return 0;
+    var t=String(pitanjaText).trim();
+    // Primarno: broj '?' u tekstu klijenta
+    var qMarks=(t.match(/\?/g)||[]).length;
+    if(qMarks>0)return qMarks;
+    // Fallback: ako nema '?', broji recenice (split po .!?\n)
+    var sentences=t.split(/[.!?\n]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>5;});
+    return sentences.length;
+  }
+  function countAnswersInAnalysis(analysisText){
+    if(!analysisText)return 0;
+    var t=String(analysisText);
+    // Nadji pocetak Q&A sekcije (varijante zaglavlja)
+    var headerRe=/odgovori\s+na\s+(tvoja\s+)?pitanja/i;
+    var hMatch=t.match(headerRe);
+    if(!hMatch)return 0;
+    var start=hMatch.index+hMatch[0].length;
+    // Kraj sekcije: sledeci veliki naslov (Hvala/Zakljucak) ili kraj teksta
+    var rest=t.slice(start);
+    var endRe=/\n\s*(hvala\s+ti\s+puno|zakljucak|na\s+kraju|astrolog\s+(suzana|marija))/i;
+    var eMatch=rest.match(endRe);
+    var qaSection=eMatch?rest.slice(0,eMatch.index):rest;
+    return (qaSection.match(/\?/g)||[]).length;
+  }
+
   function pollJob(jobId,slotIdx,tabKey,meta){
     var interval=setInterval(async function(){
       try{
@@ -1722,6 +1908,23 @@ export default function App(){
           var jt=job.job_type||"analiza";
           if(jt==="analiza")finalText=applyClosing(finalText,"analiza",meta&&meta.isSinastrija);
           else if(jt==="pitanja")finalText=applyClosing(finalText,"pitanja");
+          // Defenzivna mreza: ako je klijent imao pitanja a AI je preskocio neka,
+          // dodaj jasan WARNING na pocetak teksta da astrolog vidi pre slanja klijentu.
+          try{
+            if(meta&&meta.pitanja&&meta.pitanja.trim().length>10){
+              var nQ=countClientQuestions(meta.pitanja);
+              var nA=countAnswersInAnalysis(finalText);
+              // Tolerancija: dozvoli 1 razliku (AI moze spojiti 2 srodna pitanja u 1 odgovor)
+              if(nQ>=2&&nA<nQ-1){
+                var warn="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nA+" od "+nQ+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja — moguce je da nedostaje neko pitanje.\n\n———\n\n";
+                finalText=warn+finalText;
+                console.warn("Q&A check: "+nA+"/"+nQ+" answered — warning prepended");
+                notifyOps("qa_skipped","AI preskocio pitanja: "+nA+"/"+nQ,{clientName:meta&&meta.clientName,jobId:jobId,pitanjaSnippet:String(meta&&meta.pitanja||"").slice(0,250)});
+              }else{
+                console.log("Q&A check: "+nA+"/"+nQ+" answered — OK");
+              }
+            }
+          }catch(qaErr){console.warn("Q&A validation error:",qaErr&&qaErr.message);}
           if(slotIdx!==null){
             upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:finalText,jobId:null});});
           }
