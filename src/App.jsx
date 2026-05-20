@@ -1625,7 +1625,7 @@ export default function App(){
   }
 
   // POMOCNI: pokreni polling za downsell job (koristi se i za inicijalni i za Gemini retry)
-  function startDsPoll(idx,jobId,dsName,originalPayload){
+  function startDsPoll(idx,jobId,dsName,originalPayload,questionsText){
     var dsKey="ds"+(idx+1);
     var dsInterval=setInterval(async function(){
       try{
@@ -1638,6 +1638,15 @@ export default function App(){
           clearInterval(dsInterval);
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
           var ft=fmtText(j.serbian_text||"");
+          try{
+            if(questionsText&&questionsText.trim().length>10){
+              var nQds=countClientQuestions(questionsText),nAds=countAnswersInAnalysis(ft);
+              if(nQds>=2&&nAds<nQds-1){
+                ft="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nAds+" od "+nQds+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja.\n\n———\n\n"+ft;
+                notifyOps("qa_skipped_downsell","Downsell preskocio pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText).slice(0,250)});
+              }
+            }
+          }catch(eQ){console.warn("DS Q&A check:",eQ&&eQ.message);}
           upDs(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
@@ -1652,7 +1661,7 @@ export default function App(){
             upDs(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"downsell",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -1663,7 +1672,7 @@ export default function App(){
   }
 
   // POMOCNI: pokreni polling za pitanja job (koristi se i za inicijalni i za Gemini retry)
-  function startPqPoll(idx,jobId,pqName,originalPayload){
+  function startPqPoll(idx,jobId,pqName,originalPayload,questionsText){
     var pqKey="pq"+(idx+1);
     var pqInterval=setInterval(async function(){
       try{
@@ -1676,6 +1685,15 @@ export default function App(){
           clearInterval(pqInterval);
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
           var ft=applyClosing(fmtText(j.serbian_text||""),"pitanja");
+          try{
+            if(questionsText&&questionsText.trim().length>10){
+              var nQpq=countClientQuestions(questionsText),nApq=(ft.match(/\?/g)||[]).length;
+              if(nQpq>=2&&nApq<nQpq-1){
+                ft="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nApq+" od "+nQpq+" pitanja klijenta. Proveri pre slanja — moguce je da nedostaje neko pitanje.\n\n———\n\n"+ft;
+                notifyOps("qa_skipped_pitanja","D.Pitanja preskocila pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText).slice(0,250)});
+              }
+            }
+          }catch(eQ){console.warn("PQ Q&A check:",eQ&&eQ.message);}
           upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
@@ -1690,7 +1708,7 @@ export default function App(){
             upPq(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"pitanja",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -1747,7 +1765,7 @@ export default function App(){
       jobs[dsKey]={id:jobData.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
-      startDsPoll(idx,dsJobId,dsName,dsPayload);
+      startDsPoll(idx,dsJobId,dsName,dsPayload,ds.pitanja||"");
     }catch(e){upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
@@ -1795,7 +1813,7 @@ export default function App(){
       var pqKey="pq"+(idx+1);
       jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
-      startPqPoll(idx,jobData.id,pqName,pqPayload);
+      startPqPoll(idx,jobData.id,pqName,pqPayload,pq.quest||"");
     }catch(e){upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
