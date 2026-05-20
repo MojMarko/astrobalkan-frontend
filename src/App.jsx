@@ -541,9 +541,36 @@ async function parseMsg(text,provider){
 // zameni koji datum ide uz koju osobu. Tekst je izvor istine.
 // Ako vise osoba dobije isti datum a u tekstu ima dovoljno DISTINKTIH datuma,
 // radi preraspodelu (greedy bipartite match) da svaka osoba dobije svoj datum.
+// Nadji poziciju imena u tekstu, TOLERANTNO na srpske padeze.
+// LLM vraca nominativ ("Marko"), a tekst cesto ima akuzativ/genitiv ("sina Marka",
+// "cerku Milicu"). Exact indexOf bi promasio i datum se ne bi vezao za osobu.
+// Strategija: prvo exact, pa koren imena (bez zavrsnog samoglasnika) + do 2 sufiksna slova.
+function findNamePos(rawLower,nameLower){
+  if(!rawLower||!nameLower)return -1;
+  var esc0=nameLower.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  // 1) tacno ime uz granicu reci + do 2 padezna slova (Marko, Markom). Granica
+  //    reci sprecava lazno poklapanje unutar duze reci (Ana unutar "Stefana").
+  try{
+    var reExact=new RegExp("\\b"+esc0+"[a-zčćđšž]{0,2}\\b");
+    var m0=reExact.exec(rawLower);
+    if(m0)return m0.index;
+  }catch(e){}
+  // 2) koren bez zavrsnog samoglasnika (Marko->Marka/Marku, Milica->Milicu)
+  var vowels="aeiou";
+  var stem=nameLower;
+  if(stem.length>2&&vowels.indexOf(stem.charAt(stem.length-1))>=0)stem=stem.slice(0,-1);
+  if(stem.length<2)return -1;
+  var esc=stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  try{
+    var re=new RegExp("\\b"+esc+"[a-zčćđšž]{0,2}\\b");
+    var mm=re.exec(rawLower);
+    return mm?mm.index:-1;
+  }catch(e){return -1;}
+}
 function bindDatesToNames(rawText,persons){
   if(!rawText||!persons||persons.length===0)return persons;
   var raw=String(rawText);
+  var rawLow=raw.toLowerCase();
   var dates=[];
   var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
   while((m=dRe.exec(raw))!==null){
@@ -560,7 +587,7 @@ function bindDatesToNames(rawText,persons){
   // Pass 1: per-osoba najblizi datum (bez constraints-a, prati LLM strategiju)
   persons.forEach(function(p){
     if(!p||!p.ime)return;
-    var ni=raw.toLowerCase().indexOf(String(p.ime).toLowerCase());
+    var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
     if(ni<0)return;
     var best=null,bestScore=Infinity;
     uniqDates.forEach(function(dt){
@@ -578,13 +605,13 @@ function bindDatesToNames(rawText,persons){
   var datumCounts={};
   persons.forEach(function(p){if(p&&p.datum)datumCounts[p.datum]=(datumCounts[p.datum]||0)+1;});
   var hasDup=Object.keys(datumCounts).some(function(k){return datumCounts[k]>1;});
-  var personsWithName=persons.filter(function(p){return p&&p.ime&&raw.toLowerCase().indexOf(String(p.ime).toLowerCase())>=0;});
+  var personsWithName=persons.filter(function(p){return p&&p.ime&&findNamePos(rawLow,String(p.ime).toLowerCase())>=0;});
   if(hasDup&&uniqDates.length>=personsWithName.length){
     console.warn("bindDatesToNames: duplikati detektovani, pokrecem preraspodelu");
     var pairs=[];
     persons.forEach(function(p,pi){
       if(!p||!p.ime)return;
-      var ni=raw.toLowerCase().indexOf(String(p.ime).toLowerCase());
+      var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
       if(ni<0)return;
       uniqDates.forEach(function(dt,di){
         var dist=Math.abs(dt.pos-ni);
@@ -1054,6 +1081,13 @@ export default function App(){
             var ctxBefore=s.paste.slice(Math.max(0,second.pos-60),second.pos);
             var nameMatches=ctxBefore.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/g);
             var partnerIme=nameMatches?nameMatches[nameMatches.length-1]:"";
+            // Fallback: ime moze biti POSLE datuma ("27.5.2006 Jelena") — uzmi prvu
+            // veliko-pisanu rec u 40 chars posle datuma (preskoci mesto ako je grad poznat)
+            if(!partnerIme){
+              var ctxAfter=s.paste.slice(second.pos+second.full.length,second.pos+second.full.length+40);
+              var afterMatch=ctxAfter.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/);
+              if(afterMatch)partnerIme=afterMatch[1];
+            }
             if(partnerIme){
               // Datum normalizacija
               var yr=second.year.length===2?(parseInt(second.year)<=30?"20"+second.year:"19"+second.year):second.year;
