@@ -673,6 +673,33 @@ async function parsePersonsFromPitanja(text){
     return arr;
   }catch(e){console.warn("parsePersonsFromPitanja error:",e.message);return [];}
 }
+// Deterministicki suncev znak iz datuma (izracunato u podne, mesto nebitno za Sunce).
+// Daleko pouzdanije nego da LLM racuna znak u glavi.
+function sunSignForDate(iso){
+  if(!iso||!/^\d{4}-\d{2}-\d{2}$/.test(iso))return "";
+  try{var c=calcChart(iso,"12:00",44.8176,20.4633,"Europe/Belgrade");return(c&&c.sunSign)||"";}catch(e){return "";}
+}
+// Sastavi blok TACNIH astroloskih podataka (suncev znak po osobi) za Downsell/Pitanja,
+// gde se karte inace ne racunaju pa LLM pogresno pogadja znak i mesa datume i osobe.
+async function buildPersonSignFacts(questionsText,clientName,clientBirthDate){
+  var lines=[];
+  var cn=(clientName||"").trim();
+  var seen={};
+  if(clientBirthDate&&/^\d{4}-\d{2}-\d{2}$/.test(clientBirthDate)){
+    var cs=sunSignForDate(clientBirthDate);
+    if(cs){lines.push("- Klijent"+(cn?" ("+cn+")":"")+", rodjen/a "+fmtDMYFromISO(clientBirthDate)+": Sunce u "+cs);seen[clientBirthDate]=true;}
+  }
+  try{
+    var persons=await parsePersonsFromPitanja(questionsText||"");
+    persons.forEach(function(p){
+      if(!p||!p.datum||seen[p.datum])return;
+      var s=sunSignForDate(p.datum);
+      if(s){lines.push("- "+(p.ime||"Osoba")+(p.odnos?" ("+p.odnos+")":"")+", rodjen/a "+fmtDMYFromISO(p.datum)+": Sunce u "+s);seen[p.datum]=true;}
+    });
+  }catch(e){console.warn("buildPersonSignFacts:",e.message);}
+  if(lines.length===0)return "";
+  return "\n\n*** TACNI ASTROLOSKI PODACI (izracunato precizno — koristi ISKLJUCIVO ove znakove) ***\nZa svaku osobu ispod naveden je TACAN suncev znak. Kada pominjes znak neke od ovih osoba, koristi TACNO ovaj znak. NIKADA ne racunaj znak sam i ne pogadjaj. Pazi koji datum pripada kojoj osobi — ne mesaj ih.\n"+lines.join("\n")+"\n";
+}
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
@@ -1709,6 +1736,7 @@ export default function App(){
         "Sada napisi NOVU prognozu počev od "+todayStr+" nadalje. Ne pominji prošle datume kao budućnost.";
       if(hasDsPitanja)usrContent+="\n\nDODATNA PITANJA KLIJENTA (OBAVEZNO ODGOVORI NA SVAKO, BEZ IZUZETKA):\n"+ds.pitanja+"\n\nOdgovori na svako pitanje posebno, u sekciji 'Odgovori na tvoja pitanja'. Pitanja su SUSTINA ovog Downsell-a — bez odgovora na pitanja analiza je bezvredna. Koristi 'bice' i 'ce', nikad 'mozda'.";
       var dsName=ds.clientName.trim()||"";
+      try{var dsFacts=await buildPersonSignFacts(ds.pitanja||"",dsName,ds.clientBirthDate);if(dsFacts)usrContent+=dsFacts;}catch(eF){console.warn("ds astro facts:",eF.message);}
       var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
       var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)});
       var jobData=await resp.json();
@@ -1757,6 +1785,7 @@ export default function App(){
         "Sada odgovori na klijentova pitanja ispod, koristeci NOVE prognoze pocev od "+todayStr+" nadalje.\n\n"+
         "CLIENT QUESTIONS:\n"+pq.quest;
       var pqName=pq.clientName.trim()||"";
+      try{var pqFacts=await buildPersonSignFacts(pq.quest||"",pqName,pq.clientBirthDate);if(pqFacts)pqUsr+=pqFacts;}catch(eF){console.warn("pq astro facts:",eF.message);}
       var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
       var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)});
       var jobData=await resp.json();
