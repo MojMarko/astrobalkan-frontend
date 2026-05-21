@@ -15,11 +15,14 @@ screenshotom. Kad si pokrenut povodom takvog issue-a, postupi ovako:
    Ako je problem na backendu, izmene guraj u `MojMarko/astrobalkan-backend`.
 3. **Popravi** minimalno i ciljano — ne refaktoriši okolo.
 4. **Proveri** sa `npm run build`. Build MORA da prođe.
-5. **Ako build prođe:** mergeuj na `main` (to deployuje na produkciju), ostavi
-   kratak komentar na issue-u šta je popravljeno, i zatvori issue.
-6. **Ako build padne, ili je problem nejasan / zahteva veliku izmenu / dira
-   naplatu/login/bazu:** NE mergeuj. Ostavi komentar sa nalazom i ostavi issue
-   otvoren da čovek pogleda.
+5. **Ako build prođe:** mergeuj na `main` (to deployuje na produkciju).
+6. **Označi prijavu rešenom** (samo ako si mergovao): pozovi
+   `POST https://astrobalkan-backend.onrender.com/api/reports/<ID_PRIJAVE>/status`
+   sa telom `{"status":"reseno","note":"<kratak opis šta je popravljeno>"}`.
+   Time se status u softveru prebaci na "Rešeno" i adminu stigne email.
+7. **Ako build padne, ili je problem nejasan / zahteva veliku izmenu / dira
+   naplatu/login/bazu:** NE mergeuj i NE označavaj rešenim. Otvori PR sa nalazom
+   i ostavi za ljudski pregled.
 
 Cilj: radnica dobije popravku bez čekanja na vlasnika, ali se rizične izmene ne
 deployuju automatski.
