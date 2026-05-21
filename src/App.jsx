@@ -367,17 +367,33 @@ function stripDataFromText(text,person){
 function extractTimesFromPaste(rawText){
   if(!rawText)return [];
   var times=[];
-  var re=/(\d{1,2}):(\d{2})(?:\s*[hH]\b)?(?:\s*(a\.?m\.?|p\.?m\.?|popodne|po\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\s+no[ćc]i|pre\s+podne))?/gi;
-  var m;
-  while((m=re.exec(rawText))!==null){
-    var h=parseInt(m[1],10),mn=parseInt(m[2],10);
-    if(h>23||mn>59)continue;
-    var marker=(m[3]||"").toLowerCase().replace(/\s+/g," ");
+  var markerGrp="(?:\\s*(a\\.?m\\.?|p\\.?m\\.?|popodne|po\\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\\s+no[ćc]i|pre\\s+podne))?";
+  function applyMarker(h,marker){
+    marker=(marker||"").toLowerCase().replace(/\s+/g," ");
     var pm=/^p\.?m\.?$/.test(marker)||/^(popodne|po podne|uvece|nave[čc]e|navece)$/.test(marker);
     var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne/.test(marker);
     if(pm){if(h!==12)h+=12;}
     else if(am){if(h===12)h=0;}
+    return h;
+  }
+  // 1) HH:MM (dvotacka)
+  var re=new RegExp("(\\d{1,2}):(\\d{2})(?:\\s*[hH]\\b)?"+markerGrp,"gi");
+  var m;
+  while((m=re.exec(rawText))!==null){
+    var h=parseInt(m[1],10),mn=parseInt(m[2],10);
+    if(h>23||mn>59)continue;
+    h=applyMarker(h,m[3]);
     times.push(String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0"));
+  }
+  // 2) HH.MM (tacka) — npr "18.30", "20.40". Tacka je i separator datuma, pa
+  // odbacujemo kandidata kome odmah sledi separator+cifra (deo datuma 17.10.1970 ili 20.08 1970).
+  var reDot=new RegExp("\\b(\\d{1,2})\\.(\\d{2})(?!\\d)(?![.\\/ ]\\d)(?:\\s*[hH]\\b)?"+markerGrp,"gi");
+  var md;
+  while((md=reDot.exec(rawText))!==null){
+    var hd=parseInt(md[1],10),mnd=parseInt(md[2],10);
+    if(hd>23||mnd>59)continue;
+    hd=applyMarker(hd,md[3]);
+    times.push(String(hd).padStart(2,"0")+":"+String(mnd).padStart(2,"0"));
   }
   if(times.length===0&&/u\s+pono[ćc]/i.test(rawText))times.push("00:00");
   // Fallback: "5 ujutru", "7 popodne", "u 3 nocu" - sat bez minuta + srpska/EN oznaka
@@ -1639,12 +1655,12 @@ export default function App(){
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
           var ft=fmtText(j.serbian_text||"");
           try{
-            if(questionsText&&questionsText.trim().length>10){
-              var nQds=countClientQuestions(questionsText),nAds=countAnswersInAnalysis(ft);
-              if(nQds>=2&&nAds<nQds-1){
-                ft="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nAds+" od "+nQds+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja.\n\n———\n\n"+ft;
-                notifyOps("qa_skipped_downsell","Downsell preskocio pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText).slice(0,250)});
-              }
+            // Tih signal (bez vidljive napomene radnici): broji SAMO eksplicitna pitanja sa '?'.
+            // Slobodan tekst sa datumima (17.10.1970 18.30...) ranije je davao lazne alarme.
+            var nQds=(String(questionsText||"").match(/\?/g)||[]).length;
+            var nAds=(ft.match(/\?/g)||[]).length;
+            if(nQds>=3&&nAds<nQds-1){
+              notifyOps("qa_skipped_downsell","Downsell moguce preskocena pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("DS Q&A check:",eQ&&eQ.message);}
           upDs(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
@@ -1686,12 +1702,13 @@ export default function App(){
           var jbs2=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
           var ft=applyClosing(fmtText(j.serbian_text||""),"pitanja");
           try{
-            if(questionsText&&questionsText.trim().length>10){
-              var nQpq=countClientQuestions(questionsText),nApq=(ft.match(/\?/g)||[]).length;
-              if(nQpq>=2&&nApq<nQpq-1){
-                ft="⚠ NAPOMENA ZA ASTROLOGA: AI je odgovorio na priblizno "+nApq+" od "+nQpq+" pitanja klijenta. Proveri pre slanja — moguce je da nedostaje neko pitanje.\n\n———\n\n"+ft;
-                notifyOps("qa_skipped_pitanja","D.Pitanja preskocila pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText).slice(0,250)});
-              }
+            // Tih signal (bez vidljive napomene radnici): broji SAMO eksplicitna pitanja sa '?'.
+            // Polje pitanja cesto sadrzi datume rodjenja (17.10.1970 18.30...) pa je brojanje
+            // recenica davalo lazne alarme tipa "0 od 13".
+            var nQpq=(String(questionsText||"").match(/\?/g)||[]).length;
+            var nApq=(ft.match(/\?/g)||[]).length;
+            if(nQpq>=3&&nApq<nQpq-1){
+              notifyOps("qa_skipped_pitanja","D.Pitanja moguce preskocena pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("PQ Q&A check:",eQ&&eQ.message);}
           upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
