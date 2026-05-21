@@ -823,57 +823,52 @@ export default function App(){
   useEffect(function(){try{localStorage.setItem("ab_slots",JSON.stringify(slots));}catch(e){}},[slots]);
   useEffect(function(){try{localStorage.setItem("ab_dsSlots",JSON.stringify(dsSlots));}catch(e){}},[dsSlots]);
   useEffect(function(){try{localStorage.setItem("ab_pqSlots",JSON.stringify(pqSlots));}catch(e){}},[pqSlots]);
-  // Resume polling ako neki slot jos uvek ima status "generating" posle restart-a app-a
+  // Resume polling ako neki slot jos uvek ima status "generating" posle restart-a app-a.
+  // KRITICNO: ne jednokratni fetch nego KONTINUIRANA petlja — ako je posao jos u obradi,
+  // petlja nastavlja da proverava dok ne dobije done/error. Gornja granica (MAX) sprecava
+  // vecno visenje "Generisem u pozadini..." kad je backend posao osirotio (server restart).
   useEffect(function(){
+    var MAX_RESUME_POLLS=440; // ~22 min na 3s interval
+    function resumeLoop(jobId,onDone,onError,label){
+      var n=0;
+      var iv=setInterval(async function(){
+        n++;
+        if(n>MAX_RESUME_POLLS){
+          clearInterval(iv);
+          onError("Generisanje je predugo trajalo i verovatno je prekinuto (server). Klikni Generiši ponovo.");
+          return;
+        }
+        try{
+          var resp=await fetch(API+"/api/generate/"+jobId);
+          if(!resp.ok)return;
+          var job=await resp.json();
+          if(job.status==="done"){clearInterval(iv);onDone(fmtText(job.serbian_text||""));}
+          else if(job.status==="error"){clearInterval(iv);onError(job.serbian_text||"Greska pri generisanju.");}
+        }catch(e){console.warn("Resume "+label+" poll error:",e.message);}
+      },3000);
+    }
     slots.forEach(function(s,idx){
       if(s&&s.status==="generating"&&s.jobId){
-        (async function(){
-          try{
-            var resp=await fetch(API+"/api/generate/"+s.jobId);
-            if(!resp.ok)return;
-            var job=await resp.json();
-            if(job.status==="done"){
-              var finalText=fmtText(job.serbian_text||"");
-              upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:finalText,jobId:null});});
-            }else if(job.status==="error"){
-              upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:job.serbian_text||"Greska pri generisanju."});});
-            }
-          }catch(e){console.warn("Resume A"+(idx+1)+" failed:",e.message);}
-        })();
+        resumeLoop(s.jobId,
+          function(t){upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:t,jobId:null});});},
+          function(t){upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:t,jobId:null});});},
+          "A"+(idx+1));
       }
     });
     dsSlots.forEach(function(s,idx){
       if(s&&s.st==="generating"&&s.jobId){
-        (async function(){
-          try{
-            var resp=await fetch(API+"/api/generate/"+s.jobId);
-            if(!resp.ok)return;
-            var job=await resp.json();
-            if(job.status==="done"){
-              var ft=fmtText(job.serbian_text||"");
-              upDs(idx,function(cur){return Object.assign({},cur,{an:ft,st:"done",jobId:null});});
-            }else if(job.status==="error"){
-              upDs(idx,function(cur){return Object.assign({},cur,{an:job.serbian_text||"Greska.",st:"done"});});
-            }
-          }catch(e){console.warn("Resume DS"+(idx+1)+" failed:",e.message);}
-        })();
+        resumeLoop(s.jobId,
+          function(t){upDs(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null});});},
+          function(t){upDs(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null});});},
+          "DS"+(idx+1));
       }
     });
     pqSlots.forEach(function(s,idx){
       if(s&&s.st==="generating"&&s.jobId){
-        (async function(){
-          try{
-            var resp=await fetch(API+"/api/generate/"+s.jobId);
-            if(!resp.ok)return;
-            var job=await resp.json();
-            if(job.status==="done"){
-              var ft=fmtText(job.serbian_text||"");
-              upPq(idx,function(cur){return Object.assign({},cur,{an:ft,st:"done",jobId:null});});
-            }else if(job.status==="error"){
-              upPq(idx,function(cur){return Object.assign({},cur,{an:job.serbian_text||"Greska.",st:"done"});});
-            }
-          }catch(e){console.warn("Resume Pq"+(idx+1)+" failed:",e.message);}
-        })();
+        resumeLoop(s.jobId,
+          function(t){upPq(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null});});},
+          function(t){upPq(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null});});},
+          "Pq"+(idx+1));
       }
     });
   },[]);
@@ -1110,28 +1105,43 @@ export default function App(){
           toast2("⚠ Paste "+why+" ali parser je vratio samo jednu osobu. Proveri rucno i dodaj partnera ako treba.");
           notifyOps("partner_missing","Parser vratio jednu osobu, paste "+why,{pasteSnippet:String(s.paste).slice(0,250),dateMatchCount:dateMatches.length,klijent:p.klijent&&p.klijent.ime});
         }
-        var partnerMissing=dateMatches.length>=2&&!p.imaPartnera&&(!p.partner||!p.partner.datum);
+        // Partner datum fali ako ima 2+ datuma a parser nije popunio partner.datum
+        // (bez obzira na imaPartnera — AI ponekad postavi imaPartnera=true ali ostavi datum prazan).
+        var partnerMissing=dateMatches.length>=2&&(!p.partner||!p.partner.datum);
         if(partnerMissing){
           // Pokušaj automatske ekstrakcije: 2. datum + ime/mesto u kontekstu
           var second=dateMatches[1];
           // Provera: da li kontekst sadrži familijske reči (sin/cerka/brat itd) - ako da, NE auto-popunjavaj kao partnera
           var ctxAround=s.paste.slice(Math.max(0,second.pos-80),second.pos+80);
           var isFamily=/\b(sin|sina|sinu|cerka|kcerka|kci|cerku|cerki|brat|brata|sestra|sestre|sestri|tata|otac|oca|ocu|mama|majka|majke|baba|deda|dete|deca|unuk|unuka|tetka|ujak|stric|prijatelj|prijateljica|kolega|koleginica)\b/i.test(ctxAround);
+          var PARTNER_W=/\b(partner|partnera|partnerka|muz|muža|muza|žena|zena|suprug|supruga|decko|dečko|devojka|verenik|verenica|momak|dragi|draga|bivši|bivsi|bivša|bivsa)\b/i;
           if(isFamily){
             toast2("⚠ Detektovana 2+ osobe ali izgleda da su porodica - proveri ručno.");
           }else{
-            // Ime: pronadji veliko-pisanu rec u 60 chars pre 2. datuma
-            var ctxBefore=s.paste.slice(Math.max(0,second.pos-60),second.pos);
-            var nameMatches=ctxBefore.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/g);
-            var partnerIme=nameMatches?nameMatches[nameMatches.length-1]:"";
-            // Fallback: ime moze biti POSLE datuma ("27.5.2006 Jelena") — uzmi prvu
-            // veliko-pisanu rec u 40 chars posle datuma (preskoci mesto ako je grad poznat)
-            if(!partnerIme){
-              var ctxAfter=s.paste.slice(second.pos+second.full.length,second.pos+second.full.length+40);
-              var afterMatch=ctxAfter.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/);
-              if(afterMatch)partnerIme=afterMatch[1];
+            // Ime: pronadji veliko-pisanu rec u 60 chars pre 2. datuma (preskoci stop-reci kao "Moj"/"Ja"/"Prvi")
+            var STOP=/^(moj|moja|moje|moji|mojom|mojim|mojem|ja|mi|on|ona|sa|za|sad|sada|prvi|drugi|treci|treći|prva|druga|treca|treća|ako|moze|može|sam|mene|meni|imam|uporedi|uporedni|uporedno|uporednu|poredi|poredjenje|poređenje)$/i;
+            // ctxBefore: ograniceno na tekuci red (da ne pokupi ime klijenta iz prethodnog reda)
+            var bLineStart=s.paste.lastIndexOf("\n",second.pos-1)+1;
+            var ctxBefore=s.paste.slice(Math.max(bLineStart,second.pos-60),second.pos);
+            var ctxAfter=s.paste.slice(second.pos+second.full.length,second.pos+second.full.length+40);
+            // Ako je rec "partner"/"muz"/itd. NEPOSREDNO ispred datuma, partner je oznacen ULOGOM
+            // (npr. "prvi partner 27.07.1978") — datum je validan, ime ostaje prazno.
+            // U tom slucaju NE gledamo posle datuma (tamo je obicno glagol: "Uporedi...").
+            var partnerWordBefore=PARTNER_W.test(ctxBefore);
+            // Ime ISPRED datuma uvek probamo (rec "muz"/"partner" je mala slova pa se ne hvata kao ime;
+            // "muz Marko 20.03.1990" -> ime "Marko"; "prvi partner 27.07.1978" -> nema imena -> "").
+            var nameMatches=(ctxBefore.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/g)||[]).filter(function(n){return !STOP.test(n);});
+            var partnerIme=nameMatches.length?nameMatches[nameMatches.length-1]:"";
+            // Ime POSLE datuma ("27.5.2006 Jelena") trazimo SAMO kad uloga NIJE oznacena ispred datuma —
+            // jer posle "prvi partner DATUM" obicno sledi glagol ("Uporedi..."), ne ime.
+            if(!partnerIme&&!partnerWordBefore){
+              var afterMatches=(ctxAfter.match(/\b([A-ZČĆĐŠŽ][a-zčćđšž]+)\b/g)||[]).filter(function(n){return !STOP.test(n);});
+              if(afterMatches.length)partnerIme=afterMatches[0];
             }
-            if(partnerIme){
+            var partnerWordNear=partnerWordBefore||PARTNER_W.test(ctxAfter);
+            // Popuni partnera ako imamo ime ILI je u blizini eksplicitna rec "partner"/"muz"/itd.
+            // (slucaj "prvi partner 27.07.1978" — datum bez imena je i dalje validan partner)
+            if(partnerIme||partnerWordNear){
               // Datum normalizacija
               var yr=second.year.length===2?(parseInt(second.year)<=30?"20"+second.year:"19"+second.year):second.year;
               var mm=second.month.length===1?"0"+second.month:second.month;
@@ -1143,8 +1153,11 @@ export default function App(){
               var partnerLine=s.paste.slice(lnStart,lnEnd);
               var partnerVreme=(extractTimesFromPaste(partnerLine)[0])||"";
               p.imaPartnera=true;
-              p.partner=Object.assign({ime:partnerIme,datum:partnerDatum,vreme:partnerVreme,mesto:"",zemlja:""},p.partner||{});
-              toast2("✓ Partner "+partnerIme+" automatski dodat (parser ga je propustio)");
+              // Postojeci partner objekat (ako ga je AI vratio) ima prednost za ime/mesto, ali datum FORSIRAMO
+              p.partner=Object.assign({ime:partnerIme,vreme:partnerVreme,mesto:"",zemlja:""},p.partner||{},{datum:partnerDatum});
+              if(!p.partner.ime)p.partner.ime=partnerIme;
+              if(!p.partner.vreme&&partnerVreme)p.partner.vreme=partnerVreme;
+              toast2("✓ Partner"+(p.partner.ime?" "+p.partner.ime:"")+" automatski dodat (datum "+dd+"."+mm+"."+yr+")");
             }else{
               toast2("⚠ Detektovana 2+ osobe - parser je vratio samo jednu. Proveri ručno.");
             }
@@ -1901,11 +1914,23 @@ export default function App(){
   }
 
   function pollJob(jobId,slotIdx,tabKey,meta){
+    var pollCount=0;
+    var MAX_POLLS=440; // ~22 min na 3s interval — granica da posao ne visi vecno
     var interval=setInterval(async function(){
       try{
         // Check if job already completed (prevent duplicate saves)
         var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
         if(tabKey&&!jobs[tabKey]){clearInterval(interval);return;}
+        pollCount++;
+        if(pollCount>MAX_POLLS){
+          clearInterval(interval);
+          var jbsT=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+          if(tabKey)delete jbsT[tabKey];
+          localStorage.setItem("activeJobs",JSON.stringify(jbsT));
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:"Generisanje je predugo trajalo i verovatno je prekinuto (server). Klikni Generiši ponovo."});});
+          toast2("Generisanje je predugo trajalo — pokušaj ponovo.");
+          return;
+        }
 
         var resp=await fetch(API+"/api/generate/"+jobId);
         if(!resp.ok)return;
