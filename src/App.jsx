@@ -805,6 +805,12 @@ export default function App(){
   var [lerr,setLerr]=useState(""); var [lsuc,setLsuc]=useState("");
   var [showCtr,setShowCtr]=useState(false);
   var [tab,setTab]=useState("a1");
+  // Prijava problema (radnice)
+  var [repDesc,setRepDesc]=useState("");
+  var [repImg,setRepImg]=useState(null);
+  var [repScreen,setRepScreen]=useState("");
+  var [repSending,setRepSending]=useState(false);
+  var [repList,setRepList]=useState([]);
   // Persist slots to localStorage tako da ne nestanu kad korisnik zatvori app
   function loadSlots(key,fallback){try{var raw=localStorage.getItem(key);if(!raw)return fallback;var parsed=JSON.parse(raw);if(Array.isArray(parsed)&&parsed.length===fallback.length)return parsed;return fallback;}catch(e){return fallback;}}
   var emptyDs={paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};
@@ -948,11 +954,58 @@ export default function App(){
   },[]);
 
   useEffect(function(){
+    if(tab==="prijava"&&user&&user.role==="admin") loadReports();
+  },[tab]);
+
+  useEffect(function(){
     if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
     if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients();
   },[tab]);
 
   function toast2(m){setToast(m);setTimeout(function(){setToast("");},3000);}
+  // Prijava problema: smanji sliku (max 1280px, JPEG ~0.8) pre slanja — telefonske slike su velike
+  function handleRepImage(file){
+    if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var img=new Image();
+      img.onload=function(){
+        var max=1280,w=img.width,h=img.height;
+        if(w>max||h>max){if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+        try{
+          var cv=document.createElement("canvas");cv.width=w;cv.height=h;
+          cv.getContext("2d").drawImage(img,0,0,w,h);
+          setRepImg(cv.toDataURL("image/jpeg",0.8));
+        }catch(e){setRepImg(ev.target.result);} // fallback: original
+      };
+      img.onerror=function(){setRepImg(ev.target.result);};
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  async function submitReport(){
+    if(!repDesc.trim()){toast2("Napiši kratko šta je problem.");return;}
+    setRepSending(true);
+    try{
+      var body={description:repDesc.trim(),reporter_email:(user&&user.email)||"",reporter_name:(user&&user.name)||"",screen:repScreen||"",image:repImg||null};
+      var r=await fetch(API+"/api/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      var d=await r.json();
+      if(!r.ok||!d.ok)throw new Error((d&&d.error)||"Greška pri slanju");
+      setRepDesc("");setRepImg(null);setRepScreen("");
+      toast2("✓ Prijava poslata! Javiću se čim rešim.");
+      if(user&&user.role==="admin")loadReports();
+    }catch(e){toast2("Greška: "+(e.message||"pokušaj ponovo"));}
+    setRepSending(false);
+  }
+  async function loadReports(){
+    try{var r=await fetch(API+"/api/reports");var d=await r.json();setRepList(d.reports||[]);}catch(e){console.warn("loadReports:",e.message);}
+  }
+  async function markReport(id,status){
+    try{
+      await fetch(API+"/api/reports/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:status})});
+      setRepList(function(prev){return prev.map(function(x){return x.id===id?Object.assign({},x,{status:status}):x;});});
+    }catch(e){toast2("Greška: "+e.message);}
+  }
   function upSlot(i,fn){setSlots(function(p){return p.map(function(s,j){return j===i?fn(s):s;});});}
   var country=(user&&user.country)||"sr";
   function getPr(type){var cp=custPr[country];return(cp&&cp[type])||(country==="hr"?(type==="main"?PR_HR_MAIN:PR_HR_DS):(type==="main"?PR_SR_MAIN:PR_SR_DS));}
@@ -2430,7 +2483,8 @@ export default function App(){
   var navItems=[
     {id:"a1",l:"Analiza 1",icon:"\u2726"},{id:"a2",l:"Analiza 2",icon:"\u2726"},{id:"a3",l:"Analiza 3",icon:"\u2726"},{id:"baza",l:"Baza",icon:"\uD83D\uDCC1"},
     {id:"downsell1",l:"Downsell 1",icon:"\u21BB"},{id:"downsell2",l:"Downsell 2",icon:"\u21BB"},{id:"downsell3",l:"Downsell 3",icon:"\u21BB"},{id:"prompt",l:"Prompt",icon:"\u2699"},
-    {id:"pitanja1",l:"D. Pitanja 1",icon:"\u2753"},{id:"pitanja2",l:"D. Pitanja 2",icon:"\u2753"},{id:"pitanja3",l:"D. Pitanja 3",icon:"\u2753"}
+    {id:"pitanja1",l:"D. Pitanja 1",icon:"\u2753"},{id:"pitanja2",l:"D. Pitanja 2",icon:"\u2753"},{id:"pitanja3",l:"D. Pitanja 3",icon:"\u2753"},
+    {id:"prijava",l:"Prijavi problem",icon:"\ud83d\udce3"}
   ];
   if(user.role==="admin")navItems.push({id:"admin",l:"Admin",icon:"\uD83D\uDC64"});
 
@@ -2744,6 +2798,54 @@ export default function App(){
                 React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"1px"}},u.email)
               ),
               u.id!==(user&&user.id)&&React.createElement("button",{className:"btn bsm brd",onClick:function(){deleteAdminUser(u.id);}},"Ukloni")
+            );
+          })
+        )
+      ),
+
+      // PRIJAVA PROBLEMA
+      tab==="prijava"&&React.createElement("div",{className:"sec"},
+        React.createElement("div",{className:"stitle"},"📣 Prijavi problem"),
+        React.createElement("div",{className:"card card-hi"},
+          React.createElement("div",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:1.5,marginBottom:"12px"}},"Opiši šta ne radi i (najbolje) zakači screenshot. Prijava stiže direktno na rešavanje — javićemo se čim sredimo."),
+          React.createElement("div",{className:"fld"},
+            React.createElement("label",null,"Gde se desio problem? (opciono)"),
+            React.createElement("select",{className:"sel-input",value:repScreen,onChange:function(e){setRepScreen(e.target.value);}},
+              React.createElement("option",{value:""},"— izaberi —"),
+              ["Analiza 1","Analiza 2","Analiza 3","Downsell","D. Pitanja","Baza","Prompt","Prijava/drugo"].map(function(o){return React.createElement("option",{key:o,value:o},o);})
+            )
+          ),
+          React.createElement("div",{className:"fld"},
+            React.createElement("label",null,"Opis problema"),
+            React.createElement("textarea",{value:repDesc,onChange:function(e){setRepDesc(e.target.value);},placeholder:"Npr. Unela sam vreme 18.30 ali ne računa podznak...",style:{minHeight:"110px"}})
+          ),
+          React.createElement("div",{className:"fld"},
+            React.createElement("label",null,"Screenshot (slika ekrana)"),
+            React.createElement("input",{type:"file",accept:"image/*",onChange:function(e){handleRepImage(e.target.files&&e.target.files[0]);},style:{fontSize:"12px",color:"var(--mt)",width:"100%"}})
+          ),
+          repImg&&React.createElement("div",{style:{marginBottom:"10px"}},
+            React.createElement("img",{src:repImg,style:{maxWidth:"100%",borderRadius:"8px",border:"1px solid var(--bd)"}}),
+            React.createElement("button",{className:"btn bol bsm",style:{marginTop:"6px"},onClick:function(){setRepImg(null);}},"Ukloni sliku")
+          ),
+          React.createElement("button",{className:"btn bgd bfull",style:{marginTop:"6px"},onClick:submitReport,disabled:repSending||!repDesc.trim()},
+            repSending?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Šaljem..."):"Pošalji prijavu")
+        ),
+        user&&user.role==="admin"&&React.createElement("div",{style:{marginTop:"18px"}},
+          React.createElement("div",{className:"ct"},"Prijave ("+repList.length+")"),
+          repList.length===0&&React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"📭"),"Još nema prijava."),
+          repList.map(function(rp){
+            return React.createElement("div",{key:rp.id,className:"card",style:{borderColor:rp.status==="reseno"?"rgba(96,176,96,.35)":"var(--bd)"}},
+              React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"5px"}},
+                React.createElement("span",{style:{fontSize:"12px",color:"var(--gd2)",fontWeight:600}},(rp.reporter_name||"radnica")+(rp.screen?" · "+rp.screen:"")),
+                React.createElement("span",{className:"slst "+(rp.status==="reseno"?"stdone":"strun")},rp.status==="reseno"?"Rešeno":"Novo")
+              ),
+              React.createElement("div",{style:{fontSize:"12px",color:"var(--tx)",lineHeight:1.5,whiteSpace:"pre-wrap"}},rp.description),
+              rp.image_url&&React.createElement("a",{href:rp.image_url,target:"_blank",rel:"noopener",style:{display:"inline-block",marginTop:"6px"}},React.createElement("img",{src:rp.image_url,style:{maxWidth:"160px",borderRadius:"6px",border:"1px solid var(--bd)"}})),
+              React.createElement("div",{style:{display:"flex",gap:"6px",marginTop:"8px",alignItems:"center",flexWrap:"wrap"}},
+                rp.github_issue_url&&React.createElement("a",{href:rp.github_issue_url,target:"_blank",rel:"noopener",className:"btn bol bsm"},"GitHub"),
+                React.createElement("button",{className:"btn bsm "+(rp.status==="reseno"?"bol":"bgd"),onClick:function(){markReport(rp.id,rp.status==="reseno"?"novo":"reseno");}},rp.status==="reseno"?"Vrati u Novo":"Označi rešeno"),
+                React.createElement("span",{style:{fontSize:"10px",color:"var(--mt)",marginLeft:"auto"}},rp.created_at?new Date(rp.created_at).toLocaleString("sr-RS"):"")
+              )
             );
           })
         )
