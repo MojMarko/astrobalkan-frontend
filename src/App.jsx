@@ -808,7 +808,7 @@ export default function App(){
   // Prijava problema (radnice)
   var [repDesc,setRepDesc]=useState("");
   var [repImg,setRepImg]=useState(null);
-  var [repScreen,setRepScreen]=useState("");
+  var [repScreens,setRepScreens]=useState([]);
   var [repSending,setRepSending]=useState(false);
   var [repList,setRepList]=useState([]);
   // Persist slots to localStorage tako da ne nestanu kad korisnik zatvori app
@@ -987,11 +987,11 @@ export default function App(){
     if(!repDesc.trim()){toast2("Napiši kratko šta je problem.");return;}
     setRepSending(true);
     try{
-      var body={description:repDesc.trim(),reporter_email:(user&&user.email)||"",reporter_name:(user&&user.name)||"",screen:repScreen||"",image:repImg||null};
+      var body={description:repDesc.trim(),reporter_email:(user&&user.email)||"",reporter_name:(user&&user.name)||"",screen:repScreens.join(", "),image:repImg||null};
       var r=await fetch(API+"/api/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       var d=await r.json();
       if(!r.ok||!d.ok)throw new Error((d&&d.error)||"Greška pri slanju");
-      setRepDesc("");setRepImg(null);setRepScreen("");
+      setRepDesc("");setRepImg(null);setRepScreens([]);
       toast2("✓ Prijava poslata! Javiću se čim rešim.");
       if(user&&user.role==="admin")loadReports();
     }catch(e){toast2("Greška: "+(e.message||"pokušaj ponovo"));}
@@ -2809,10 +2809,14 @@ export default function App(){
         React.createElement("div",{className:"card card-hi"},
           React.createElement("div",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:1.5,marginBottom:"12px"}},"Opiši šta ne radi i (najbolje) zakači screenshot. Prijava stiže direktno na rešavanje — javićemo se čim sredimo."),
           React.createElement("div",{className:"fld"},
-            React.createElement("label",null,"Gde se desio problem? (opciono)"),
-            React.createElement("select",{className:"sel-input",value:repScreen,onChange:function(e){setRepScreen(e.target.value);}},
-              React.createElement("option",{value:""},"— izaberi —"),
-              ["Analiza 1","Analiza 2","Analiza 3","Downsell","D. Pitanja","Baza","Prompt","Prijava/drugo"].map(function(o){return React.createElement("option",{key:o,value:o},o);})
+            React.createElement("label",null,"Gde se desio problem? (možeš označiti više)"),
+            React.createElement("div",{className:"tabs"},
+              ["Analiza 1","Analiza 2","Analiza 3","Downsell","D. Pitanja","Baza","Prompt","Drugo"].map(function(o){
+                var on=repScreens.indexOf(o)>=0;
+                return React.createElement("button",{key:o,type:"button",className:"tab "+(on?"on":""),onClick:function(){
+                  setRepScreens(function(prev){return prev.indexOf(o)>=0?prev.filter(function(x){return x!==o;}):prev.concat([o]);});
+                }},(on?"✓ ":"")+o);
+              })
             )
           ),
           React.createElement("div",{className:"fld"},
