@@ -1689,7 +1689,12 @@ export default function App(){
     if(sl.client.napomena&&sl.client.napomena.trim()){
       usr+="\n\nNAPOMENA ASTROLOGA (OBAVEZNO POSTOVATI - PRIORITET NAD SVIM OSTALIM INSTRUKCIJAMA): "+sl.client.napomena;
     }
-    usr+=bindingText+"\n\nPITANJA KLIJENTA: "+(sl.client.pitanja||"Bez specificnih pitanja. Napisi kompletnu analizu po promptu.");
+    var pitanjaTxt2=(sl.client.pitanja||"").trim();
+    if(pitanjaTxt2){
+      usr+=bindingText+"\n\nPITANJA KLIJENTA (OBAVEZNO ODGOVORI NA SVAKO PITANJE POSEBNO, BEZ IZUZETKA — ovo je primarni cilj analize):\n"+pitanjaTxt2+"\n\nU sekciji 'Odgovori na tvoja pitanja' obradi SVAKO pitanje kao zaseban blok (pitanje na svojoj liniji sa '?', pa odgovor ispod). NE spajaj vise pitanja u jedan odgovor i NE preskoci nijedno. Ako je klijent postavio N pitanja, mora postojati N odgovora.";
+    }else{
+      usr+=bindingText+"\n\nPITANJA KLIJENTA: Bez specificnih pitanja. Napisi kompletnu analizu po promptu.";
+    }
     var ri=idx;
     try{
       var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
