@@ -1216,6 +1216,10 @@ export default function App(){
             }
           }
         }
+        // Ako je datum partnera prepoznat ali parser nije podigao imaPartnera
+        // (npr. "prvi partner / drugi partner" zbune AI), tretiraj kao da partner
+        // postoji — inace bi se podaci o partneru ispod tiho odbacili.
+        if(!p.imaPartnera&&p.partner&&p.partner.datum)p.imaPartnera=true;
         // Detektuj vreme u sirovom paste-u ali parser nije izvukao
         var pasteHasTime=/\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(am|pm|h\b|sati|časova|casova|popodne|ujutru|uvece|nocu|noću)\b/i.test(s.paste);
         if(pasteHasTime&&p.klijent&&!p.klijent.vreme){
