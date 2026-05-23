@@ -2820,7 +2820,7 @@ export default function App(){
           React.createElement("div",{className:"fld"},
             React.createElement("label",null,"Gde se desio problem? (možeš označiti više)"),
             React.createElement("div",{className:"tabs"},
-              ["Analiza 1","Analiza 2","Analiza 3","Downsell","D. Pitanja","Baza","Prompt","Drugo"].map(function(o){
+              ["Analiza 1","Analiza 2","Analiza 3","Downsell 1","Downsell 2","Downsell 3","Dodatna pitanja 1","Dodatna pitanja 2","Dodatna pitanja 3","Baza","Prompt","Drugo"].map(function(o){
                 var on=repScreens.indexOf(o)>=0;
                 return React.createElement("button",{key:o,type:"button",className:"tab "+(on?"on":""),onClick:function(){
                   setRepScreens(function(prev){return prev.indexOf(o)>=0?prev.filter(function(x){return x!==o;}):prev.concat([o]);});
