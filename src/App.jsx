@@ -665,7 +665,7 @@ async function parsePersonsFromPitanja(text){
   if(!text||text.trim().length<10)return [];
   var systemPrompt=`Iz poruke izvuci listu svih osoba koje su pomenute SA BAREM DATUMOM RODJENJA. Vrati SAMO JSON niz, bez ikakvog teksta oko njega.\n\nFormat: [{"ime":"","odnos":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""}, ...]\n\nPRAVILA:\n1. "ime" je ime osobe (Marko, Milica, Ana...).\n2. "odnos" je tip odnosa: 'sin', 'cerka', 'brat', 'sestra', 'tata', 'mama', 'muz', 'zena', 'partner', 'bivsi partner', 'prijatelj', 'tetka', 'ujak', 'kolega', 'unuk', 'unuka' itd. Ako odnos nije jasan iz teksta, ostavi prazan string "".\n3. "datum" mora biti YYYY-MM-DD format. Ako u tekstu pise "12.05.2018" konvertuj u "2018-05-12".\n4. "vreme" je opcionalno. Ako je u tekstu pomenuto vreme rodjenja (npr. "u 14:30", "10.40", "u podne") konvertuj u HH:MM. Ako nije pomenuto, ostavi prazan string "". KRITICNO AM/PM PRAVILO: '12:XX AM' = 00:XX (ponoc), '12:XX PM' = 12:XX (podne), 'X:XX PM' (X=1-11) → dodaj 12 na sat (5:30 PM = 17:30), 'X:XX AM' (X=1-11) ostaje uz zero-padding (5:30 AM = 05:30). Srpske oznake: 'popodne'/'uvece' = PM, 'ujutru'/'nocu' = AM, 'u ponoc' = 00:00, 'u podne' = 12:00. NIKAD 00:XX ne pretvaraj u 12:XX.\n5. "mesto" je opcionalno. Ako je u tekstu pomenut grad rodjenja (npr. "Beograd", "Novi Sad"), zapisi ga. Ako nije pomenuto, ostavi prazan string "".\n6. UKLJUCI svakoga sa datumom rodjenja, BEZ obzira na odnos.\n7. NE UKLJUCUJ osobe koje nemaju datum rodjenja u tekstu (npr. "muz mi je bolestan" bez datuma — preskoci).\n8. Ako nema nikoga sa datumom, vrati prazan niz [].\n\n*** KRITICNO - NE MESAJ IMENA I DATUME ***\nSvako ime MORA da ostane vezano za datum koji se u tekstu pojavljuje NAJBLIZE tom imenu (skoro uvek odmah posle imena). Ako tekst kaze "Katarina 2.1.2010 ... Milena 4.5.2010", onda je Katarina=2010-01-02 i Milena=2010-05-04 — NIKADA obrnuto. POGRESNO bi bilo vratiti Katarinu sa 2010-05-04. Pre nego sto vratis JSON, proveri za svako ime da je dobilo datum koji mu je u tekstu najblizi.\n\nPRIMERI:\n\nUnos: "Imam sina Marka 12.05.2018 14:30 Beograd, kakav je?"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"}]\n\nUnos: "Cerka Milica 10.05.1993, sestra Dragica 14.12.1975"\nIzlaz: [{"ime":"Milica","odnos":"cerka","datum":"1993-05-10","vreme":"","mesto":""},{"ime":"Dragica","odnos":"sestra","datum":"1975-12-14","vreme":"","mesto":""}]\n\nUnos: "Marko 12.05.2018 14:30 Beograd\\nMilica 03.09.2020 09:15 Novi Sad"\nIzlaz: [{"ime":"Marko","odnos":"","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"},{"ime":"Milica","odnos":"","datum":"2020-09-03","vreme":"09:15","mesto":"Novi Sad"}]\n\nUnos: "muza mi se nesto desilo, brine me kako mu je"\nIzlaz: []\n\nUnos: "Imam dvoje dece, sina Marka 5.7.2018 i cerku Anu 3.9.2020 oboje rodjeni u Beogradu"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-07-05","vreme":"","mesto":"Beograd"},{"ime":"Ana","odnos":"cerka","datum":"2020-09-03","vreme":"","mesto":"Beograd"}]\n\nVAZNO: Vrati SAMO JSON niz, bez markdown formatiranja, bez komentara. Ako nema nikoga vrati [].`;
   try{
-    var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:systemPrompt,messages:[{role:"user",content:text}],max_tokens:2000})});
+    var resp=await fetchWithRetry(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:systemPrompt,messages:[{role:"user",content:text}],max_tokens:2000})});
     var j=await resp.json();
     var t=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
     t=t.replace(/```json|```/g,"").trim();
@@ -720,6 +720,29 @@ async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
 
 var API="https://astrobalkan-backend.onrender.com";
+
+// Retry helper: "Failed to fetch" se desava cesto na mobilnom 4G kad mreza zatrepere.
+// Ranije: jedan blip = radnica vidi "Greska: Failed to fetch" i mora opet sve.
+// Sada: automatski 3 pokusaja sa kratkim backoff-om (1s, 2s) na mreznim/5xx greskama.
+// Ne retrira 4xx (klijent greska, npr. 400 invalid input - tu retry nema smisla).
+async function fetchWithRetry(url, options, attempts){
+  attempts = attempts || 3;
+  var lastErr;
+  for(var i=0; i<attempts; i++){
+    try{
+      var r = await fetch(url, options);
+      if(r.ok) return r;
+      if(r.status >= 400 && r.status < 500) return r; // klijent greska - ne retriraj
+      lastErr = new Error("HTTP " + r.status);
+    }catch(e){
+      lastErr = e; // network error (TypeError "Failed to fetch") - retriraj
+    }
+    if(i < attempts - 1){
+      await new Promise(function(res){setTimeout(res, 1000 * (i + 1));});
+    }
+  }
+  throw lastErr;
+}
 
 // Ops alerting: kad god defenzivna mreza okine u browseru (preskoceno pitanje,
 // partner propusten, duplikat datuma) — javi backendu, on preusmerava na Discord.
@@ -1699,7 +1722,7 @@ export default function App(){
     try{
       var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
       // Submit job to backend for background processing
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(genPayload)});
+      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(genPayload)});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed to create job");
       // Save job ID in slot and localStorage
@@ -1848,7 +1871,7 @@ export default function App(){
       var dsName=ds.clientName.trim()||"";
       try{var dsFacts=await buildPersonSignFacts(ds.pitanja||"",dsName,ds.clientBirthDate);if(dsFacts)usrContent+=dsFacts;}catch(eF){console.warn("ds astro facts:",eF.message);}
       var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)});
+      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upDs(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -1897,7 +1920,7 @@ export default function App(){
       var pqName=pq.clientName.trim()||"";
       try{var pqFacts=await buildPersonSignFacts(pq.quest||"",pqName,pq.clientBirthDate);if(pqFacts)pqUsr+=pqFacts;}catch(eF){console.warn("pq astro facts:",eF.message);}
       var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
-      var resp=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)});
+      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upPq(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
