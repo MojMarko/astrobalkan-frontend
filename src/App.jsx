@@ -1,5 +1,6 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
+import * as Sentry from '@sentry/react';
 import { prettifyPitanja, fetchWithRetry } from './lib/util.js';
 
 // ASTRO ENGINE -------------------------------------------------------------
@@ -1708,8 +1709,10 @@ export default function App(){
     var ri=idx;
     try{
       var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
-      // Submit job to backend for background processing
-      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(genPayload)});
+      // Submit job to backend for background processing.
+      // onRetry: ako server spava (Render free tier), prvi attempts cesto fail, sledeci uspe.
+      // Tokom backoff-a obavestavamo radnicu da nije pukla, samo se server budi.
+      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(genPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed to create job");
       // Save job ID in slot and localStorage
@@ -1721,6 +1724,7 @@ export default function App(){
       pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload,isSinastrija:!!isSinastrija,pitanja:sl.client.pitanja||""});
     }catch(err){
       console.error("doGen error:",err);
+      try { Sentry.withScope(function(s){s.setTag("source","genAnalysis"); s.setContext("client",{name:sl.client.ime||"",hasPartner:!!sl.hasPart}); Sentry.captureException(err);}); } catch(_) {}
       upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
     }
   }
@@ -1858,7 +1862,7 @@ export default function App(){
       var dsName=ds.clientName.trim()||"";
       try{var dsFacts=await buildPersonSignFacts(ds.pitanja||"",dsName,ds.clientBirthDate);if(dsFacts)usrContent+=dsFacts;}catch(eF){console.warn("ds astro facts:",eF.message);}
       var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
-      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)});
+      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upDs(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -1868,7 +1872,7 @@ export default function App(){
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
       startDsPoll(idx,dsJobId,dsName,dsPayload,ds.pitanja||"");
-    }catch(e){upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
+    }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genDownsell");Sentry.captureException(e);});}catch(_){}upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
   // PITANJA GEN - prima idx (0, 1, 2)
@@ -1907,7 +1911,7 @@ export default function App(){
       var pqName=pq.clientName.trim()||"";
       try{var pqFacts=await buildPersonSignFacts(pq.quest||"",pqName,pq.clientBirthDate);if(pqFacts)pqUsr+=pqFacts;}catch(eF){console.warn("pq astro facts:",eF.message);}
       var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
-      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)});
+      var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
       upPq(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
@@ -1916,7 +1920,7 @@ export default function App(){
       jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       startPqPoll(idx,jobData.id,pqName,pqPayload,pq.quest||"");
-    }catch(e){upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
+    }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genPitanja");Sentry.captureException(e);});}catch(_){}upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
   }
 
   // Garantovano dopisuje fiksni zavrsetak sa savet-rečenicom i email adresom na

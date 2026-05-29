@@ -20,24 +20,41 @@ export function prettifyPitanja(text){
   return t;
 }
 
-// Retry helper: "Failed to fetch" se desava cesto na mobilnom 4G kad mreza zatrepere.
-// Ranije: jedan blip = radnica vidi "Greska: Failed to fetch" i mora opet sve.
-// Sada: automatski 3 pokusaja sa kratkim backoff-om (1s, 2s) na mreznim/5xx greskama.
+// Retry helper: "Failed to fetch" se desava cesto na mobilnom 4G kad mreza zatrepere
+// I cesto kod Render free tier cold start-a (server zaspi posle 15 min, prvi request
+// ceka 30-60s da se server probudi).
+//
+// Strategija: 4 pokusaja sa eksponencijalno rastucim backoff-om (2s, 5s, 15s, 30s).
+// Ukupno do ~52 sekundi - dovoljno da preživi cold start. Tokom retry-ja zovemo
+// opcionalni onRetry callback (call site moze prikazati toast "server se budi...").
 // Ne retrira 4xx (klijent greska, npr. 400 invalid input - tu retry nema smisla).
-export async function fetchWithRetry(url, options, attempts){
-  attempts = attempts || 3;
-  var lastErr;
-  for(var i=0; i<attempts; i++){
-    try{
-      var r = await fetch(url, options);
-      if(r.ok) return r;
-      if(r.status >= 400 && r.status < 500) return r; // klijent greska - ne retriraj
+export async function fetchWithRetry(url, options, attemptsOrOpts){
+  // Backward kompatibilan signature: stari kod prosledjuje broj, novi moze object.
+  let attempts, onRetry;
+  if (typeof attemptsOrOpts === 'object' && attemptsOrOpts !== null) {
+    attempts = attemptsOrOpts.attempts || 4;
+    onRetry = attemptsOrOpts.onRetry || null;
+  } else {
+    attempts = attemptsOrOpts || 4;
+    onRetry = null;
+  }
+  const backoffs = [2000, 5000, 15000, 30000]; // index 0..3 (cap pri retry br. i-1)
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(url, options);
+      if (r.ok) return r;
+      if (r.status >= 400 && r.status < 500) return r; // klijent greska - ne retriraj
       lastErr = new Error("HTTP " + r.status);
-    }catch(e){
+    } catch (e) {
       lastErr = e; // network error (TypeError "Failed to fetch") - retriraj
     }
-    if(i < attempts - 1){
-      await new Promise(function(res){setTimeout(res, 1000 * (i + 1));});
+    if (i < attempts - 1) {
+      const wait = backoffs[i] || backoffs[backoffs.length - 1];
+      if (onRetry) {
+        try { onRetry(i + 1, attempts, wait); } catch (_) { /* callback ne sme da prekine */ }
+      }
+      await new Promise(function(res){ setTimeout(res, wait); });
     }
   }
   throw lastErr;
