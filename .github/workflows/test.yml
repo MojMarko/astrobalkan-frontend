@@ -1,0 +1,33 @@
+name: Tests
+
+# Pokrece se na svaki push i na svaki PR ka main.
+# Ako test padne, GitHub blokira merge (preko branch protection rules,
+# vidi Settings > Branches > main).
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run regression tests
+        run: npm test
