@@ -4,7 +4,7 @@
 // pokvari neka popravka koju smo vec radili.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { prettifyPitanja, fetchWithRetry } from '../src/lib/util.js';
+import { prettifyPitanja, fetchWithRetry, conventionalSunSign } from '../src/lib/util.js';
 
 describe('prettifyPitanja - lepo formatiranje pitanja klijenta', () => {
   it('vraca prazan string/null nepromenjen', () => {
@@ -139,5 +139,59 @@ describe('fetchWithRetry - hvata transient mrezne greske', () => {
     await p;
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onRetry).toHaveBeenCalledWith(1, 2, 2000);
+  });
+});
+
+describe('conventionalSunSign - datumski znak po standardnim tabelama', () => {
+  // Marko prijava 30.5: "23.8 je devica on pise lav" - kljucni regresijski test
+  it('23.8 = Devica (Marko prijava 30.5, bez obzira na godinu)', () => {
+    expect(conventionalSunSign('1982-08-23')).toBe('Devica');
+    expect(conventionalSunSign('1985-08-23')).toBe('Devica');
+    expect(conventionalSunSign('1990-08-23')).toBe('Devica');
+    expect(conventionalSunSign('2000-08-23')).toBe('Devica');
+  });
+
+  it('22.8 = Lav (komplement, granica drugu stranu)', () => {
+    expect(conventionalSunSign('1982-08-22')).toBe('Lav');
+    expect(conventionalSunSign('1990-08-22')).toBe('Lav');
+  });
+
+  it('granice svih znakova', () => {
+    // Pocetni datumi po standardnim tabelama
+    expect(conventionalSunSign('1990-03-21')).toBe('Ovan');
+    expect(conventionalSunSign('1990-04-20')).toBe('Bik');
+    expect(conventionalSunSign('1990-05-21')).toBe('Blizanci');
+    expect(conventionalSunSign('1990-06-21')).toBe('Rak');
+    expect(conventionalSunSign('1990-07-23')).toBe('Lav');
+    expect(conventionalSunSign('1990-08-23')).toBe('Devica');
+    expect(conventionalSunSign('1990-09-23')).toBe('Vaga');
+    expect(conventionalSunSign('1990-10-23')).toBe('Skorpija');
+    expect(conventionalSunSign('1990-11-22')).toBe('Strelac');
+    expect(conventionalSunSign('1990-12-22')).toBe('Jarac');
+    expect(conventionalSunSign('1990-01-20')).toBe('Vodolija');
+    expect(conventionalSunSign('1990-02-19')).toBe('Ribe');
+  });
+
+  it('zadnji datumi svakog znaka', () => {
+    expect(conventionalSunSign('1990-04-19')).toBe('Ovan');
+    expect(conventionalSunSign('1990-05-20')).toBe('Bik');
+    expect(conventionalSunSign('1990-08-22')).toBe('Lav');
+    expect(conventionalSunSign('1990-09-22')).toBe('Devica');
+    expect(conventionalSunSign('1990-12-21')).toBe('Strelac');
+    expect(conventionalSunSign('1990-01-19')).toBe('Jarac');
+  });
+
+  it('vraca prazan string za nevazece input', () => {
+    expect(conventionalSunSign('')).toBe('');
+    expect(conventionalSunSign(null)).toBe('');
+    expect(conventionalSunSign('not-a-date')).toBe('');
+    expect(conventionalSunSign('1990-13-01')).toBe(''); // nevazeci mesec
+  });
+
+  it('sredine svakog znaka (sanity check)', () => {
+    expect(conventionalSunSign('1990-04-05')).toBe('Ovan');
+    expect(conventionalSunSign('1990-05-15')).toBe('Bik');
+    expect(conventionalSunSign('1990-09-05')).toBe('Devica');
+    expect(conventionalSunSign('1990-11-15')).toBe('Skorpija');
   });
 });

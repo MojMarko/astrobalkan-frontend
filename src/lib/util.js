@@ -20,6 +20,28 @@ export function prettifyPitanja(text){
   return t;
 }
 
+// Konvencionalni datumski sunčev znak (newspaper-style koji ocekuju astrolozi i klijenti).
+// Razlika od astronomske preciznosti: 23.8 = uvek Devica, 22.8 = uvek Lav, bez obzira na godinu.
+// Koristi se kad nema tacnog vremena rodjenja (cusp datumi - Sunce prelazi znak u toku dana).
+// Standardne granice iz astrologskih tabela (newspaper horoskop).
+export function conventionalSunSign(iso){
+  if(!iso||!/^\d{4}-\d{2}-\d{2}$/.test(iso))return "";
+  var parts=iso.split("-"),m=parseInt(parts[1],10),d=parseInt(parts[2],10);
+  if((m===3&&d>=21)||(m===4&&d<=19))return "Ovan";
+  if((m===4&&d>=20)||(m===5&&d<=20))return "Bik";
+  if((m===5&&d>=21)||(m===6&&d<=20))return "Blizanci";
+  if((m===6&&d>=21)||(m===7&&d<=22))return "Rak";
+  if((m===7&&d>=23)||(m===8&&d<=22))return "Lav";
+  if((m===8&&d>=23)||(m===9&&d<=22))return "Devica";
+  if((m===9&&d>=23)||(m===10&&d<=22))return "Vaga";
+  if((m===10&&d>=23)||(m===11&&d<=21))return "Skorpija";
+  if((m===11&&d>=22)||(m===12&&d<=21))return "Strelac";
+  if((m===12&&d>=22)||(m===1&&d<=19))return "Jarac";
+  if((m===1&&d>=20)||(m===2&&d<=18))return "Vodolija";
+  if((m===2&&d>=19)||(m===3&&d<=20))return "Ribe";
+  return "";
+}
+
 // Retry helper: "Failed to fetch" se desava cesto na mobilnom 4G kad mreza zatrepere
 // I cesto kod Render free tier cold start-a (server zaspi posle 15 min, prvi request
 // ceka 30-60s da se server probudi).

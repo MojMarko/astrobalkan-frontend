@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, conventionalSunSign } from './lib/util.js';
 
 // ASTRO ENGINE -------------------------------------------------------------
 const SIGNS=["Ovan","Bik","Blizanci","Rak","Lav","Devica","Vaga","Skorpija","Strelac","Jarac","Vodolija","Ribe"];
@@ -69,6 +69,8 @@ function tzOffsetHours(y,m,d,h,mn,tzName){
     return offAt(localAsUtc-off1*3600000);
   }catch(e){return null;}
 }
+// conventionalSunSign je sad u src/lib/util.js (testabilno + jedan izvor istine).
+
 function calcChart(dateStr,timeStr,lat,lon,tz){
   var parts=dateStr.split("-"),y=parseInt(parts[0]),m=parseInt(parts[1]),d=parseInt(parts[2]);
   var tparts=(timeStr||"12:00").split(":"),h=parseInt(tparts[0]),mn=parseInt(tparts[1]);
@@ -87,7 +89,17 @@ function calcChart(dateStr,timeStr,lat,lon,tz){
   aspects.sort(function(a,b){return parseFloat(a.orb)-parseFloat(b.orb);});
   var houses=[];
   if(hs){for(var i=0;i<12;i++){houses.push({num:i+1,sign:signOf(hs[i]),deg:degIn(hs[i])});}}
-  return{sunSign:signOf(pos.Sunce),moonSign:signOf(pos.Mesec),ascSign:ad?signOf(ad):"Nepoznato",ascDeg:ad?degIn(ad):"0",planets:planets,aspects:aspects,houses:houses};
+  // Kad korisnik NEMA pravo vreme rodjenja, koristimo astronomski znak (calcChart sa default
+  // podne) sto je losse za cusp datume. Tipican slucaj: partner 23.8 - astronomski je Lav za
+  // neku godinu jer Sunce prelazi u Devicu posle podne, ali korisnik ocekuje Devicu (newspaper
+  // konvencija). Konvencionalni znak je tacan defaultni odgovor kad ne znamo vreme.
+  var sunSignFinal=signOf(pos.Sunce);
+  var hasUserTime=timeStr&&timeStr.trim().length>0;
+  if(!hasUserTime){
+    var conv=conventionalSunSign(dateStr);
+    if(conv)sunSignFinal=conv;
+  }
+  return{sunSign:sunSignFinal,moonSign:signOf(pos.Mesec),ascSign:ad?signOf(ad):"Nepoznato",ascDeg:ad?degIn(ad):"0",planets:planets,aspects:aspects,houses:houses};
 }
 var CITIES={beograd:[44.8176,20.4633],"novi sad":[45.2671,19.8335],nis:[43.3209,21.8954],sarajevo:[43.8476,18.3564],zagreb:[45.8150,15.9819],split:[43.5081,16.4402],rijeka:[45.3271,14.4422],osijek:[45.5550,18.6955],doboj:[44.7333,18.0833],tuzla:[44.5384,18.6734],"banja luka":[44.7722,17.1910],podgorica:[42.4411,19.2636],skopje:[41.9981,21.4254],london:[51.5074,-0.1278],berlin:[52.5200,13.4050],wien:[48.2082,16.3738],paris:[48.8566,2.3522],"new york":[40.7128,-74.0060],dubai:[25.2048,55.2708],munich:[48.1351,11.5820],stuttgart:[48.7758,9.1829],frankfurt:[50.1109,8.6821],hamburg:[53.5753,10.0153]};
 function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase().trim();var keys=Object.keys(CITIES);for(var i=0;i<keys.length;i++){if(k.indexOf(keys[i])>=0||keys[i].indexOf(k)>=0)return CITIES[keys[i]];}return[44.8176,20.4633];}
@@ -701,8 +713,11 @@ async function parsePersonsFromPitanja(text){
 // Deterministicki suncev znak iz datuma (izracunato u podne, mesto nebitno za Sunce).
 // Daleko pouzdanije nego da LLM racuna znak u glavi.
 function sunSignForDate(iso){
-  if(!iso||!/^\d{4}-\d{2}-\d{2}$/.test(iso))return "";
-  try{var c=calcChart(iso,"12:00",44.8176,20.4633,"Europe/Belgrade");return(c&&c.sunSign)||"";}catch(e){return "";}
+  // Koristimo konvencionalni datumski znak (newspaper-style: 23.8 = Devica, 22.8 = Lav)
+  // jer ovu funkciju zovemo SAMO za slucajeve gde nemamo tacno vreme rodjenja (osobe iz
+  // pitanja, partner bez vremena). Ranije smo zvali calcChart sa podne sto je davalo
+  // astronomski tacan ali korisniku neocekivan rezultat na cusp datumima.
+  return conventionalSunSign(iso);
 }
 // Sastavi blok TACNIH astroloskih podataka (suncev znak po osobi) za Downsell/Pitanja
 // i sad i za Main Analizu (Jelena prijava 30.5: AI je za partnera 23.8 napisao Lav umesto
@@ -1499,6 +1514,25 @@ export default function App(){
       if(sl.hasPart&&partnerForCalc.datum){
         try{pc=await callAstroAPI(partnerForCalc.datum,partnerForCalc.vreme,partnerForCalc.mesto,partnerForCalc.lat,partnerForCalc.lon,partnerForCalc.timezone);}catch(e){console.error("Partner callAstroAPI crashed:",e);}
         if(!pc){var pc2=(partnerForCalc.lat!=null&&partnerForCalc.lon!=null)?[partnerForCalc.lat,partnerForCalc.lon]:getCoords(partnerForCalc.mesto);pc=calcChart(partnerForCalc.datum,partnerForCalc.vreme,pc2[0],pc2[1],partnerForCalc.timezone||getTimezone(partnerForCalc.mesto));}
+        // Konvencionalni override za partnera bez vremena rodjenja (Jelena/Marko prijava 30.5
+        // o "23.8 je devica a softver pise lav"). Backend callAstroAPI vraca astronomski znak
+        // koristeci default podne sto je problem na cusp datumima. Kad nema vremena, koristimo
+        // konvencionalni newspaper znak koji ocekuju astrolozi i klijenti.
+        if(pc&&(!partnerForCalc.vreme||!partnerForCalc.vreme.trim())){
+          var convP=conventionalSunSign(partnerForCalc.datum);
+          if(convP&&convP!==pc.sunSign){
+            console.log("[partner] override sunSign astronomski="+pc.sunSign+" -> konvencionalni="+convP+" (nema vremena rodjenja)");
+            pc.sunSign=convP;
+          }
+        }
+      }
+      // Isti override i za klijenta bez vremena rodjenja - konzistentno ponasanje.
+      if(c&&(!clientForCalc.vreme||!clientForCalc.vreme.trim())){
+        var convC=conventionalSunSign(clientForCalc.datum);
+        if(convC&&convC!==c.sunSign){
+          console.log("[client] override sunSign astronomski="+c.sunSign+" -> konvencionalni="+convC+" (nema vremena rodjenja)");
+          c.sunSign=convC;
+        }
       }
       console.log("doCalc DONE, planets:",c?c.planets.length:0,"aspects:",c?c.aspects.length:0);
       upSlot(idx,function(s){return Object.assign({},s,{ch:c,pch:pc,chStale:false,status:"idle"});});
