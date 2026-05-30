@@ -704,15 +704,25 @@ function sunSignForDate(iso){
   if(!iso||!/^\d{4}-\d{2}-\d{2}$/.test(iso))return "";
   try{var c=calcChart(iso,"12:00",44.8176,20.4633,"Europe/Belgrade");return(c&&c.sunSign)||"";}catch(e){return "";}
 }
-// Sastavi blok TACNIH astroloskih podataka (suncev znak po osobi) za Downsell/Pitanja,
-// gde se karte inace ne racunaju pa LLM pogresno pogadja znak i mesa datume i osobe.
-async function buildPersonSignFacts(questionsText,clientName,clientBirthDate){
+// Sastavi blok TACNIH astroloskih podataka (suncev znak po osobi) za Downsell/Pitanja
+// i sad i za Main Analizu (Jelena prijava 30.5: AI je za partnera 23.8 napisao Lav umesto
+// Devica iako je u podacima bila Devica - na cusp datumima AI cesto halucinira po opstoj
+// "Leo do 22.8, Devica od 23.8" definiciji ignorisuci stvarni datum/vreme rodjenja).
+async function buildPersonSignFacts(questionsText,clientName,clientBirthDate,partner){
   var lines=[];
   var cn=(clientName||"").trim();
   var seen={};
   if(clientBirthDate&&/^\d{4}-\d{2}-\d{2}$/.test(clientBirthDate)){
     var cs=sunSignForDate(clientBirthDate);
     if(cs){lines.push("- Klijent"+(cn?" ("+cn+")":"")+", rodjen/a "+fmtDMYFromISO(clientBirthDate)+": Sunce u "+cs);seen[clientBirthDate]=true;}
+  }
+  if(partner&&partner.datum&&/^\d{4}-\d{2}-\d{2}$/.test(partner.datum)&&!seen[partner.datum]){
+    var ps=sunSignForDate(partner.datum);
+    if(ps){
+      var pName=(partner.ime||"").trim();
+      lines.push("- Partner"+(pName?" ("+pName+")":"")+", rodjen/a "+fmtDMYFromISO(partner.datum)+": Sunce u "+ps);
+      seen[partner.datum]=true;
+    }
   }
   try{
     var persons=await parsePersonsFromPitanja(questionsText||"");
@@ -723,7 +733,7 @@ async function buildPersonSignFacts(questionsText,clientName,clientBirthDate){
     });
   }catch(e){console.warn("buildPersonSignFacts:",e.message);}
   if(lines.length===0)return "";
-  return "\n\n*** TACNI ASTROLOSKI PODACI (izracunato precizno — koristi ISKLJUCIVO ove znakove) ***\nZa svaku osobu ispod naveden je TACAN suncev znak. Kada pominjes znak neke od ovih osoba, koristi TACNO ovaj znak. NIKADA ne racunaj znak sam i ne pogadjaj. Pazi koji datum pripada kojoj osobi — ne mesaj ih.\n"+lines.join("\n")+"\n";
+  return "\n\n*** TACNI ASTROLOSKI PODACI (izracunato precizno — koristi ISKLJUCIVO ove znakove) ***\nZa svaku osobu ispod naveden je TACAN suncev znak. Kada pominjes znak neke od ovih osoba, koristi TACNO ovaj znak. NIKADA ne racunaj znak sam i ne pogadjaj po opstoj definiciji granica zodijaka (npr. nemoj pretpostaviti da je 22.8 Lav ili 23.8 Devica - cesto na granicama Sunce prelazi u sledeci znak u razlicito vreme u zavisnosti od godine). Pazi koji datum pripada kojoj osobi — ne mesaj ih.\n"+lines.join("\n")+"\n";
 }
 async function stoSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 async function stoGet(k,def){try{var r=localStorage.getItem(k);return r?JSON.parse(r):def;}catch(e){return def;}}
@@ -1706,6 +1716,14 @@ export default function App(){
     }else{
       usr+=bindingText+"\n\nPITANJA KLIJENTA: Bez specificnih pitanja. Napisi kompletnu analizu po promptu.";
     }
+    // TACAN SUNCEV ZNAK po osobi (deterministicki izracunato) - sprecava AI da
+    // halucinira znak na cusp datumima (Jelena prijava 30.5: partner 23.8 -> Devica,
+    // AI napisao Lav). Ovaj blok ide POSLE pitanja da bude blizu generation.
+    try{
+      var partnerForFacts=(sl.hasPart&&sl.partner&&sl.partner.datum)?sl.partner:null;
+      var mainFacts=await buildPersonSignFacts(pitanjaTxt2||"",sl.client.ime,sl.client.datum,partnerForFacts);
+      if(mainFacts)usr+=mainFacts;
+    }catch(eF){console.warn("main astro facts:",eF.message);}
     var ri=idx;
     try{
       var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
