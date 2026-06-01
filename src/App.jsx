@@ -820,6 +820,29 @@ function Logo(props){
   );
 }
 
+// Prikaz tokom generisanja - resava Suzana prijavu 1.6 "Samo ocitava i ne radi nista".
+// Pre: statican tekst "Generisem u pozadini..." koji deluje zamrznuto.
+// Sad: spinner + protekli minut:sekund + trenutni korak (Generisem/Prevodim) + napomena o trajanju.
+function GeneratingProgress(props){
+  var [now,setNow]=useState(Date.now());
+  useEffect(function(){
+    var iv=setInterval(function(){setNow(Date.now());},1000);
+    return function(){clearInterval(iv);};
+  },[]);
+  var started=props.startedAt||now;
+  var elapsedSec=Math.max(0,Math.floor((now-started)/1000));
+  var mm=Math.floor(elapsedSec/60);
+  var ss=elapsedSec%60;
+  var elapsedStr=mm+":"+(ss<10?"0":"")+ss;
+  var step=props.statusText||"Generišem analizu...";
+  return React.createElement("div",{className:"aout",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"180px",padding:"28px 20px",textAlign:"center",gap:"14px"}},
+    React.createElement("div",{style:{width:"44px",height:"44px",border:"3px solid rgba(201,168,76,.25)",borderTopColor:"var(--gd)",borderRadius:"50%",animation:"sp 1s linear infinite"}}),
+    React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"var(--gd2)",letterSpacing:".5px"}},step),
+    React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"24px",color:"var(--tx)",fontVariantNumeric:"tabular-nums"}},elapsedStr),
+    React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},"Generisanje obicno traje 4-6 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti.")
+  );
+}
+
 function emptySlot(){return{mode:"messenger",paste:"",rawPaste:"",parsed:null,client:{ime:"",datum:"",vreme:"",mesto:"",zemlja:"",lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:"",napomena:"",pitanja:""},partner:{ime:"",datum:"",vreme:"",mesto:"",zemlja:"",lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:""},hasPart:false,ch:null,pch:null,chStale:false,transits:null,types:["analiza"],status:"idle",analysis:"",copyIdx:0,jobId:null};}
 
 // CSS ----------------------------------------------------------------------
@@ -1615,7 +1638,7 @@ export default function App(){
       console.warn("doGen: no client chart and no pitanja text — nothing to do");
       return;
     }
-    upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0});});
+    upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0,genStartedAt:Date.now()});});
     // Auto-extract additional persons from pitanja and compute their charts
     var extraPersons=[];
     var extraCharts=[];
@@ -2416,7 +2439,9 @@ export default function App(){
       s.analysis&&React.createElement("div",{style:{marginTop:"12px"}},
         React.createElement("div",{className:"ct",style:{marginBottom:"8px"}},"Gotova Analiza"),
         ch.length>0&&React.createElement(ChunkTracker,{ch:ch,ci:s.copyIdx,setCi:function(i){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:i});});}}),
-        React.createElement("div",{className:"aout "+(s.status==="generating"?"cur":"")},s.analysis),
+        s.status==="generating"
+          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis})
+          :React.createElement("div",{className:"aout"},s.analysis),
         React.createElement("div",{className:"abar"},
           s.copyIdx<ch.length
             ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){doCopy(ch[s.copyIdx],"Dio "+(s.copyIdx+1)+"/"+ch.length);upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.min(sl.copyIdx+1,ch.length)});});}},"Kopiraj "+(s.copyIdx+1)+"/"+ch.length)
