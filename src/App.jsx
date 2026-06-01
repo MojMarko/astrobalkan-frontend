@@ -1903,7 +1903,7 @@ export default function App(){
   async function doDsGen(idx){
     var ds=dsSlots[idx];
     if(!ds.paste.trim()&&!ds.clientId)return;
-    upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
+    upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,genStartedAt:Date.now()});});
     var today=new Date(),todayStr=fmtDMY(today);
     var MONTH_EN_DS=["January","February","March","April","May","June","July","August","September","October","November","December"];
     var curYearDS=today.getFullYear(),curMonthDS=today.getMonth(),curMonthNameDS=MONTH_EN_DS[curMonthDS];
@@ -1954,7 +1954,7 @@ export default function App(){
   async function doPqGen(idx){
     var pq=pqSlots[idx];
     if((!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim())return;
-    upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0});});
+    upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,genStartedAt:Date.now()});});
     var isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
     var today=new Date(),todayStr=fmtDMY(today);
@@ -2655,7 +2655,9 @@ export default function App(){
           ),
           ds.an&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(ds.an),ci:ds.ci,setCi:function(fn){upDs(dsIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
-            React.createElement("div",{className:"aout "+(ds.st==="generating"?"cur":"")},ds.an),
+            ds.st==="generating"
+              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an})
+              :React.createElement("div",{className:"aout"},ds.an),
             React.createElement("div",{className:"abar"},
               ds.ci<getChunks(ds.an).length
                 ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){var ch=getChunks(ds.an);doCopy(ch[ds.ci],"Dio "+(ds.ci+1)+"/"+ch.length);upDs(dsIdx,function(s){return Object.assign({},s,{ci:Math.min(s.ci+1,ch.length)});});}},"Kopiraj "+(ds.ci+1)+"/"+getChunks(ds.an).length)
@@ -2710,7 +2712,9 @@ export default function App(){
           ),
           pq.an&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(pq.an),ci:pq.ci,setCi:function(fn){upPq(pqIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
-            React.createElement("div",{className:"aout "+(pq.st==="generating"?"cur":"")},pq.an),
+            pq.st==="generating"
+              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an})
+              :React.createElement("div",{className:"aout"},pq.an),
             React.createElement("div",{className:"abar"},
               pq.ci<getChunks(pq.an).length
                 ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){var ch=getChunks(pq.an);doCopy(ch[pq.ci],"Dio "+(pq.ci+1)+"/"+ch.length);upPq(pqIdx,function(s){return Object.assign({},s,{ci:Math.min(s.ci+1,ch.length)});});}},"Kopiraj "+(pq.ci+1)+"/"+getChunks(pq.an).length)
