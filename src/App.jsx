@@ -2339,7 +2339,7 @@ export default function App(){
           (s.status!=="done"&&s.status!=="generating")&&(s.parsed||s.paste.trim()||s.client.ime||s.client.datum||s.client.vreme||s.client.mesto||s.hasPart||s.partner.ime||s.partner.datum)&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"8px"},onClick:function(){if(window.confirm("Da li si sigurna? Svi uneti i izracunati podaci ce biti obrisani i ekran ce se vratiti na pocetno stanje.")){upSlot(idx,function(){return emptySlot();});}}},"✖ Ocisti i pocni ispocetka")
         ),
       // ANALYSIS OUTPUT
-      s.analysis&&React.createElement("div",{style:{marginTop:"12px"}},
+      (s.analysis||s.status==="generating")&&React.createElement("div",{style:{marginTop:"12px"}},
         React.createElement("div",{className:"ct",style:{marginBottom:"8px"}},"Gotova Analiza"),
         ch.length>0&&React.createElement(ChunkTracker,{ch:ch,ci:s.copyIdx,setCi:function(i){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:i});});}}),
         s.status==="generating"
@@ -2556,7 +2556,7 @@ export default function App(){
               ds.st==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generiši Analizu Perioda"
             )
           ),
-          ds.an&&React.createElement(React.Fragment,null,
+          (ds.an||ds.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(ds.an),ci:ds.ci,setCi:function(fn){upDs(dsIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             ds.st==="generating"
               ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an})
@@ -2613,7 +2613,7 @@ export default function App(){
               pq.st==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generisi Odgovore"
             )
           ),
-          pq.an&&React.createElement(React.Fragment,null,
+          (pq.an||pq.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(pq.an),ci:pq.ci,setCi:function(fn){upPq(pqIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             pq.st==="generating"
               ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an})
