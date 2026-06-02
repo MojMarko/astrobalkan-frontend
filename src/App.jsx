@@ -726,6 +726,9 @@ function Logo(props){
 // Prikaz tokom generisanja - resava Suzana prijavu 1.6 "Samo ocitava i ne radi nista".
 // Pre: statican tekst "Generisem u pozadini..." koji deluje zamrznuto.
 // Sad: spinner + protekli minut:sekund + trenutni korak (Generisem/Prevodim) + napomena o trajanju.
+// Plus dva safety-valve dugmeta posle 90s:
+//   - "Proveri da li je gotovo" - manuelni recheck (radnica nije trap-ovana ako polling zakaca)
+//   - "Otkazi prikaz" - reset UI; backend posao i dalje radi, kad zavrsi analiza je u Bazi
 function GeneratingProgress(props){
   var [now,setNow]=useState(Date.now());
   useEffect(function(){
@@ -738,11 +741,17 @@ function GeneratingProgress(props){
   var ss=elapsedSec%60;
   var elapsedStr=mm+":"+(ss<10?"0":"")+ss;
   var step=props.statusText||"Generišem analizu...";
+  // Safety valve dugmici se pokazuju tek posle 90s (pre toga normalno generise).
+  var showRecovery=elapsedSec>=90 && (props.onForceCheck||props.onCancel);
   return React.createElement("div",{className:"aout",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"180px",padding:"28px 20px",textAlign:"center",gap:"14px"}},
     React.createElement("div",{style:{width:"44px",height:"44px",border:"3px solid rgba(201,168,76,.25)",borderTopColor:"var(--gd)",borderRadius:"50%",animation:"sp 1s linear infinite"}}),
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"var(--gd2)",letterSpacing:".5px"}},step),
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"24px",color:"var(--tx)",fontVariantNumeric:"tabular-nums"}},elapsedStr),
-    React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},"Generisanje obicno traje 4-6 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti.")
+    React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},"Generisanje obicno traje 4-6 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
+    showRecovery&&React.createElement("div",{style:{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",marginTop:"4px"}},
+      props.onForceCheck&&React.createElement("button",{className:"btn bol bsm",onClick:props.onForceCheck,type:"button"},"🔄 Proveri da li je gotovo"),
+      props.onCancel&&React.createElement("button",{className:"btn brd bsm",onClick:props.onCancel,type:"button"},"✖ Otkazi prikaz")
+    )
   );
 }
 
@@ -2078,6 +2087,38 @@ export default function App(){
     });
   },[]);
 
+  // Safety valve - kad polling tiho zakaca (slot ostane u "generating" zauvek),
+  // radnica klikne "Proveri da li je gotovo" pa cemo da restartujemo polling sa
+  // postojecim jobId. Prvi sledeci poll ce videti done status i UI ce se osveziti.
+  function forceCheckAnaliza(idx){
+    var s=slots[idx];
+    if(!s||!s.jobId){toast2("Nema aktivnog job-a.");return;}
+    var tabKey="a"+(idx+1);
+    var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
+    if(!jbs[tabKey])jbs[tabKey]={id:s.jobId,clientName:s.client.ime||"",tab:tabKey,idx:idx};
+    localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    pollJob(s.jobId,idx,tabKey,{birthDate:s.client.datum,mesto:s.client.mesto,clientName:s.client.ime,isSinastrija:!!s.hasPart,pitanja:s.client.pitanja||""});
+    toast2("Proveravam status...");
+  }
+  function cancelStuckAnaliza(idx){
+    if(!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+    upSlot(idx,function(s){return Object.assign({},s,{status:"idle",analysis:"",jobId:null,genStartedAt:null});});
+    var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs["a"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    toast2("Otkazano. Mozes pokrenuti ponovo.");
+  }
+  function cancelStuckDs(idx){
+    if(!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+    upDs(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
+    var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs["ds"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    toast2("Otkazano.");
+  }
+  function cancelStuckPq(idx){
+    if(!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+    upPq(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
+    var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");delete jbs["pq"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    toast2("Otkazano.");
+  }
+
   async function translateToSerbian(englishText){
     try{
       var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
@@ -2343,7 +2384,7 @@ export default function App(){
         React.createElement("div",{className:"ct",style:{marginBottom:"8px"}},"Gotova Analiza"),
         ch.length>0&&React.createElement(ChunkTracker,{ch:ch,ci:s.copyIdx,setCi:function(i){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:i});});}}),
         s.status==="generating"
-          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis})
+          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis,onForceCheck:function(){forceCheckAnaliza(idx);},onCancel:function(){cancelStuckAnaliza(idx);}})
           :React.createElement("div",{className:"aout"},s.analysis),
         React.createElement("div",{className:"abar"},
           s.copyIdx<ch.length
@@ -2559,7 +2600,7 @@ export default function App(){
           (ds.an||ds.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(ds.an),ci:ds.ci,setCi:function(fn){upDs(dsIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             ds.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an})
+              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onCancel:function(){cancelStuckDs(dsIdx);}})
               :React.createElement("div",{className:"aout"},ds.an),
             React.createElement("div",{className:"abar"},
               ds.ci<getChunks(ds.an).length
@@ -2616,7 +2657,7 @@ export default function App(){
           (pq.an||pq.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(pq.an),ci:pq.ci,setCi:function(fn){upPq(pqIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             pq.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an})
+              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onCancel:function(){cancelStuckPq(pqIdx);}})
               :React.createElement("div",{className:"aout"},pq.an),
             React.createElement("div",{className:"abar"},
               pq.ci<getChunks(pq.an).length
