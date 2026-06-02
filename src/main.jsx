@@ -11,6 +11,13 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE || 'production',
+    // Sentry v9 ima auto-detekciju "da li smo browser ekstenzija" preko provere
+    // chrome.runtime.id. Problem: Chrome ekstenzije koje injectuju content scripts
+    // (cesto: prevodioci, screenshot tool-ovi, password manageri) izlazu chrome.runtime
+    // na web stranice. Sentry to misli da je nasa aplikacija ekstenzija i TIHO setuje
+    // enabled:false. Init "prodje" ali nista se ne salje. Mi NISMO ekstenzija - nasa
+    // app radi na https://astrobalkan-frontend.vercel.app - sigurno preskocimo check.
+    skipBrowserExtensionCheck: true,
     // Tunnel: SDK salje event-e na nas domen, mi server-side prosledjujemo ka
     // sentry.io. Razlog: ad blockeri (uBlock, Brave Shield, korporativni firewall,
     // neki antivirusi) blokiraju sentry.io domen direktno. Sa tunelom SDK kontaktira
