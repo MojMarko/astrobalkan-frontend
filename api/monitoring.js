@@ -19,9 +19,15 @@ export default async function handler(req, res) {
   try {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    const envelope = Buffer.concat(chunks).toString("utf8");
+    // VAZNO: cuvamo originalni Buffer (binary) jer envelope sa Session Replay-em
+    // sadrzi BINARY replay segmente (compressed JSON). Konverzija u UTF-8 string
+    // korumpira binary podatke → Sentry vraca 400 za replay deo envelope-a.
+    const buf = Buffer.concat(chunks);
 
-    const firstLine = envelope.split("\n", 1)[0];
+    // Prvi red envelope-a je UTF-8 JSON header sa DSN-om (text).
+    // Ostatak (replay segmenti) mora ostati Buffer.
+    const nlIdx = buf.indexOf(0x0a); // '\n'
+    const firstLine = (nlIdx >= 0 ? buf.slice(0, nlIdx) : buf).toString("utf8");
     const header = JSON.parse(firstLine);
     const dsn = new URL(header.dsn);
     const projectId = dsn.pathname.replace(/^\//, "");
@@ -38,7 +44,7 @@ export default async function handler(req, res) {
     const upstream = `https://${SENTRY_HOST}/api/${projectId}/envelope/`;
     const r = await fetch(upstream, {
       method: "POST",
-      body: envelope,
+      body: buf, // prosledi original Buffer, NE string - binarni replay segmenti
       headers: { "Content-Type": "application/x-sentry-envelope" }
     });
     const body = await r.text();
