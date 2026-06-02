@@ -8,61 +8,25 @@ import App from './App.jsx'
 // Vercel env varijablu VITE_SENTRY_DSN (VITE_ prefix je obavezan da bi env stigao
 // do browsera u Vite build-u).
 if (import.meta.env.VITE_SENTRY_DSN) {
-  Sentry.init({
-    dsn: import.meta.env.VITE_SENTRY_DSN,
-    environment: import.meta.env.MODE || 'production',
-    // Sentry v9 ima auto-detekciju "da li smo browser ekstenzija" preko provere
-    // chrome.runtime.id. Problem: Chrome ekstenzije koje injectuju content scripts
-    // (cesto: prevodioci, screenshot tool-ovi, password manageri) izlazu chrome.runtime
-    // na web stranice. Sentry to misli da je nasa aplikacija ekstenzija i TIHO setuje
-    // enabled:false. Init "prodje" ali nista se ne salje. Mi NISMO ekstenzija - nasa
-    // app radi na https://astrobalkan-frontend.vercel.app - sigurno preskocimo check.
-    skipBrowserExtensionCheck: true,
-    // Tunnel: SDK salje event-e na nas domen, mi server-side prosledjujemo ka
-    // sentry.io. Razlog: ad blockeri (uBlock, Brave Shield, korporativni firewall,
-    // neki antivirusi) blokiraju sentry.io domen direktno. Sa tunelom SDK kontaktira
-    // SAMO nas domen, sto nijedan blocker ne moze da raspozna.
-    // Backend handler: api/monitoring.js (Vercel serverless function).
-    tunnel: '/api/monitoring',
-    // Session Replay snima sesije radnica (klik, kucanje, scroll, navigacija)
-    // tako da admin moze pregledati tacno sta je radnica radila pre greske.
-    // Marko trazio 2.6: "snima svaka radnja u softveru da vidim sta tacno rade".
-    // Konfiguracija:
-    //   maskAllText=false - vidim sta klijent/radnica unose (potrebno za debugging
-    //   konkretnih analiza). Lozinke se automatski maskiraju preko mask-class-name.
-    //   blockAllMedia=false - prikazi screenshot-ove i slike u replay-u.
-    integrations: [
-      Sentry.replayIntegration({
-        maskAllText: false,
-        blockAllMedia: false,
-        // Mask password input-e bez obzira (sigurnost - lozinke ne smeju u replay).
-        maskAllInputs: false,
-        mask: ['input[type="password"]', '.sentry-mask']
-      })
-    ],
-    // 100% gresaka (free tier 5K mesecno - dovoljno)
-    sampleRate: 1.0,
-    // Performance monitoring iskljucen (trosi posebnu kvotu)
-    tracesSampleRate: 0,
-    // Session Replay sample rate:
-    //   replaysSessionSampleRate=0.1 - 10% normalnih sesija snima (za uzorke)
-    //   replaysOnErrorSampleRate=1.0 - SVE sesije sa greskama se snimaju i cuvaju
-    //     30 sek pre greske, dovoljno da admin vidi sta je radnica radila.
-    // Free tier (50 replays/mesec) - error replay-i su prioritet, normalni su uzorak.
-    replaysSessionSampleRate: 0.1,
-    replaysOnErrorSampleRate: 1.0,
-    // Salji default PII (browser, OS, lokacija) da znamo koja radnica je dozivela
-    sendDefaultPii: true,
-    // Filter ranking: ne hvataj poznate non-actionable greske
-    ignoreErrors: [
-      // Browser ekstenzije/ad blockeri (nije nasa greska)
-      'top.GLOBALS',
-      'ResizeObserver loop',
-      // Network blip-ovi koje vec retriramo
-      /^Failed to fetch$/,
-      'AbortError'
-    ]
-  })
+  // DEBUG init: minimum konfiguracija + debug:true da Sentry stampa svaki korak
+  // u Console. Privremeno bez replayIntegration da iskljucim da je integration kriv.
+  // Kad init proradi (uocimo "Sentry Logger [log]: Integration installed:"), vraticemo
+  // replayIntegration i ostale opcije.
+  try {
+    Sentry.init({
+      dsn: import.meta.env.VITE_SENTRY_DSN,
+      environment: import.meta.env.MODE || 'production',
+      skipBrowserExtensionCheck: true,
+      tunnel: '/api/monitoring',
+      debug: true,
+      sampleRate: 1.0,
+      tracesSampleRate: 0,
+      sendDefaultPii: true
+    })
+    console.log('[Sentry] init returned, client:', Sentry.getClient())
+  } catch (e) {
+    console.error('[Sentry] init THREW:', e)
+  }
 }
 
 // SentryErrorBoundary wrapuje App da React greske u render funkcijama ne sruse
