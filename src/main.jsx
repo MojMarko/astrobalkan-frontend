@@ -11,10 +11,33 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE || 'production',
+    // Session Replay snima sesije radnica (klik, kucanje, scroll, navigacija)
+    // tako da admin moze pregledati tacno sta je radnica radila pre greske.
+    // Marko trazio 2.6: "snima svaka radnja u softveru da vidim sta tacno rade".
+    // Konfiguracija:
+    //   maskAllText=false - vidim sta klijent/radnica unose (potrebno za debugging
+    //   konkretnih analiza). Lozinke se automatski maskiraju preko mask-class-name.
+    //   blockAllMedia=false - prikazi screenshot-ove i slike u replay-u.
+    integrations: [
+      Sentry.replayIntegration({
+        maskAllText: false,
+        blockAllMedia: false,
+        // Mask password input-e bez obzira (sigurnost - lozinke ne smeju u replay).
+        maskAllInputs: false,
+        mask: ['input[type="password"]', '.sentry-mask']
+      })
+    ],
     // 100% gresaka (free tier 5K mesecno - dovoljno)
     sampleRate: 1.0,
     // Performance monitoring iskljucen (trosi posebnu kvotu)
     tracesSampleRate: 0,
+    // Session Replay sample rate:
+    //   replaysSessionSampleRate=0.1 - 10% normalnih sesija snima (za uzorke)
+    //   replaysOnErrorSampleRate=1.0 - SVE sesije sa greskama se snimaju i cuvaju
+    //     30 sek pre greske, dovoljno da admin vidi sta je radnica radila.
+    // Free tier (50 replays/mesec) - error replay-i su prioritet, normalni su uzorak.
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
     // Salji default PII (browser, OS, lokacija) da znamo koja radnica je dozivela
     sendDefaultPii: true,
     // Filter ranking: ne hvataj poznate non-actionable greske
