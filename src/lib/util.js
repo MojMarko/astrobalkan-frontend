@@ -42,6 +42,112 @@ export function conventionalSunSign(iso){
   return "";
 }
 
+// Pronadje poziciju imena u tekstu (case-insensitive, sa padezima).
+// Vraca prvi match ili -1. Eksportovano za testove i bindDatesToNames.
+export function findNamePos(rawLower, nameLower){
+  if(!rawLower||!nameLower)return -1;
+  var esc0=nameLower.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  try{
+    var reExact=new RegExp("\\b"+esc0+"[a-zčćđšž]{0,2}\\b");
+    var m0=reExact.exec(rawLower);
+    if(m0)return m0.index;
+  }catch(e){}
+  var vowels="aeiou";
+  var stem=nameLower;
+  if(stem.length>2&&vowels.indexOf(stem.charAt(stem.length-1))>=0)stem=stem.slice(0,-1);
+  if(stem.length<2)return -1;
+  var esc=stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  try{
+    var re=new RegExp("\\b"+esc+"[a-zčćđšž]{0,2}\\b");
+    var mm=re.exec(rawLower);
+    return mm?mm.index:-1;
+  }catch(e){return -1;}
+}
+
+// Pairs persons (sa AI-parsiranog izvora) sa datumima iz teksta po ADJACENCY
+// (broj non-whitespace/non-punctuation chars izmedju). To garantuje da formati
+// "DATUM Ime", "Ime DATUM" i "DATUM.Ime" svi rade — bind se nikada nije kasnije
+// zamenio za AI halucinacije imena-na-datum.
+//
+// Pravi koren bug-a koji je ovo ispravio (Dragana Micic prijava 2.6.2026):
+// Tekst: "17.01.2023.Kalina , moja cerka\n02.05.1985. moj Brat Mirko"
+// AI parser je zamenio datume: Kalini dao 02.05.1985, Mirku dao 17.01.2023.
+// Stari algoritam (penalty za date-before-name = +1000) nije ispravio — sad
+// algoritam je adjacency-based (broji ne-whitespace/punkt chars u "gap"-u izmedju).
+export function bindDatesToNames(rawText, persons){
+  if(!rawText||!persons||persons.length===0)return persons;
+  var raw=String(rawText);
+  var rawLow=raw.toLowerCase();
+
+  // 1. Nadji sve datume sa pozicijama
+  var dates=[];
+  var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
+  while((m=dRe.exec(raw))!==null){
+    var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=m[3];
+    var yN=y.length===2?(parseInt(y,10)<=30?2000+parseInt(y,10):1900+parseInt(y,10)):parseInt(y,10);
+    if(d>=1&&d<=31&&mo>=1&&mo<=12){
+      dates.push({
+        iso:yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"),
+        start:m.index,
+        end:m.index+m[0].length
+      });
+    }
+  }
+  // Dedup
+  var seenIso={},uniqDates=[];
+  dates.forEach(function(dt){if(!seenIso[dt.iso]){seenIso[dt.iso]=true;uniqDates.push(dt);}});
+  if(uniqDates.length===0)return persons;
+
+  // 2. Nadji pozicije svih imena
+  var namedPersons=[];
+  persons.forEach(function(p,pi){
+    if(!p||!p.ime)return;
+    var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
+    if(ni<0)return;
+    namedPersons.push({p:p,pi:pi,start:ni,end:ni+String(p.ime).length});
+  });
+  if(namedPersons.length===0)return persons;
+
+  // 3. Adjacency check - vraca true ako su a i b "immediately adjacent" tj. razdvojeni
+  // SAMO whitespace-om, tackom, dvotackom, semikolom. NE i zarezom (zarez = SEPARATOR
+  // izmedju razlicitih (ime, datum) parova kao u "Marko 5.5, Ana 3.3").
+  function isAdjacent(aEnd,bStart){
+    if(aEnd>bStart)return false;
+    return /^[\s.;:]*$/.test(raw.slice(aEnd,bStart));
+  }
+  // Score: 0 ako immediately adjacent, inace absolute distance
+  function pairScore(np,dt){
+    if(dt.end<=np.start && isAdjacent(dt.end,np.start)) return 0; // date right-before name
+    if(np.end<=dt.start && isAdjacent(np.end,dt.start)) return 0; // date right-after name
+    return Math.abs(np.start-dt.start);
+  }
+
+  // 4. Compute all pair scores
+  var pairs=[];
+  namedPersons.forEach(function(np,nIdx){
+    uniqDates.forEach(function(dt,dIdx){
+      pairs.push({nIdx:nIdx,dIdx:dIdx,score:pairScore(np,dt)});
+    });
+  });
+  pairs.sort(function(a,b){return a.score-b.score;});
+
+  // 5. Greedy bipartite matching
+  var usedN={},usedD={};
+  pairs.forEach(function(pair){
+    if(usedN[pair.nIdx]||usedD[pair.dIdx])return;
+    var np=namedPersons[pair.nIdx];
+    var dt=uniqDates[pair.dIdx];
+    if(np.p.datum!==dt.iso){
+      try{console.warn("bindDatesToNames: "+np.p.ime+": "+np.p.datum+" -> "+dt.iso+" (score="+pair.score+")");}catch(e){}
+      np.p.datum=dt.iso;
+    }
+    usedN[pair.nIdx]=true;
+    usedD[pair.dIdx]=true;
+  });
+
+  return persons;
+}
+
 // Retry helper: "Failed to fetch" se desava cesto na mobilnom 4G kad mreza zatrepere
 // I cesto kod Render free tier cold start-a (server zaspi posle 15 min, prvi request
 // ceka 30-60s da se server probudi).
