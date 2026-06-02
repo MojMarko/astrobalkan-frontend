@@ -11,6 +11,12 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE || 'production',
+    // Tunnel: SDK salje event-e na nas domen, mi server-side prosledjujemo ka
+    // sentry.io. Razlog: ad blockeri (uBlock, Brave Shield, korporativni firewall,
+    // neki antivirusi) blokiraju sentry.io domen direktno. Sa tunelom SDK kontaktira
+    // SAMO nas domen, sto nijedan blocker ne moze da raspozna.
+    // Backend handler: api/monitoring.js (Vercel serverless function).
+    tunnel: '/api/monitoring',
     // Session Replay snima sesije radnica (klik, kucanje, scroll, navigacija)
     // tako da admin moze pregledati tacno sta je radnica radila pre greske.
     // Marko trazio 2.6: "snima svaka radnja u softveru da vidim sta tacno rade".
