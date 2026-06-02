@@ -42,10 +42,11 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       // Performance monitoring iskljucen (trosi posebnu kvotu)
       tracesSampleRate: 0,
       // Session Replay:
-      //   replaysSessionSampleRate=0.1 - 10% normalnih sesija (za uzorke)
+      //   replaysSessionSampleRate=1.0 - PRIVREMENO 100% sesija za verifikaciju (2.6 setup).
+      //   Vraticemo na 0.1 (10%) kad potvrdimo da snimak stiti u dashboard.
       //   replaysOnErrorSampleRate=1.0 - SVE sesije sa greskama (cuva 30s pre greske)
-      //   Free tier: 50 replays/mesec, error replay-i su prioritet
-      replaysSessionSampleRate: 0.1,
+      //   Free tier: 50 replays/mesec - vodi racuna da ne prekoracimo dok je 100%.
+      replaysSessionSampleRate: 1.0,
       replaysOnErrorSampleRate: 1.0,
       sendDefaultPii: true,
       ignoreErrors: [
