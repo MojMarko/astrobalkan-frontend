@@ -140,6 +140,29 @@ describe('fetchWithRetry - hvata transient mrezne greske', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onRetry).toHaveBeenCalledWith(1, 2, 2000);
   });
+
+  it('per-attempt timeout abort-uje fetch koji visi (Suzana prijava 2.6 11:10)', async () => {
+    // Render free tier moze ostaviti fetch da visi unedogled. Bez timeout-a status
+    // ostane "generating", UI zaglavljen. Sa timeout-om, abort baca pa retry pa kraj.
+    global.fetch = vi.fn().mockImplementation(function(url, opts){
+      return new Promise(function(_resolve, reject){
+        // Simuliraj fetch koji visi - zavisi od signal.abort
+        if (opts && opts.signal) {
+          opts.signal.addEventListener('abort', function(){
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }
+        // Nikad ne resolve-uje
+      });
+    });
+    const settled = fetchWithRetry('http://test/x', {}, { attempts: 2, timeoutMs: 5000 })
+      .then(v => ({value:v}), e => ({error:e}));
+    // 5s timeout + 2s backoff + 5s timeout = 12s total
+    await vi.advanceTimersByTimeAsync(15000);
+    const result = await settled;
+    expect(result.error).toBeDefined();
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('conventionalSunSign - datumski znak po standardnim tabelama', () => {

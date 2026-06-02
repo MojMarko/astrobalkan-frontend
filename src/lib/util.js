@@ -47,29 +47,37 @@ export function conventionalSunSign(iso){
 // ceka 30-60s da se server probudi).
 //
 // Strategija: 4 pokusaja sa eksponencijalno rastucim backoff-om (2s, 5s, 15s, 30s).
-// Ukupno do ~52 sekundi - dovoljno da preživi cold start. Tokom retry-ja zovemo
-// opcionalni onRetry callback (call site moze prikazati toast "server se budi...").
-// Ne retrira 4xx (klijent greska, npr. 400 invalid input - tu retry nema smisla).
+// Plus per-attempt timeout (default 30s) - bez ovog fetch moze viseti unedogled na
+// mrtvi server, status ostane 'generating', UI zaglavljen (Suzana prijava 2.6 11:10:
+// "Ocitava, ne uradi analizu" - tacno taj scenario).
+// Ukupno worst case ~2 min - dovoljno da preživi cold start, dovoljno kratko da
+// radnica ne ceka unedogled bez ikakvog feedback-a.
 export async function fetchWithRetry(url, options, attemptsOrOpts){
-  // Backward kompatibilan signature: stari kod prosledjuje broj, novi moze object.
-  let attempts, onRetry;
+  let attempts, onRetry, perAttemptTimeoutMs;
   if (typeof attemptsOrOpts === 'object' && attemptsOrOpts !== null) {
     attempts = attemptsOrOpts.attempts || 4;
     onRetry = attemptsOrOpts.onRetry || null;
+    perAttemptTimeoutMs = attemptsOrOpts.timeoutMs || 30000;
   } else {
     attempts = attemptsOrOpts || 4;
     onRetry = null;
+    perAttemptTimeoutMs = 30000;
   }
-  const backoffs = [2000, 5000, 15000, 30000]; // index 0..3 (cap pri retry br. i-1)
+  const backoffs = [2000, 5000, 15000, 30000];
   let lastErr;
   for (let i = 0; i < attempts; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function(){ controller.abort(); }, perAttemptTimeoutMs);
     try {
-      const r = await fetch(url, options);
+      const fetchOptions = Object.assign({}, options || {}, { signal: controller.signal });
+      const r = await fetch(url, fetchOptions);
+      clearTimeout(timeoutId);
       if (r.ok) return r;
       if (r.status >= 400 && r.status < 500) return r; // klijent greska - ne retriraj
       lastErr = new Error("HTTP " + r.status);
     } catch (e) {
-      lastErr = e; // network error (TypeError "Failed to fetch") - retriraj
+      clearTimeout(timeoutId);
+      lastErr = e; // network error / timeout abort / TypeError - retriraj
     }
     if (i < attempts - 1) {
       const wait = backoffs[i] || backoffs[backoffs.length - 1];
