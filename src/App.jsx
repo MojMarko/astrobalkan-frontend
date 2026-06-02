@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, conventionalSunSign } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, conventionalSunSign, findNamePos, bindDatesToNames } from './lib/util.js';
 
 // ASTRO ENGINE -------------------------------------------------------------
 const SIGNS=["Ovan","Bik","Blizanci","Rak","Lav","Devica","Vaga","Skorpija","Strelac","Jarac","Vodolija","Ribe"];
@@ -582,104 +582,7 @@ async function parseMsg(text,provider){
 // LLM vraca nominativ ("Marko"), a tekst cesto ima akuzativ/genitiv ("sina Marka",
 // "cerku Milicu"). Exact indexOf bi promasio i datum se ne bi vezao za osobu.
 // Strategija: prvo exact, pa koren imena (bez zavrsnog samoglasnika) + do 2 sufiksna slova.
-function findNamePos(rawLower,nameLower){
-  if(!rawLower||!nameLower)return -1;
-  var esc0=nameLower.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  // 1) tacno ime uz granicu reci + do 2 padezna slova (Marko, Markom). Granica
-  //    reci sprecava lazno poklapanje unutar duze reci (Ana unutar "Stefana").
-  try{
-    var reExact=new RegExp("\\b"+esc0+"[a-zčćđšž]{0,2}\\b");
-    var m0=reExact.exec(rawLower);
-    if(m0)return m0.index;
-  }catch(e){}
-  // 2) koren bez zavrsnog samoglasnika (Marko->Marka/Marku, Milica->Milicu)
-  var vowels="aeiou";
-  var stem=nameLower;
-  if(stem.length>2&&vowels.indexOf(stem.charAt(stem.length-1))>=0)stem=stem.slice(0,-1);
-  if(stem.length<2)return -1;
-  var esc=stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  try{
-    var re=new RegExp("\\b"+esc+"[a-zčćđšž]{0,2}\\b");
-    var mm=re.exec(rawLower);
-    return mm?mm.index:-1;
-  }catch(e){return -1;}
-}
-function bindDatesToNames(rawText,persons){
-  if(!rawText||!persons||persons.length===0)return persons;
-  var raw=String(rawText);
-  var rawLow=raw.toLowerCase();
-  var dates=[];
-  var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
-  while((m=dRe.exec(raw))!==null){
-    var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=m[3];
-    var yN=y.length===2?(parseInt(y,10)<=30?2000+parseInt(y,10):1900+parseInt(y,10)):parseInt(y,10);
-    if(d>=1&&d<=31&&mo>=1&&mo<=12){
-      dates.push({iso:yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"),pos:m.index});
-    }
-  }
-  // Dedupliraj datume iz teksta — isti datum dvaput u tekstu ne pravi dva "slota"
-  var seenDates={},uniqDates=[];
-  dates.forEach(function(dt){if(!seenDates[dt.iso]){seenDates[dt.iso]=true;uniqDates.push(dt);}});
-  if(uniqDates.length===0)return persons;
-  // Pass 1: per-osoba najblizi datum (bez constraints-a, prati LLM strategiju)
-  persons.forEach(function(p){
-    if(!p||!p.ime)return;
-    var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
-    if(ni<0)return;
-    var best=null,bestScore=Infinity;
-    uniqDates.forEach(function(dt){
-      var dist=Math.abs(dt.pos-ni);
-      var score=dt.pos>=ni?dist:dist+1000;
-      if(score<bestScore){bestScore=score;best=dt;}
-    });
-    if(best&&best.iso!==p.datum){
-      console.warn("bindDatesToNames: ispravljen datum za "+p.ime+": "+p.datum+" -> "+best.iso);
-      p.datum=best.iso;
-    }
-  });
-  // Pass 2: detektuj duplikate i preraspodeli ako u tekstu ima dovoljno
-  // distinktih datuma. Greedy bipartite match po skoru rastojanja.
-  var datumCounts={};
-  persons.forEach(function(p){if(p&&p.datum)datumCounts[p.datum]=(datumCounts[p.datum]||0)+1;});
-  var hasDup=Object.keys(datumCounts).some(function(k){return datumCounts[k]>1;});
-  var personsWithName=persons.filter(function(p){return p&&p.ime&&findNamePos(rawLow,String(p.ime).toLowerCase())>=0;});
-  if(hasDup&&uniqDates.length>=personsWithName.length){
-    console.warn("bindDatesToNames: duplikati detektovani, pokrecem preraspodelu");
-    var pairs=[];
-    persons.forEach(function(p,pi){
-      if(!p||!p.ime)return;
-      var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
-      if(ni<0)return;
-      uniqDates.forEach(function(dt,di){
-        var dist=Math.abs(dt.pos-ni);
-        var score=dt.pos>=ni?dist:dist+1000;
-        pairs.push({pi:pi,di:di,score:score});
-      });
-    });
-    pairs.sort(function(a,b){return a.score-b.score;});
-    var usedDi={},assignedPi={};
-    pairs.forEach(function(pair){
-      if(assignedPi[pair.pi]||usedDi[pair.di])return;
-      var oldDatum=persons[pair.pi].datum;
-      var newDatum=uniqDates[pair.di].iso;
-      if(oldDatum!==newDatum){
-        console.warn("bindDatesToNames: preraspodela za "+persons[pair.pi].ime+": "+oldDatum+" -> "+newDatum);
-        persons[pair.pi].datum=newDatum;
-      }
-      assignedPi[pair.pi]=true;
-      usedDi[pair.di]=true;
-    });
-  }
-  // Pass 3: krajnji warning ako su jos uvek duplikati (tekst nema dovoljno datuma)
-  var seen={};
-  persons.forEach(function(p){
-    if(p&&p.datum){
-      if(seen[p.datum])console.error("bindDatesToNames: jos uvek duplikat datum "+p.datum+" za "+p.ime+" (tekst verovatno nema dovoljno datuma — astrolog mora rucno proveriti)");
-      seen[p.datum]=true;
-    }
-  });
-  return persons;
-}
+// findNamePos i bindDatesToNames su sada u src/lib/util.js (testabilno + jedan izvor istine).
 // Iz teksta "Pitanja klijenta" izvuce listu osoba koje imaju bar datum rodjenja.
 // Vraca [] ako nema nikoga, ili [{ime, odnos, datum, vreme, mesto}, ...].
 async function parsePersonsFromPitanja(text){

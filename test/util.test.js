@@ -218,3 +218,88 @@ describe('conventionalSunSign - datumski znak po standardnim tabelama', () => {
     expect(conventionalSunSign('1990-11-15')).toBe('Skorpija');
   });
 });
+
+import { bindDatesToNames, findNamePos } from '../src/lib/util.js';
+
+describe('bindDatesToNames - pair imena sa datumima po adjacency', () => {
+  // Dragana Micic prijava 2.6.2026 - klijent je dobio analizu sa zamenjenim datumima
+  // izmedju cerke i brata. AI parser je halucinirao da Kalini pripada 02.05.1985 (bratov
+  // datum) i Mirku 17.01.2023 (cerkin datum). Stari bindDatesToNames sa direction penalty
+  // nije ispravio. Novi adjacency algoritam mora da uhvati ovaj pattern (DATUM.Ime).
+  it('Kalina/Mirko slucaj iz prijave 2.6 - DATUM.IME pattern pravilno bind-uje', () => {
+    const text = "17.01.2023.Kalina , moja cerka\n02.05.1985. moj Brat Mirko";
+    const persons = [
+      { ime: 'Kalina', odnos: 'cerka', datum: '1985-05-02' }, // AI dao pogresan datum
+      { ime: 'Mirko', odnos: 'brat', datum: '2023-01-17' }    // AI dao pogresan datum
+    ];
+    const result = bindDatesToNames(text, persons);
+    const kalina = result.find(p => p.ime === 'Kalina');
+    const mirko = result.find(p => p.ime === 'Mirko');
+    expect(kalina.datum).toBe('2023-01-17');  // Kalina cerka 17.01.2023
+    expect(mirko.datum).toBe('1985-05-02');   // Mirko brat 02.05.1985
+  });
+
+  it('IME DATUM pattern (Marko 5.5.1990) pravilno bind-uje', () => {
+    const text = "Marko 5.5.1990, Ana 3.3.1995";
+    const persons = [
+      { ime: 'Marko', datum: '1995-03-03' }, // pogresno (zameni mu Anin datum)
+      { ime: 'Ana', datum: '1990-05-05' }    // pogresno
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Marko').datum).toBe('1990-05-05');
+    expect(result.find(p => p.ime === 'Ana').datum).toBe('1995-03-03');
+  });
+
+  it('DATUM IME pattern (5.5.1990 Marko) pravilno bind-uje', () => {
+    const text = "5.5.1990 Marko, 3.3.1995 Ana";
+    const persons = [
+      { ime: 'Marko', datum: '1995-03-03' }, // pogresno
+      { ime: 'Ana', datum: '1990-05-05' }    // pogresno
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Marko').datum).toBe('1990-05-05');
+    expect(result.find(p => p.ime === 'Ana').datum).toBe('1995-03-03');
+  });
+
+  it('cuva tacne datume ako AI vec ima pravilan pairing', () => {
+    const text = "Sin Marko 12.05.2018, cerka Ana 03.09.2020";
+    const persons = [
+      { ime: 'Marko', odnos: 'sin', datum: '2018-05-12' },
+      { ime: 'Ana', odnos: 'cerka', datum: '2020-09-03' }
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Marko').datum).toBe('2018-05-12');
+    expect(result.find(p => p.ime === 'Ana').datum).toBe('2020-09-03');
+  });
+
+  it('vraca prazan niz nepromenjen', () => {
+    expect(bindDatesToNames('', [])).toEqual([]);
+    expect(bindDatesToNames(null, [{ ime: 'X', datum: '2020-01-01' }])).toEqual([{ ime: 'X', datum: '2020-01-01' }]);
+  });
+
+  it('cuva imena bez datuma (ne ruje persons koji nisu u tekstu)', () => {
+    const text = "Marko 5.5.1990";
+    const persons = [
+      { ime: 'Marko', datum: '1990-05-05' },
+      { ime: 'Petar', datum: '1985-01-01' } // ne u tekstu
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Petar').datum).toBe('1985-01-01'); // ne dira
+  });
+});
+
+describe('findNamePos - pronadji ime sa padezima', () => {
+  it('nadje tacno ime', () => {
+    expect(findNamePos('marko 5.5.1990', 'marko')).toBe(0);
+    expect(findNamePos('imam sina marka', 'marko')).toBe(10); // padez (marka)
+  });
+
+  it('vraca -1 ako nema imena', () => {
+    expect(findNamePos('test bez imena', 'marko')).toBe(-1);
+  });
+
+  it('vraca -1 za invalid input', () => {
+    expect(findNamePos('', 'marko')).toBe(-1);
+    expect(findNamePos('test', '')).toBe(-1);
+  });
+});
