@@ -1191,6 +1191,30 @@ export default function App(){
         // (npr. "prvi partner / drugi partner" zbune AI), tretiraj kao da partner
         // postoji — inace bi se podaci o partneru ispod tiho odbacili.
         if(!p.imaPartnera&&p.partner&&p.partner.datum)p.imaPartnera=true;
+        // Fallback: ako pitanja sadrze romantic indicator + datum, AI je verovatno
+        // propustio partnera. Pokriva Suzana prijavu 3.6 10:47:
+        //   pitanja="On ,30.12.1979\nUporedi horoskop sa njim\n..."
+        // AI je stavio "On" + datum u pitanja (jer "On" je samo zamenica, ne ime
+        // partnera), a partner sekciju ostavio praznu. Astrologu to izgleda kao
+        // "ne upisuje datum partnera" i ne moze da uporedi karte.
+        if((!p.partner||!p.partner.datum) && p.pitanja){
+          // Romantic indicator: izricito pominjanje partnera ILI "uporedi"/"sinastrija"
+          // ILI "horoskop sa njim/njom" (komparativni). Mala 'on'/'ona' su preceste
+          // zamenice (false positive na "on voli", "ona je rekla"), pa se ne uzimaju.
+          var ROMANTIC_PITANJA=/\b(uporedi|uporedni|uporedno|sinastrija|sinastriju|horoskop sa nj|sa njim|sa njom|moj (muz|muža|muza|suprug|decko|dečko|momak|verenik|dragi|bivši|bivsi|partner)|moja (žena|zena|supruga|devojka|verenica|draga|bivša|bivsa|partnerka))\b/i;
+          if(ROMANTIC_PITANJA.test(p.pitanja)){
+            var pitDateMatch=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/.exec(p.pitanja);
+            if(pitDateMatch){
+              var pyr2=pitDateMatch[3].length===2?(parseInt(pitDateMatch[3])<=30?"20"+pitDateMatch[3]:"19"+pitDateMatch[3]):pitDateMatch[3];
+              var pmm2=pitDateMatch[2].length===1?"0"+pitDateMatch[2]:pitDateMatch[2];
+              var pdd2=pitDateMatch[1].length===1?"0"+pitDateMatch[1]:pitDateMatch[1];
+              var partnerDatumPit=pyr2+"-"+pmm2+"-"+pdd2;
+              p.imaPartnera=true;
+              p.partner=Object.assign({ime:"",vreme:"",mesto:"",zemlja:""}, p.partner||{}, {datum:partnerDatumPit});
+              toast2("✓ Partner automatski dodat iz pitanja (datum "+pdd2+"."+pmm2+"."+pyr2+")");
+            }
+          }
+        }
         // Detektuj vreme u sirovom paste-u ali parser nije izvukao
         var pasteHasTime=/\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(am|pm|h\b|sati|časova|casova|popodne|ujutru|uvece|nocu|noću)\b/i.test(s.paste);
         if(pasteHasTime&&p.klijent&&!p.klijent.vreme){
