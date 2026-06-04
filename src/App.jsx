@@ -1568,6 +1568,13 @@ export default function App(){
   // GENERATE
   async function doGen(idx){
     var sl=slots[idx];if(!sl)return;
+    // GUARD: dupli klik na "Generiši" zna da pokrene 2 job-a u 20s razmaku (Zorica 4.6.).
+    // disabled:busy na dugmetu nije dovoljno - busy se update-uje async pa kratki dvostruki
+    // klik prodje kroz oba. Cuvamo status u referenci pre setState-a.
+    if(sl.status==="generating"||sl.jobId){
+      console.warn("doGen: already generating, ignoring duplicate click");
+      return;
+    }
     var hasClientChart=!!sl.ch;
     var hasPitanjaText=sl.client.pitanja&&sl.client.pitanja.trim().length>10;
     if(!hasClientChart&&!hasPitanjaText){
@@ -1838,6 +1845,12 @@ export default function App(){
   // DOWNSELL GEN - prima idx (0, 1, ili 2) za jedan od 3 slota
   async function doDsGen(idx){
     var ds=dsSlots[idx];
+    if(!ds)return;
+    // GUARD: dupli klik bi pokrenuo 2 downsell-a paralelno
+    if(ds.st==="generating"||ds.jobId){
+      console.warn("doDsGen: already generating, ignoring duplicate click");
+      return;
+    }
     if(!ds.paste.trim()&&!ds.clientId)return;
     upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,genStartedAt:Date.now()});});
     var today=new Date(),todayStr=fmtDMY(today);
@@ -1889,6 +1902,12 @@ export default function App(){
   // PITANJA GEN - prima idx (0, 1, 2)
   async function doPqGen(idx){
     var pq=pqSlots[idx];
+    if(!pq)return;
+    // GUARD: dupli klik bi pokrenuo 2 pitanja job-a paralelno
+    if(pq.st==="generating"||pq.jobId){
+      console.warn("doPqGen: already generating, ignoring duplicate click");
+      return;
+    }
     if((!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim())return;
     upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,genStartedAt:Date.now()});});
     var isHR=country==="hr";
