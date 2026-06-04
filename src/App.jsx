@@ -2099,14 +2099,26 @@ export default function App(){
     },3000);
   }
 
-  // Resume polling for active jobs on app load
+  // Resume polling for active jobs on app load.
+  // KRITICNO: kljuc u activeJobs odredjuje TIP job-a (a=analiza, ds=downsell, pq=pitanja).
+  // Ako ovo ignorisemo i pozovemo pollJob za sve, downsell/pitanja rezultat zavrsi u
+  // analiza slotu (Suzana prijava 4.6: "Kada radi Downsell radi ga i u polje analize" —
+  // nastalo posle page refresh-a tokom downsell job-a).
   useEffect(function(){
     var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
     Object.keys(jobs).forEach(function(key){
       var j=jobs[key];
-      if(j&&j.id){
-        console.log("Resuming poll for job:",j.id,key);
-        pollJob(j.id,j.idx!==undefined?j.idx:null,key);
+      if(!j||!j.id)return;
+      console.log("Resuming poll for job:",j.id,key);
+      var idx=j.idx!==undefined?j.idx:null;
+      if(key.indexOf("ds")===0&&idx!==null){
+        // Downsell — payload/questionsText nisu sacuvani u localStorage, pa Gemini fallback
+        // nece raditi posle refresh-a; rezultat ce ipak otici u tacan slot.
+        startDsPoll(idx,j.id,(j.clientName||"").replace(/^Downsell - /,""),null,"");
+      }else if(key.indexOf("pq")===0&&idx!==null){
+        startPqPoll(idx,j.id,(j.clientName||"").replace(/^D\. Pitanja - /,""),null,"");
+      }else{
+        pollJob(j.id,idx,key);
       }
     });
   },[]);
