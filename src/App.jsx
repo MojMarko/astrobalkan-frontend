@@ -1353,7 +1353,14 @@ export default function App(){
 
       // PRIMARY: Use backend Swiss Ephemeris (NASA-level precision)
       try{
-        var chartResp=await fetch(API+"/api/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bd)});
+        // TIMEOUT 45s: bez ovog ako backend visi (cold start, network glitch) fetch
+        // visi zauvek pa doGen ostaje u await zauvek. Suzana 4.6 13:10 prijava: "Radi
+        // analizu preko pola sata" - spinner 28min jer je callAstroAPI za jednu od
+        // osoba iz pitanja visio. doGen status="generating" zauvek, niko ne baci.
+        var chartCtrl=new AbortController();
+        var chartTo=setTimeout(function(){chartCtrl.abort();},45000);
+        var chartResp=await fetch(API+"/api/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bd),signal:chartCtrl.signal});
+        clearTimeout(chartTo);
         if(chartResp.ok){
           var chartData=await chartResp.json();
           console.log("SWISSEPH response:",chartData.source,chartData.positions?chartData.positions.length+" planets":"no positions");
