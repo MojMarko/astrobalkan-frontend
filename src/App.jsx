@@ -446,7 +446,12 @@ async function parseMsg(text,provider){
   var MAX_RETRIES=4;
   for(var attempt=0;attempt<MAX_RETRIES;attempt++){
     try{
-      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})});
+      // TIMEOUT 30s per attempt: bez ovog parse moze visiti zauvek na cold start-u
+      // backend-a, sto blokira doGen (parsePersonsFromMessenger se zove iz doGen-a).
+      var pmCtrl=new AbortController();
+      var pmTo=setTimeout(function(){pmCtrl.abort();},30000);
+      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined}),signal:pmCtrl.signal});
+      clearTimeout(pmTo);
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       var errLow=(d.error&&(d.error.message||"")).toLowerCase();
@@ -1080,7 +1085,11 @@ export default function App(){
       return Object.assign({},person||{},{lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:""});
     }
     try{
-      var r=await fetch(API+"/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({grad:person.mesto,zemlja:person.zemlja||""})});
+      // TIMEOUT 15s: geocode je brz lookup, ne sme visiti.
+      var gcCtrl=new AbortController();
+      var gcTo=setTimeout(function(){gcCtrl.abort();},15000);
+      var r=await fetch(API+"/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({grad:person.mesto,zemlja:person.zemlja||""}),signal:gcCtrl.signal});
+      clearTimeout(gcTo);
       var data=await r.json();
       var opts=(data&&data.results)||[];
       if(opts.length===1){
@@ -1275,13 +1284,26 @@ export default function App(){
   }
 
   async function astroPost(endpoint,body){
-    var resp=await fetch("https://astrobalkan-backend.onrender.com/api/astro"+endpoint,{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(body)
-    });
-    if(!resp.ok){console.warn("AstroAPI "+endpoint+" => HTTP "+resp.status);return null;}
-    return await resp.json();
+    // TIMEOUT 30s: bez ovog Promise.allSettled u callAstroAPI fallback-u moze visiti
+    // zauvek ako astrology-api.io backend nije responsive. Suzana 6.6. 09:25 prijava:
+    // "Radi po pola sata i ne uradi" - 3 analize zaglavljene, ni jedan job u DB-u.
+    var ctrl=new AbortController();
+    var to=setTimeout(function(){ctrl.abort();},30000);
+    try{
+      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/astro"+endpoint,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(body),
+        signal:ctrl.signal
+      });
+      clearTimeout(to);
+      if(!resp.ok){console.warn("AstroAPI "+endpoint+" => HTTP "+resp.status);return null;}
+      return await resp.json();
+    }catch(e){
+      clearTimeout(to);
+      console.warn("astroPost "+endpoint+" exception:",e.message);
+      return null;
+    }
   }
 
   function parsePositions(data){
@@ -1589,6 +1611,25 @@ export default function App(){
       return;
     }
     upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0,genStartedAt:Date.now()});});
+    // HARD SAFETY VALVE: ako doGen NE STIGNE da postavi jobId u 8 minuta, sigurno je
+    // negde zaglavio (sub-fetch bez timeout-a koji mi nismo pokrili). Forsiraj UI da
+    // se vrati u idle i prikazi grešku. Suzana 6.6. 09:25: 3 analize "rade po pola sata",
+    // ni jedan job u DB-u - doGen je visio.
+    var doGenSafetyTimer=setTimeout(function(){
+      setSlots(function(prev){
+        var cur=prev[idx];
+        if(cur&&cur.status==="generating"&&!cur.jobId){
+          console.error("doGen safety valve: nije stigao do POST u 8 min, forsiram error");
+          try{Sentry.captureMessage("doGen safety valve fired (no jobId after 8min)",{level:"error",tags:{source:"doGen_safety"}});}catch(_){}
+          toast2("Pokušaj generisanja nije uspeo. Klikni Generiši ponovo.");
+          var nv=prev.slice();
+          nv[idx]=Object.assign({},cur,{status:"done",analysis:"Generisanje je zaglavljeno (verovatno spora mreža ili backend). Klikni Generiši ponovo."});
+          return nv;
+        }
+        return prev;
+      });
+    },8*60*1000);
+    try {
     // Auto-extract additional persons from pitanja and compute their charts
     var extraPersons=[];
     var extraCharts=[];
@@ -1751,6 +1792,10 @@ export default function App(){
       console.error("doGen error:",err);
       try { Sentry.withScope(function(s){s.setTag("source","genAnalysis"); s.setContext("client",{name:sl.client.ime||"",hasPartner:!!sl.hasPart}); Sentry.captureException(err);}); } catch(_) {}
       upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
+    }
+    } finally {
+      // Safety valve cleanup - doGen je zavrsio (uspesno ili sa greskom)
+      clearTimeout(doGenSafetyTimer);
     }
   }
 
