@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, conventionalSunSign, findNamePos, bindDatesToNames } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames } from './lib/util.js';
 
 // ASTRO ENGINE -------------------------------------------------------------
 const SIGNS=["Ovan","Bik","Blizanci","Rak","Lav","Devica","Vaga","Skorpija","Strelac","Jarac","Vodolija","Ribe"];
@@ -446,12 +446,8 @@ async function parseMsg(text,provider){
   var MAX_RETRIES=4;
   for(var attempt=0;attempt<MAX_RETRIES;attempt++){
     try{
-      // TIMEOUT 30s per attempt: bez ovog parse moze visiti zauvek na cold start-u
-      // backend-a, sto blokira doGen (parsePersonsFromMessenger se zove iz doGen-a).
-      var pmCtrl=new AbortController();
-      var pmTo=setTimeout(function(){pmCtrl.abort();},30000);
-      var r=await fetch("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined}),signal:pmCtrl.signal});
-      clearTimeout(pmTo);
+      // fetchSafe default 30s timeout — bez ovog parse moze visiti zauvek na cold start-u
+      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})});
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       var errLow=(d.error&&(d.error.message||"")).toLowerCase();
@@ -670,7 +666,7 @@ var API="https://astrobalkan-backend.onrender.com";
 // Nikad ne sme da pukne — wrap u try; .catch na fetch.
 function notifyOps(category,message,context){
   try{
-    fetch(API+"/api/alert-ops",{
+    fetchSafe(API+"/api/alert-ops",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({category:String(category||"generic").slice(0,50),message:String(message||"").slice(0,500),context:context||undefined})
@@ -821,7 +817,7 @@ export default function App(){
           return;
         }
         try{
-          var resp=await fetch(API+"/api/generate/"+jobId);
+          var resp=await fetchSafe(API+"/api/generate/"+jobId);
           if(!resp.ok)return;
           var job=await resp.json();
           if(job.status==="done"){clearInterval(iv);onDone(fmtText(job.serbian_text||""));}
@@ -861,7 +857,7 @@ export default function App(){
     var age=Date.now()-clientsLoadedAt;
     if(!force&&clientsLoadedAt>0&&age<30000)return;
     try{
-      var r=await fetch(API+"/api/clients");
+      var r=await fetchSafe(API+"/api/clients");
       var d=await r.json();
       setClientsCache(d.clients||[]);
       setClientsLoadedAt(Date.now());
@@ -881,7 +877,7 @@ export default function App(){
     stoGet("custPr",{sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}}).then(function(local){
       setCustPr(local);
       // Load from backend (overrides local)
-      fetch(API+"/api/prompts").then(function(r){return r.json();}).then(function(d){
+      fetchSafe(API+"/api/prompts").then(function(r){return r.json();}).then(function(d){
         if(d.prompts&&Object.keys(d.prompts).length>0){
           var merged={sr:Object.assign({main:"",ds:"",pitanja:""},local.sr||{},d.prompts.sr||{}),hr:Object.assign({main:"",ds:"",pitanja:""},local.hr||{},d.prompts.hr||{})};
           setCustPr(merged);stoSet("custPr",merged);
@@ -892,7 +888,7 @@ export default function App(){
     // Inicijalno ucitaj kesirane analize (brz prikaz dok server fetch radi)
     stoGet("analyses",[]).then(function(arr){if(arr&&arr.length>0)setAnalyses(arr);});
     // Load shared analyses from backend - all users see all
-    fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
+    fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
       if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
       if(typeof d.total==="number")setTotalAnalyses(d.total);
     }).catch(function(e){console.warn("Could not load shared analyses:",e.message);});
@@ -902,7 +898,7 @@ export default function App(){
   useEffect(function(){
     if(tab!=="baza")return;
     var refresh=function(){
-      fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
+      fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
         if(d.analyses)setAnalyses(d.analyses);
         if(typeof d.total==="number")setTotalAnalyses(d.total);
       }).catch(function(){});
@@ -915,7 +911,7 @@ export default function App(){
   // Ucitaj korpu kad korisnik prebaci na "trash" view
   function loadTrash(){
     if(!user||!user.id)return;
-    fetch(API+"/api/analyses/trash",{headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+    fetchSafe(API+"/api/analyses/trash",{headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
       .then(function(r){return r.json();})
       .then(function(d){if(d&&d.items)setTrashItems(d.items);})
       .catch(function(e){console.warn("loadTrash failed:",e.message);});
@@ -964,7 +960,7 @@ export default function App(){
     setRepSending(true);
     try{
       var body={description:repDesc.trim(),reporter_email:(user&&user.email)||"",reporter_name:(user&&user.name)||"",screen:repScreens.join(", "),image:repImg||null};
-      var r=await fetch(API+"/api/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      var r=await fetchSafe(API+"/api/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       var d=await r.json();
       if(!r.ok||!d.ok)throw new Error((d&&d.error)||"Greška pri slanju");
       setRepDesc("");setRepImg(null);setRepScreens([]);
@@ -974,11 +970,11 @@ export default function App(){
     setRepSending(false);
   }
   async function loadReports(){
-    try{var r=await fetch(API+"/api/reports");var d=await r.json();setRepList(d.reports||[]);}catch(e){console.warn("loadReports:",e.message);}
+    try{var r=await fetchSafe(API+"/api/reports");var d=await r.json();setRepList(d.reports||[]);}catch(e){console.warn("loadReports:",e.message);}
   }
   async function markReport(id,status){
     try{
-      await fetch(API+"/api/reports/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:status})});
+      await fetchSafe(API+"/api/reports/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:status})});
       setRepList(function(prev){return prev.map(function(x){return x.id===id?Object.assign({},x,{status:status}):x;});});
     }catch(e){toast2("Greška: "+e.message);}
   }
@@ -991,7 +987,7 @@ export default function App(){
   async function doLogin(){
     setLerr("");
     try{
-      var r=await fetch(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:lEmail.trim().toLowerCase(),password:lPw})});
+      var r=await fetchSafe(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:lEmail.trim().toLowerCase(),password:lPw})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Pogresna lozinka ili email.");
       if(!d.user.verified)return setLerr("Email nije verifikovan.");
@@ -1006,7 +1002,7 @@ export default function App(){
     if(rPw!==rPw2)return setLerr("Lozinke se ne podudaraju.");
     setLerr("");
     try{
-      var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:rEmail.trim().toLowerCase(),password:rPw,name:rName.trim(),country:"sr"})});
+      var r=await fetchSafe(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:rEmail.trim().toLowerCase(),password:rPw,name:rName.trim(),country:"sr"})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Greska pri registraciji.");
       setLm("login");setLerr("");setLsuc("Registracija uspesna! Mozes se prijaviti.");
@@ -1017,7 +1013,7 @@ export default function App(){
     if(!entCode)return setLerr("Unesite kod.");
     setLerr("");
     try{
-      var r=await fetch(API+"/api/auth/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:pendUser.email,code:entCode})});
+      var r=await fetchSafe(API+"/api/auth/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:pendUser.email,code:entCode})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Pogresan kod.");
       setLm("login");setLerr("");setLsuc("Email verifikovan! Prijavi se.");
@@ -1027,7 +1023,7 @@ export default function App(){
     if(!fEmail.includes("@"))return setLerr("Unesite email.");
     setLerr("");
     try{
-      var r=await fetch(API+"/api/auth/forgot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase()})});
+      var r=await fetchSafe(API+"/api/auth/forgot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase()})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Korisnik ne postoji.");
       setFStep(2);setLerr("");
@@ -1039,7 +1035,7 @@ export default function App(){
     if(fNewPw.length<6)return setLerr("Lozinka mora imati min. 6 znakova.");
     setLerr("");
     try{
-      var r=await fetch(API+"/api/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase(),code:fCode,newPassword:fNewPw})});
+      var r=await fetchSafe(API+"/api/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:fEmail.trim().toLowerCase(),code:fCode,newPassword:fNewPw})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Pogresan kod.");
       setLm("login");setFStep(1);setLerr("");setLsuc("Lozinka promijenjena! Prijavi se.");
@@ -1055,14 +1051,14 @@ export default function App(){
   // ADMIN
   async function loadAdminUsers(){
     try{
-      var r=await fetch(API+"/api/admin/users",{headers:{"x-user-id":user.id}});
+      var r=await fetchSafe(API+"/api/admin/users",{headers:{"x-user-id":user.id}});
       var d=await r.json();
       if(d.users)setAdminUsers(d.users);
     }catch(e){}
   }
   async function deleteAdminUser(id){
     try{
-      await fetch(API+"/api/admin/users/"+id,{method:"DELETE",headers:{"x-user-id":user.id}});
+      await fetchSafe(API+"/api/admin/users/"+id,{method:"DELETE",headers:{"x-user-id":user.id}});
       loadAdminUsers();
       toast2("Korisnik uklonjen.");
     }catch(e){toast2("Greska.");}
@@ -1070,7 +1066,7 @@ export default function App(){
   async function addAdminUser(){
     if(!nuData.name||!nuData.email||!nuData.pw)return toast2("Popuni sva polja.");
     try{
-      var r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json","x-admin-override":"true","x-user-id":(user&&user.id)||""},body:JSON.stringify({email:nuData.email.toLowerCase(),password:nuData.pw,name:nuData.name,country:nuData.country})});
+      var r=await fetchSafe(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json","x-admin-override":"true","x-user-id":(user&&user.id)||""},body:JSON.stringify({email:nuData.email.toLowerCase(),password:nuData.pw,name:nuData.name,country:nuData.country})});
       var d=await r.json();
       if(!r.ok)return toast2(d.error||"Greska.");
       setNuData({name:"",email:"",pw:"",country:"sr"});
@@ -1086,10 +1082,8 @@ export default function App(){
     }
     try{
       // TIMEOUT 15s: geocode je brz lookup, ne sme visiti.
-      var gcCtrl=new AbortController();
-      var gcTo=setTimeout(function(){gcCtrl.abort();},15000);
-      var r=await fetch(API+"/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({grad:person.mesto,zemlja:person.zemlja||""}),signal:gcCtrl.signal});
-      clearTimeout(gcTo);
+      // 15s timeout - geocode je brz lookup
+      var r=await fetchSafe(API+"/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({grad:person.mesto,zemlja:person.zemlja||""})},15000);
       var data=await r.json();
       var opts=(data&&data.results)||[];
       if(opts.length===1){
@@ -1286,21 +1280,16 @@ export default function App(){
   async function astroPost(endpoint,body){
     // TIMEOUT 30s: bez ovog Promise.allSettled u callAstroAPI fallback-u moze visiti
     // zauvek ako astrology-api.io backend nije responsive. Suzana 6.6. 09:25 prijava:
-    // "Radi po pola sata i ne uradi" - 3 analize zaglavljene, ni jedan job u DB-u.
-    var ctrl=new AbortController();
-    var to=setTimeout(function(){ctrl.abort();},30000);
+    // 30s timeout
     try{
-      var resp=await fetch("https://astrobalkan-backend.onrender.com/api/astro"+endpoint,{
+      var resp=await fetchSafe("https://astrobalkan-backend.onrender.com/api/astro"+endpoint,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(body),
-        signal:ctrl.signal
+        body:JSON.stringify(body)
       });
-      clearTimeout(to);
       if(!resp.ok){console.warn("AstroAPI "+endpoint+" => HTTP "+resp.status);return null;}
       return await resp.json();
     }catch(e){
-      clearTimeout(to);
       console.warn("astroPost "+endpoint+" exception:",e.message);
       return null;
     }
@@ -1375,14 +1364,8 @@ export default function App(){
 
       // PRIMARY: Use backend Swiss Ephemeris (NASA-level precision)
       try{
-        // TIMEOUT 45s: bez ovog ako backend visi (cold start, network glitch) fetch
-        // visi zauvek pa doGen ostaje u await zauvek. Suzana 4.6 13:10 prijava: "Radi
-        // analizu preko pola sata" - spinner 28min jer je callAstroAPI za jednu od
-        // osoba iz pitanja visio. doGen status="generating" zauvek, niko ne baci.
-        var chartCtrl=new AbortController();
-        var chartTo=setTimeout(function(){chartCtrl.abort();},45000);
-        var chartResp=await fetch(API+"/api/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bd),signal:chartCtrl.signal});
-        clearTimeout(chartTo);
+        // 45s timeout - chart calc moze biti spor na cold start-u
+        var chartResp=await fetchSafe(API+"/api/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bd)},45000);
         if(chartResp.ok){
           var chartData=await chartResp.json();
           console.log("SWISSEPH response:",chartData.source,chartData.positions?chartData.positions.length+" planets":"no positions");
@@ -1536,7 +1519,7 @@ export default function App(){
     try{
       var bd=makeBirthData(dateStr,timeStr,cityName,lat,lon,tz);
       console.log("TRANSITS calling:",API+"/api/astro/transits","body:",JSON.stringify({birth_data:bd}).slice(0,200));
-      var resp=await fetch(API+"/api/astro/transits",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd})});
+      var resp=await fetchSafe(API+"/api/astro/transits",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({birth_data:bd})});
       console.log("TRANSITS status:",resp.status);
       if(!resp.ok){var errText=await resp.text();console.error("TRANSITS error response:",errText.slice(0,300));return;}
       var data=await resp.json();
@@ -1806,7 +1789,7 @@ export default function App(){
       try{
         var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
         if(!jbs[dsKey]){clearInterval(dsInterval);return;}
-        var r=await fetch(API+"/api/generate/"+jobId);var j=await r.json();
+        var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
         if(j.status==="generating")upDs(idx,function(s){return Object.assign({},s,{an:"Generisem analizu..."});});
         else if(j.status==="translating")upDs(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
         else if(j.status==="done"){
@@ -1836,7 +1819,7 @@ export default function App(){
             upDs(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"downsell",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -1853,7 +1836,7 @@ export default function App(){
       try{
         var jbs=JSON.parse(localStorage.getItem("activeJobs")||"{}");
         if(!jbs[pqKey]){clearInterval(pqInterval);return;}
-        var r=await fetch(API+"/api/generate/"+jobId);var j=await r.json();
+        var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
         if(j.status==="generating")upPq(idx,function(s){return Object.assign({},s,{an:"Generisem odgovore..."});});
         else if(j.status==="translating")upPq(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
         else if(j.status==="done"){
@@ -1884,7 +1867,7 @@ export default function App(){
             upPq(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"pitanja",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -2090,7 +2073,7 @@ export default function App(){
           return;
         }
 
-        var resp=await fetch(API+"/api/generate/"+jobId);
+        var resp=await fetchSafe(API+"/api/generate/"+jobId);
         if(!resp.ok)return;
         var job=await resp.json();
         if(job.status==="generating"){
@@ -2149,7 +2132,7 @@ export default function App(){
               geminiAvailable:!!job._gemini_available,
               retryFn:function(){
                 var newPayload=Object.assign({},meta.payload,{provider:"gemini"});
-                fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)})
+                fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)})
                   .then(function(r){return r.json();})
                   .then(function(d){
                     if(!d||!d.id){toast2("Gemini greska: "+(d&&d.error&&d.error.message||"nepoznato"));return;}
@@ -2228,7 +2211,7 @@ export default function App(){
 
   async function translateToSerbian(englishText){
     try{
-      var resp=await fetch(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
+      var resp=await fetchSafe(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:16000,system:"Prevedi ovaj tekst na srpski jezik, ekavica, ISKLJUCIVO latinicno pismo. Ovo NIJE doslovan prevod nego ADAPTACIJA na prirodan srpski jezik.\n\nOBAVEZNA PRAVILA:\n- Meseci na srpskom u pravilnom padezu: January=januar, February=februar, March=mart, April=april, May=maj, June=jun, July=jul, August=avgust, September=septembar, October=oktobar, November=novembar, December=decembar\n- Meseci u padezu: u januaru, od maja do jula, tokom avgusta, krajem septembra\n- NIKAD ne pisi Juli, Maj, Oktobar sa velikim slovom niti u nominativu kad treba drugi padez\n- nature=priroda NIKAD natura\n- NIKAD ne koristi crtice (-) u tekstu\n- Ne duplaj slova (ne pisi srcemm, borbaa)\n- Gramatika mora biti 100% ispravna po srpskom pravopisu\n- Zadrzi sve prazne redove i formatiranje originala\n- Zadrzi sva imena i datume\n- Vrati SAMO prevedeni tekst bez komentara",messages:[{role:"user",content:englishText}]})});
       if(!resp.ok)return englishText;
       var d=await resp.json();
       var t=(d.content&&d.content[0]&&d.content[0].text)||englishText;
@@ -2803,20 +2786,20 @@ export default function App(){
                 React.createElement("div",{style:{display:"flex",gap:"6px",marginTop:"8px"}},
                   React.createElement("button",{className:"btn bgd bsm",onClick:function(e){
                     e.stopPropagation();
-                    fetch(API+"/api/analyses/"+a.id+"/restore",{method:"POST",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+                    fetchSafe(API+"/api/analyses/"+a.id+"/restore",{method:"POST",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
                       .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
                       .then(function(res){
                         if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri vracanju.");return;}
                         setTrashItems(function(prev){return prev.filter(function(x){return x.id!==a.id;});});
                         // Refresh aktivnih analiza
-                        fetch(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){if(d.analyses)setAnalyses(d.analyses);}).catch(function(){});
+                        fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){if(d.analyses)setAnalyses(d.analyses);}).catch(function(){});
                         toast2("Analiza vracena.");
                       }).catch(function(){toast2("Greska pri vracanju.");});
                   }},"↩ Vrati"),
                   React.createElement("button",{className:"btn brd bsm",onClick:function(e){
                     e.stopPropagation();
                     if(!window.confirm("Trajno obrisati ovu analizu? Ovo se NE moze opozvati."))return;
-                    fetch(API+"/api/analyses/"+a.id+"/permanent",{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+                    fetchSafe(API+"/api/analyses/"+a.id+"/permanent",{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
                       .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
                       .then(function(res){
                         if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska.");return;}
@@ -2917,7 +2900,7 @@ export default function App(){
             ?React.createElement("div",{className:"abar"},
               React.createElement("button",{className:"btn bgd",onClick:function(){
                 stoSet("custPr",custPr);
-                fetch(API+"/api/prompts",{method:"POST",headers:{"Content-Type":"application/json","x-user-role":"admin"},body:JSON.stringify({country:country,type:editPr,content:(custPr[country]&&custPr[country][editPr])||""})}).then(function(){toast2("Sacuvano u bazu!");}).catch(function(){toast2("Sacuvano lokalno.");});
+                fetchSafe(API+"/api/prompts",{method:"POST",headers:{"Content-Type":"application/json","x-user-role":"admin"},body:JSON.stringify({country:country,type:editPr,content:(custPr[country]&&custPr[country][editPr])||""})}).then(function(){toast2("Sacuvano u bazu!");}).catch(function(){toast2("Sacuvano lokalno.");});
               }},"\u0053acuvaj"),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){setCustPr(function(p){var n=Object.assign({},p);n[country]=Object.assign({},n[country]);n[country][editPr]="";return n;});}},"\u0052eset")
             )
@@ -3056,7 +3039,7 @@ export default function App(){
               if(all.length<=1){cpText(cleanText);toast2("Kopirano 1 analiza!");}
               else{var txt=all.map(function(a){return fmtText(a.analysis||"");}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
-            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;var id=viewAn.id;fetch(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});setViewAn(null);toast2("Premesteno u korpu.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 U korpu"),
+            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;var id=viewAn.id;fetchSafe(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});setViewAn(null);toast2("Premesteno u korpu.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 U korpu"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);}},"\u005aatvori")
           )
         )
