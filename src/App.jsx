@@ -1774,7 +1774,17 @@ export default function App(){
     }catch(err){
       console.error("doGen error:",err);
       try { Sentry.withScope(function(s){s.setTag("source","genAnalysis"); s.setContext("client",{name:sl.client.ime||"",hasPartner:!!sl.hasPart}); Sentry.captureException(err);}); } catch(_) {}
-      upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:"Greska: "+err.message});});
+      // User-friendly poruke za poznate slucajeve umesto sirovog "Failed to fetch"
+      var msg=err.message||"";
+      var friendly;
+      if(/Failed to fetch|NetworkError|TypeError.*fetch/i.test(msg)){
+        friendly="Server se trenutno restartuje ili budi (Render free tier). Sačekaj 30 sekundi i klikni Generiši ponovo. Ovo nije greška softvera - sledeći pokušaj će uspeti.";
+      }else if(/AbortError|aborted/i.test(msg)){
+        friendly="Veza je predugo trajala (mreža je verovatno spora). Klikni Generiši ponovo.";
+      }else{
+        friendly="Greska: "+msg+"\n\nKlikni Generiši ponovo. Ako se ponavlja, prijavi problem.";
+      }
+      upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:friendly});});
     }
     } finally {
       // Safety valve cleanup - doGen je zavrsio (uspesno ili sa greskom)

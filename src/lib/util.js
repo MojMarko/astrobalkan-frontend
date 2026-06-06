@@ -169,7 +169,12 @@ export async function fetchWithRetry(url, options, attemptsOrOpts){
     onRetry = null;
     perAttemptTimeoutMs = 30000;
   }
-  const backoffs = [2000, 5000, 15000, 30000];
+  // Backoff: kupivnja Render restart (30-90s) + cold start (~15s).
+  // Total cover ~95s preko 4 attempts.
+  // Suzana 6.6. 09:46 "Failed to fetch" - moj deploy je restartovao backend
+  // tacno kad je ona kliknula Generiši; stari [2s,5s,15s,30s] = 22s nije pokrio
+  // 60s restart. Sad [3s,10s,25s,55s] = 93s pokriva svaki realan restart.
+  const backoffs = [3000, 10000, 25000, 55000];
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     const controller = new AbortController();
