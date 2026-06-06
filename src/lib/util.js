@@ -195,3 +195,25 @@ export async function fetchWithRetry(url, options, attemptsOrOpts){
   }
   throw lastErr;
 }
+
+// fetchSafe: jedan fetch sa AbortController timeout-om (default 30s).
+// Razlika od fetchWithRetry: NE radi retry - samo garantuje da nikad ne visi.
+// Default svuda gde NE TREBA retry semantika (npr. polling, GET pozivi, sub-pozivi).
+// Bez ovog se redovno dešava da neki fetch visi zauvek i UI ostaje zaglavljen
+// (Suzana prijave: 30 min spinner bez ikakvog job-a u DB-u).
+//
+// API: fetchSafe(url, opts, timeoutMs) ili fetchSafe(url, opts) sa default 30s
+export async function fetchSafe(url, options, timeoutMs){
+  const ms = (typeof timeoutMs === 'number' && timeoutMs > 0) ? timeoutMs : 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(function(){ controller.abort(); }, ms);
+  try {
+    const fetchOptions = Object.assign({}, options || {}, { signal: controller.signal });
+    const r = await fetch(url, fetchOptions);
+    clearTimeout(timeoutId);
+    return r;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
+}
