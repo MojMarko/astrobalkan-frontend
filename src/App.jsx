@@ -1585,6 +1585,9 @@ export default function App(){
     // klik prodje kroz oba. Cuvamo status u referenci pre setState-a.
     if(sl.status==="generating"||sl.jobId){
       console.warn("doGen: already generating, ignoring duplicate click");
+      // Vidljiv feedback radnici - Suzana 6.6. 10:25 zaglavila 2 Milovan-a paralelno
+      // jer je nestrpljivo klikala Generiši, a samo `console.warn` ne pomaze njoj.
+      toast2("Vec se generisi analiza - sacekaj rezultat (3-7 min) umesto da klikces ponovo.");
       return;
     }
     var hasClientChart=!!sl.ch;
@@ -1894,6 +1897,7 @@ export default function App(){
     // GUARD: dupli klik bi pokrenuo 2 downsell-a paralelno
     if(ds.st==="generating"||ds.jobId){
       console.warn("doDsGen: already generating, ignoring duplicate click");
+      toast2("Vec se generisi Downsell - sacekaj rezultat.");
       return;
     }
     if(!ds.paste.trim()&&!ds.clientId)return;
@@ -1951,6 +1955,7 @@ export default function App(){
     // GUARD: dupli klik bi pokrenuo 2 pitanja job-a paralelno
     if(pq.st==="generating"||pq.jobId){
       console.warn("doPqGen: already generating, ignoring duplicate click");
+      toast2("Vec se generisu Pitanja - sacekaj rezultat.");
       return;
     }
     if((!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim())return;
