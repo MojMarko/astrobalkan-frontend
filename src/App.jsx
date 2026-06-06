@@ -730,6 +730,23 @@ function Logo(props){
 // Plus dva safety-valve dugmeta posle 90s:
 //   - "Proveri da li je gotovo" - manuelni recheck (radnica nije trap-ovana ako polling zakaca)
 //   - "Otkazi prikaz" - reset UI; backend posao i dalje radi, kad zavrsi analiza je u Bazi
+// Mali inline progres za "AI cita..." dugme - elapsed time pored teksta
+// Suzana 6.6. 10:31 prijava "Nece da prepozna" - parser je radio normalno
+// (do 2 min na sporom serveru), ali Suzana je odustala posle ~20s bez feedback-a.
+function ParsingProgress(props){
+  var [now,setNow]=useState(Date.now());
+  useEffect(function(){
+    var iv=setInterval(function(){setNow(Date.now());},1000);
+    return function(){clearInterval(iv);};
+  },[]);
+  var started=props.startedAt||now;
+  var elapsedSec=Math.max(0,Math.floor((now-started)/1000));
+  return React.createElement(React.Fragment,null,
+    React.createElement("span",{className:"spin"}),
+    " AI cita... (",elapsedSec,"s)"
+  );
+}
+
 function GeneratingProgress(props){
   var [now,setNow]=useState(Date.now());
   useEffect(function(){
@@ -748,7 +765,10 @@ function GeneratingProgress(props){
     React.createElement("div",{style:{width:"44px",height:"44px",border:"3px solid rgba(201,168,76,.25)",borderTopColor:"var(--gd)",borderRadius:"50%",animation:"sp 1s linear infinite"}}),
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"var(--gd2)",letterSpacing:".5px"}},step),
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"24px",color:"var(--tx)",fontVariantNumeric:"tabular-nums"}},elapsedStr),
-    React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},"Generisanje obicno traje 4-6 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
+    React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},
+      step.indexOf("Prevodim")>=0
+        ? "Prevod na srpski obicno traje 2-5 min. Ukupno generisanje 5-9 min. Sve OK - sacekaj jos malo."
+        : "Generisanje obicno traje 4-9 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
     showRecovery&&React.createElement("div",{style:{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",marginTop:"4px"}},
       props.onForceCheck&&React.createElement("button",{className:"btn bol bsm",onClick:props.onForceCheck,type:"button"},"🔄 Proveri da li je gotovo"),
       props.onCancel&&React.createElement("button",{className:"btn brd bsm",onClick:props.onCancel,type:"button"},"✖ Otkazi prikaz")
@@ -1103,7 +1123,10 @@ export default function App(){
   async function doParse(idx,provider){
     var s=slots[idx];if(!s.paste.trim()&&!s.rawPaste)return;
     var pasteText=s.paste.trim()||s.rawPaste||"";
-    upSlot(idx,function(s){return Object.assign({},s,{status:"parsing",parseOverload:null});});
+    upSlot(idx,function(s){return Object.assign({},s,{status:"parsing",parseOverload:null,parseStartedAt:Date.now()});});
+    // Vidljiv feedback - Suzana 6.6. 10:31 prijava "Nece da prepozna" - parser
+    // je radio normalno ali Suzana nije znala koliko da ceka.
+    toast2("AI cita poruku... (obicno 5-30 sekundi, do 2 min na sporom internetu)");
     try{
       var p=await parseMsg(pasteText,provider);
       if(p&&p.__error){
@@ -2324,7 +2347,7 @@ export default function App(){
           React.createElement("textarea",{value:s.paste,onChange:function(e){upSlot(idx,function(sl){return Object.assign({},sl,{paste:e.target.value});});},placeholder:"Nalepi celu poruku klijenta...",style:{minHeight:"100px"}})
         ),
         React.createElement("button",{className:"btn bpu bfull",onClick:function(){doParse(idx);},disabled:busy||!s.paste.trim()},
-          s.status==="parsing"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," AI cita..."):"\u2746 Prepoznaj Sve Automatski"
+          s.status==="parsing"?React.createElement(ParsingProgress,{startedAt:s.parseStartedAt}):"\u2746 Prepoznaj Sve Automatski"
         ),
         // OVERLOAD UI: DeepSeek pao - dugme za Gemini fallback
         s.parseOverload&&React.createElement("div",{style:{marginTop:"10px",padding:"12px",background:"rgba(255,180,80,.1)",border:"1px solid rgba(255,180,80,.4)",borderRadius:"8px"}},
