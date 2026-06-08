@@ -381,12 +381,17 @@ function stripDataFromText(text,person){
 function extractTimesFromPaste(rawText){
   if(!rawText)return [];
   var times=[];
-  var markerGrp="(?:\\s*(a\\.?m\\.?|p\\.?m\\.?|popodne|po\\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\\s+no[ćc]i|pre\\s+podne))?";
+  // markerGrp: AM/PM oznaka u srpskom/EN - posle vremena moze stajati "popodne", "u noci",
+  // "posle ponoci" (dodato 8.6.2026. Suzana prijava: klijent rekao "01,00 posle ponoći" -
+  // parser ga je ignorisao i koristio staro vreme iz prethodnog klijenta).
+  var markerGrp="(?:\\s*(a\\.?m\\.?|p\\.?m\\.?|popodne|po\\s+podne|uvece|nave[čc]e|ujutru|ujutro|no[ćc]u|u\\s+no[ćc]i|pre\\s+podne|posle\\s+pono[ćc]i|po\\s+pono[ćc]i|pre\\s+pono[ćc]i))?";
   function applyMarker(h,marker){
     marker=(marker||"").toLowerCase().replace(/\s+/g," ");
-    var pm=/^p\.?m\.?$/.test(marker)||/^(popodne|po podne|uvece|nave[čc]e|navece)$/.test(marker);
-    var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne/.test(marker);
-    if(pm){if(h!==12)h+=12;}
+    var pm=/^p\.?m\.?$/.test(marker)||/^(popodne|po podne|uvece|nave[čc]e|navece|pre pono[ćc]i)$/.test(marker);
+    var am=/^a\.?m\.?$/.test(marker)||/ujutru|ujutro|no[ćc]u|u no[ćc]i|pre podne|posle pono[ćc]i|po pono[ćc]i/.test(marker);
+    // PM logika: 1-11 PM → 13-23. 12 PM ostaje 12. 13+ je vec 24h notacija - ne diraj
+    // (stari bug: "20,30 navece" je davao 32:30 jer "if(h!==12)h+=12").
+    if(pm){if(h>=1&&h<=11)h+=12;}
     else if(am){if(h===12)h=0;}
     return h;
   }
@@ -408,6 +413,17 @@ function extractTimesFromPaste(rawText){
     if(hd>23||mnd>59)continue;
     hd=applyMarker(hd,md[3]);
     times.push(String(hd).padStart(2,"0")+":"+String(mnd).padStart(2,"0"));
+  }
+  // 3) HH,MM (zarez kao decimal separator - cest u srpskoj/balkanskoj notaciji).
+  // Suzana 8.6.2026.: klijent "U 01,00 posle ponoći" - format koji raniji regex
+  // nije hvatao pa je ostajalo staro vreme od prethodnog klijenta.
+  var reComma=new RegExp("\\b(\\d{1,2}),(\\d{2})(?!\\d)(?:\\s*[hH]\\b)?"+markerGrp,"gi");
+  var mcz;
+  while((mcz=reComma.exec(rawText))!==null){
+    var hcz=parseInt(mcz[1],10),mncz=parseInt(mcz[2],10);
+    if(hcz>23||mncz>59)continue;
+    hcz=applyMarker(hcz,mcz[3]);
+    times.push(String(hcz).padStart(2,"0")+":"+String(mncz).padStart(2,"0"));
   }
   if(times.length===0&&/u\s+pono[ćc]/i.test(rawText))times.push("00:00");
   // Fallback: "5 ujutru", "7 popodne", "u 3 nocu" - sat bez minuta + srpska/EN oznaka
@@ -524,7 +540,14 @@ async function parseMsg(text,provider){
       var kTime=findTimeForPerson(text,parsed.klijent.datum);
       if(kTime)parsed.klijent.vreme=kTime;
       else if(pasteTimes.length===1&&pasteTimes[0])parsed.klijent.vreme=pasteTimes[0];
-      // ako nije pronadjeno - zadrzi vreme koje je LLM vec izvukao
+      // Detekcija "ne znam vreme" frazi - ako klijent eksplicitno kaze, NIKAD ne ostavi
+      // LLM-ovo halucinirano vreme (Suzana 8.6.: parser je vratio 16:06 iako paste kaze
+      // "Njegovi podaci: ne znam vreme" - to je verovatno bio LLM halucinacija).
+      if(/ne\s+znam\s+(taqcno\s+)?vreme|nemam\s+vreme|nepoznato\s+vreme/i.test(text)&&!kTime){
+        // Ako i ovaj klijent ima "ne znam vreme" pored njegovih podataka, brisi
+        // Heuristika: traži "ne znam" u liniji najbliziu klijentovom datumu
+        if(/(moji|moj)\s+podaci[^.]*ne\s+znam/i.test(text)) parsed.klijent.vreme="";
+      }
       parsed.klijent.zemlja=parsed.klijent.zemlja||"";
     }
     if(parsed.partner){
