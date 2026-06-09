@@ -425,6 +425,17 @@ function extractTimesFromPaste(rawText){
     hcz=applyMarker(hcz,mcz[3]);
     times.push(String(hcz).padStart(2,"0")+":"+String(mncz).padStart(2,"0"));
   }
+  // 4) "HH i MM" / "HH i MM h" - srpski razgovorni format ("6 i 10 h" = 06:10).
+  // Suzana 9.6.2026. Branka prijava: klijent "u 06 i 10 h" - parser je gledao
+  // samo "10 h" iz fallback-a i vratio 10:00 umesto 06:10.
+  var reIM=new RegExp("\\b(\\d{1,2})\\s+i\\s+(\\d{1,2})(?:\\s*[hH]\\b)?(?:\\s*(?:sat[ai]?|sati|časov[a-z]+|casov[a-z]+|časa|casa|min(?:ut[a-z]*)?)\\b)?"+markerGrp,"gi");
+  var mim;
+  while((mim=reIM.exec(rawText))!==null){
+    var him=parseInt(mim[1],10),mnim=parseInt(mim[2],10);
+    if(him>23||mnim>59)continue;
+    him=applyMarker(him,mim[3]);
+    times.push(String(him).padStart(2,"0")+":"+String(mnim).padStart(2,"0"));
+  }
   if(times.length===0&&/u\s+pono[ćc]/i.test(rawText))times.push("00:00");
   // Fallback: "5 ujutru", "7 popodne", "u 3 nocu" - sat bez minuta + srpska/EN oznaka
   if(times.length===0){
