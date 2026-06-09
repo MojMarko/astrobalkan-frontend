@@ -2588,7 +2588,18 @@ export default function App(){
         ch.length>0&&React.createElement(ChunkTracker,{ch:ch,ci:s.copyIdx,setCi:function(i){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:i});});}}),
         s.status==="generating"
           ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis,onForceCheck:function(){forceCheckAnaliza(idx);},onCancel:function(){cancelStuckAnaliza(idx);}})
-          :React.createElement("div",{className:"aout"},s.analysis),
+          :React.createElement(React.Fragment,null,
+            // PRE-SEND VIDLJIV WARNING (Marko 9.6.: "isti problemi svaki dan")
+            // Backend prepend-uje "[UPOZORENJE..." u tekst kad detektuje issues
+            // (Q&A skipped, no_closing, english leak). Bez vidljivog banner-a
+            // Suzana to ne primeti - kopira ceo tekst klijentu pa onda primeti.
+            // Crveni banner: jasno pre nego sto klikne Kopiraj.
+            /^\[UPOZORENJE/.test(s.analysis||"")&&React.createElement("div",{style:{padding:"10px 12px",margin:"8px 0",background:"rgba(220,80,80,.15)",border:"1px solid rgba(220,80,80,.5)",borderRadius:"8px",color:"#ffb0b0",fontSize:"13px",lineHeight:1.4}},
+              React.createElement("strong",null,"⚠ Proveri pre slanja klijentu!"),
+              React.createElement("div",{style:{marginTop:"4px",fontSize:"12px"}},(s.analysis.match(/^\[UPOZORENJE[^\]]*\]/)||[""])[0].replace(/^\[UPOZORENJE:?\s*/,"").replace(/\]$/,""))
+            ),
+            React.createElement("div",{className:"aout"},s.analysis)
+          ),
         React.createElement("div",{className:"abar"},
           s.copyIdx<ch.length
             ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){doCopy(ch[s.copyIdx],"Dio "+(s.copyIdx+1)+"/"+ch.length);upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.min(sl.copyIdx+1,ch.length)});});}},"Kopiraj "+(s.copyIdx+1)+"/"+ch.length)
