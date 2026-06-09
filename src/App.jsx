@@ -553,12 +553,15 @@ async function parseMsg(text,provider){
       var kTime=findTimeForPerson(text,parsed.klijent.datum);
       if(kTime)parsed.klijent.vreme=kTime;
       else if(pasteTimes.length===1&&pasteTimes[0])parsed.klijent.vreme=pasteTimes[0];
-      // Detekcija "ne znam vreme" frazi - ako klijent eksplicitno kaze, NIKAD ne ostavi
-      // LLM-ovo halucinirano vreme (Suzana 8.6.: parser je vratio 16:06 iako paste kaze
-      // "Njegovi podaci: ne znam vreme" - to je verovatno bio LLM halucinacija).
+      else {
+        // STROZA POLITIKA: ako regex nije nasao vreme za klijentov datum, NE veruj LLM-u.
+        // Marko 9.6.: "Ne upise vreme kako treba" se ponavlja svaki dan jer LLM hallucinira
+        // ako paste ima neki novi format. Bolje forsiraj prazno - radnica vidi i unese rucno.
+        // LLM-ovo "vreme" prihvatamo SAMO ako je u standardnoj HH:MM formi.
+        var llmTime=(parsed.klijent.vreme||"").trim();
+        if(!/^\d{2}:\d{2}$/.test(llmTime)) parsed.klijent.vreme="";
+      }
       if(/ne\s+znam\s+(taqcno\s+)?vreme|nemam\s+vreme|nepoznato\s+vreme/i.test(text)&&!kTime){
-        // Ako i ovaj klijent ima "ne znam vreme" pored njegovih podataka, brisi
-        // Heuristika: traži "ne znam" u liniji najbliziu klijentovom datumu
         if(/(moji|moj)\s+podaci[^.]*ne\s+znam/i.test(text)) parsed.klijent.vreme="";
       }
       parsed.klijent.zemlja=parsed.klijent.zemlja||"";
@@ -2130,7 +2133,7 @@ export default function App(){
 
   function pollJob(jobId,slotIdx,tabKey,meta){
     var pollCount=0;
-    var MAX_POLLS=440; // ~22 min na 3s interval — granica da posao ne visi vecno
+    var MAX_POLLS=300; // ~15 min na 3s interval - hard limit (Marko 9.6.: Suzana 27 min spinner)
     var interval=setInterval(async function(){
       try{
         // Check if job already completed (prevent duplicate saves)
@@ -2249,6 +2252,42 @@ export default function App(){
         pollJob(j.id,idx,key);
       }
     });
+  },[]);
+
+  // CRITICAL: visibility change handler. Kad se tab prebaci u background (Suzana
+  // prebaci na drugi tab), browser pauzira setInterval pa polling staje. Job moze
+  // da bude done u DB-u 25 min ranije, a frontend i dalje pokazuje spinner.
+  // Suzana 9.6. 12:38 Branislav job: spinner 27:31 iako je job zavrsen u 12:13
+  // (24 min ranije). Razlog: prebacila tab pa polling pauziran.
+  // Fix: kad se tab vrati, IZBROJ sve active jobove iz localStorage i RESTARTUJ
+  // polling za svaki. Prvi poll ce odmah videti done status.
+  useEffect(function(){
+    var onVisible=function(){
+      if(document.hidden)return;
+      var jobs;
+      try{jobs=JSON.parse(localStorage.getItem("activeJobs")||"{}");}catch(e){return;}
+      var count=Object.keys(jobs).length;
+      if(count===0)return;
+      console.log("[visibility] Tab returned, force-checking",count,"active job(s)");
+      Object.keys(jobs).forEach(function(key){
+        var j=jobs[key];
+        if(!j||!j.id)return;
+        var idx=j.idx!==undefined?j.idx:null;
+        if(key.indexOf("ds")===0&&idx!==null){
+          startDsPoll(idx,j.id,(j.clientName||"").replace(/^Downsell - /,""),null,"");
+        }else if(key.indexOf("pq")===0&&idx!==null){
+          startPqPoll(idx,j.id,(j.clientName||"").replace(/^D\. Pitanja - /,""),null,"");
+        }else{
+          pollJob(j.id,idx,key);
+        }
+      });
+    };
+    document.addEventListener("visibilitychange",onVisible);
+    window.addEventListener("focus",onVisible);
+    return function(){
+      document.removeEventListener("visibilitychange",onVisible);
+      window.removeEventListener("focus",onVisible);
+    };
   },[]);
 
   // Safety valve - kad polling tiho zakaca (slot ostane u "generating" zauvek),
