@@ -83,14 +83,14 @@ describe('fetchWithRetry - hvata transient mrezne greske', () => {
   });
 
   it('retrira na network error (Failed to fetch) - 3 pokusaja sa novim backoff-om', async () => {
-    // Backoff: pokusaj 1 -> wait 2s -> pokusaj 2 -> wait 5s -> pokusaj 3. Ukupno 7s.
+    // Backoff: pokusaj 1 -> wait 3s -> pokusaj 2 -> wait 10s -> pokusaj 3. Ukupno 13s.
     const mockResp = { ok: true, status: 200 };
     global.fetch = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(mockResp);
     const p = fetchWithRetry('http://test/x', {}, 3);
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(14000);
     const r = await p;
     expect(r).toBe(mockResp);
     expect(global.fetch).toHaveBeenCalledTimes(3);
@@ -99,7 +99,7 @@ describe('fetchWithRetry - hvata transient mrezne greske', () => {
   it('baca posle svih pokusaja ako mreza i dalje pada', async () => {
     global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     const settled = fetchWithRetry('http://test/x', {}, 3).then(v => ({ value: v }), e => ({ error: e }));
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(14000);
     const result = await settled;
     expect(result.error).toBeInstanceOf(TypeError);
     expect(result.error.message).toBe('Failed to fetch');
@@ -107,22 +107,22 @@ describe('fetchWithRetry - hvata transient mrezne greske', () => {
   });
 
   it('retrira na 5xx (server greska, mozda prolazi)', async () => {
-    // Pokusaj 1 fail -> wait 2s -> pokusaj 2 succeed.
+    // Pokusaj 1 fail -> wait 3s -> pokusaj 2 succeed.
     global.fetch = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 503 })
       .mockResolvedValueOnce({ ok: true, status: 200 });
     const p = fetchWithRetry('http://test/x', {}, 3);
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(3500);
     const r = await p;
     expect(r.ok).toBe(true);
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('default 4 pokusaja sa eskalirajucim backoff-om (cold start scenario)', async () => {
-    // 4 fail-a, ukupno wait 2+5+15+30 = 52s. Posle 4. pokusaja baca.
+    // 4 fail-a, ukupno wait 3+10+25 = 38s + last attempt. Posle 4. pokusaja baca.
     global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     const settled = fetchWithRetry('http://test/x', {}).then(v => ({ value: v }), e => ({ error: e }));
-    await vi.advanceTimersByTimeAsync(55000);
+    await vi.advanceTimersByTimeAsync(95000);
     const result = await settled;
     expect(result.error).toBeInstanceOf(TypeError);
     expect(global.fetch).toHaveBeenCalledTimes(4);
@@ -135,10 +135,10 @@ describe('fetchWithRetry - hvata transient mrezne greske', () => {
       .mockResolvedValueOnce(mockResp);
     const onRetry = vi.fn();
     const p = fetchWithRetry('http://test/x', {}, { attempts: 2, onRetry });
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(3500);
     await p;
     expect(onRetry).toHaveBeenCalledTimes(1);
-    expect(onRetry).toHaveBeenCalledWith(1, 2, 2000);
+    expect(onRetry).toHaveBeenCalledWith(1, 2, 3000);
   });
 
   it('per-attempt timeout abort-uje fetch koji visi (Suzana prijava 2.6 11:10)', async () => {
