@@ -14,7 +14,7 @@ name: Auto-fix prijava
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
   # Manual trigger za testiranje (Marko 10.6.: provera da li ANTHROPIC_API_KEY radi)
   workflow_dispatch:
 
@@ -28,6 +28,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write  # potrebno za claude-code-action OIDC autentikaciju
     steps:
       - name: Checkout
         uses: actions/checkout@v4
