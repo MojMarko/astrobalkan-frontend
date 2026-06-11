@@ -496,8 +496,12 @@ async function parseMsg(text,provider){
   var MAX_RETRIES=2;
   for(var attempt=0;attempt<MAX_RETRIES;attempt++){
     try{
-      // fetchSafe default 30s timeout — bez ovog parse moze visiti zauvek na cold start-u
-      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})});
+      // fetchSafe 60s timeout - default 30s je padao na velikim Messenger
+      // porukama (Suzana 11.6. 13:07 prijava 36f5cf6a "Nece da ocita podatke":
+      // poruka sa 5 osoba - Slavica + 2 deteta + Brat + majka - DeepSeek
+      // parse trajao preko 30s, AbortController abortovao, greska
+      // "signal is aborted without reason"). 60s pokriva tipican AI parse.
+      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})},60000);
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       var errLow=(d.error&&(d.error.message||"")).toLowerCase();
@@ -511,7 +515,15 @@ async function parseMsg(text,provider){
       lastError=d.error;
       break;
     }catch(e){
-      lastError={message:e.message};
+      // "signal is aborted without reason" je cryptic Web standard error iz
+      // AbortController-a - prevedi u nesto sto Suzana razume umesto sirovog teksta.
+      var ms=e.message||"";
+      if(ms.indexOf("abort")>=0||ms.indexOf("Abort")>=0){
+        ms="AI je trajao preko 60s i otkazan je.";
+      }else if(ms.indexOf("Failed to fetch")>=0||ms.indexOf("NetworkError")>=0){
+        ms="Server trenutno nije dostupan (verovatno se budi).";
+      }
+      lastError={message:ms};
       console.error("parseMsg network error attempt "+(attempt+1)+":",e.message);
       await new Promise(function(res){setTimeout(res,2000);});
     }
