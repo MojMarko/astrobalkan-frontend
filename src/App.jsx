@@ -8,8 +8,20 @@ import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNa
 // Bez ovog wrappera, JSON.parse u setInterval iteraciji baca exception → polling
 // se nikad ne zavrsi → radnica vidi "Generisem..." zauvek.
 function safeActiveJobs(){
-  try{return safeActiveJobs();}
+  try{return JSON.parse(localStorage.getItem("activeJobs")||"{}");}
   catch(e){try{localStorage.removeItem("activeJobs");}catch(_){}return {};}
+}
+
+// APSOLUTNI hard limit za job - 18 min. Backend worst-case ~11 min, +safety.
+// KLJUCNA RAZLIKA od starog MAX_POLLS countera (per-poller): ovaj je nezavisan
+// od restart-a polling-a. Suzana 11.6. prijava (777e363f): spinner 21:05 min jer
+// je tab-switch resetovao pollCount svaki put. Sad citamo startedAt iz
+// localStorage i poredimo sa Date.now() - restart polling-a NE pomaze da
+// zaobidje limit.
+var JOB_HARD_LIMIT_MS=18*60*1000;
+function jobExpired(entry){
+  if(!entry||!entry.startedAt)return false;
+  return (Date.now()-entry.startedAt)>JOB_HARD_LIMIT_MS;
 }
 
 // ASTRO ENGINE -------------------------------------------------------------
@@ -1844,7 +1856,7 @@ export default function App(){
       // Save job ID in slot and localStorage
       upSlot(ri,function(s){return Object.assign({},s,{jobId:jobData.id,analysis:"Generisem analizu u pozadini..."});});
       var jobs=safeActiveJobs();
-      jobs["a"+(ri+1)]={id:jobData.id,clientName:sl.client.ime,tab:"a"+(ri+1),idx:ri};
+      jobs["a"+(ri+1)]={id:jobData.id,clientName:sl.client.ime,tab:"a"+(ri+1),idx:ri,startedAt:Date.now()};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       // Start polling - prosledi payload za eventual Gemini retry
       pollJob(jobData.id,ri,"a"+(ri+1),{birthDate:sl.client.datum,mesto:sl.client.mesto,clientName:sl.client.ime,payload:genPayload,isSinastrija:!!isSinastrija,pitanja:sl.client.pitanja||""});
@@ -1876,6 +1888,13 @@ export default function App(){
       try{
         var jbs=safeActiveJobs();
         if(!jbs[dsKey]){clearInterval(dsInterval);return;}
+        if(jobExpired(jbs[dsKey])){
+          clearInterval(dsInterval);
+          var jbsExp=safeActiveJobs();delete jbsExp[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
+          upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Generisanje je trajalo > 18 min. Verovatno je gotovo u Bazi — pogledaj tamo.",jobId:null});});
+          toast2("Downsell predugo (18min). Proveri u Bazi.");
+          return;
+        }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
         if(j.status==="generating")upDs(idx,function(s){return Object.assign({},s,{an:"Generisem analizu..."});});
         else if(j.status==="translating")upDs(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
@@ -1906,7 +1925,7 @@ export default function App(){
             upDs(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"downsell",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=safeActiveJobs();jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upDs(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=safeActiveJobs();jobs[dsKey]={id:d.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx,startedAt:Date.now()};localStorage.setItem("activeJobs",JSON.stringify(jobs));startDsPoll(idx,d.id,dsName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upDs(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -1923,6 +1942,13 @@ export default function App(){
       try{
         var jbs=safeActiveJobs();
         if(!jbs[pqKey]){clearInterval(pqInterval);return;}
+        if(jobExpired(jbs[pqKey])){
+          clearInterval(pqInterval);
+          var jbsExp=safeActiveJobs();delete jbsExp[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
+          upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Generisanje je trajalo > 18 min. Verovatno je gotovo u Bazi — pogledaj tamo.",jobId:null});});
+          toast2("Pitanja predugo (18min). Proveri u Bazi.");
+          return;
+        }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
         if(j.status==="generating")upPq(idx,function(s){return Object.assign({},s,{an:"Generisem odgovore..."});});
         else if(j.status==="translating")upPq(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
@@ -1954,7 +1980,7 @@ export default function App(){
             upPq(idx,function(s){return Object.assign({},s,{an:"",st:"idle",jobId:null});});
             setOverloadPrompt({type:"pitanja",geminiAvailable:!!j._gemini_available,retryFn:function(){
               var newPayload=Object.assign({},originalPayload,{provider:"gemini"});
-              fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=safeActiveJobs();jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
+              fetchSafe(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newPayload)}).then(function(r){return r.json();}).then(function(d){if(!d||!d.id){toast2("Gemini greska");return;}upPq(idx,function(s){return Object.assign({},s,{an:"Generisem sa Gemini...",st:"generating",jobId:d.id});});var jobs=safeActiveJobs();jobs[pqKey]={id:d.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx,startedAt:Date.now()};localStorage.setItem("activeJobs",JSON.stringify(jobs));startPqPoll(idx,d.id,pqName,newPayload,questionsText);toast2("Pokrećem sa Gemini...");}).catch(function(e){toast2("Greska: "+e.message);});
             }});
           }else{
             upPq(idx,function(s){return Object.assign({},s,{an:j.serbian_text||"Greska.",st:"done"});});
@@ -2015,7 +2041,7 @@ export default function App(){
       upDs(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
       var jobs=safeActiveJobs();
       var dsKey="ds"+(idx+1);
-      jobs[dsKey]={id:jobData.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx};
+      jobs[dsKey]={id:jobData.id,clientName:"Downsell - "+dsName,tab:"downsell"+(idx+1),idx:idx,startedAt:Date.now()};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
       startDsPoll(idx,dsJobId,dsName,dsPayload,ds.pitanja||"");
@@ -2071,7 +2097,7 @@ export default function App(){
       upPq(idx,function(s){return Object.assign({},s,{an:"Generisem u pozadini...",jobId:jobData.id});});
       var jobs=safeActiveJobs();
       var pqKey="pq"+(idx+1);
-      jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx};
+      jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx,startedAt:Date.now()};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       startPqPoll(idx,jobData.id,pqName,pqPayload,pq.quest||"");
     }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genPitanja");Sentry.captureException(e);});}catch(_){}upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
@@ -2151,6 +2177,15 @@ export default function App(){
         // Check if job already completed (prevent duplicate saves)
         var jobs=safeActiveJobs();
         if(tabKey&&!jobs[tabKey]){clearInterval(interval);return;}
+        // APSOLUTNI hard limit (Suzana 11.6. prijava 777e363f: 21min spinner -
+        // tab-switch resetuje pollCount svaki put, pa per-poller counter ne pomaze).
+        if(tabKey&&jobExpired(jobs[tabKey])){
+          clearInterval(interval);
+          var jbsExp=safeActiveJobs();delete jbsExp[tabKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:"Generisanje je trajalo > 18 minuta. Analiza je verovatno gotova u Bazi — pogledaj tamo. Ako ne, klikni Generiši ponovo.",jobId:null});});
+          toast2("Generisanje predugo (18min). Proveri u Bazi.");
+          return;
+        }
         pollCount++;
         if(pollCount>MAX_POLLS){
           clearInterval(interval);
@@ -2227,7 +2262,7 @@ export default function App(){
                     if(!d||!d.id){toast2("Gemini greska: "+(d&&d.error&&d.error.message||"nepoznato"));return;}
                     if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{jobId:d.id,status:"generating",analysis:"Generisem sa Gemini..."});});
                     var jobs=safeActiveJobs();
-                    if(tabKey){jobs[tabKey]={id:d.id,clientName:meta&&meta.clientName||"",tab:tabKey,idx:slotIdx};localStorage.setItem("activeJobs",JSON.stringify(jobs));}
+                    if(tabKey){jobs[tabKey]={id:d.id,clientName:meta&&meta.clientName||"",tab:tabKey,idx:slotIdx,startedAt:Date.now()};localStorage.setItem("activeJobs",JSON.stringify(jobs));}
                     pollJob(d.id,slotIdx,tabKey,meta);
                     toast2("Pokrećem sa Gemini backup-om...");
                   })
@@ -2310,7 +2345,7 @@ export default function App(){
     if(!s||!s.jobId){toast2("Nema aktivnog job-a.");return;}
     var tabKey="a"+(idx+1);
     var jbs=safeActiveJobs();
-    if(!jbs[tabKey])jbs[tabKey]={id:s.jobId,clientName:s.client.ime||"",tab:tabKey,idx:idx};
+    if(!jbs[tabKey])jbs[tabKey]={id:s.jobId,clientName:s.client.ime||"",tab:tabKey,idx:idx,startedAt:Date.now()};
     localStorage.setItem("activeJobs",JSON.stringify(jbs));
     pollJob(s.jobId,idx,tabKey,{birthDate:s.client.datum,mesto:s.client.mesto,clientName:s.client.ime,isSinastrija:!!s.hasPart,pitanja:s.client.pitanja||""});
     toast2("Proveravam status...");
