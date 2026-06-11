@@ -871,6 +871,8 @@ export default function App(){
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
   var [totalAnalyses,setTotalAnalyses]=useState(0);
+  var [bazaErr,setBazaErr]=useState(false); // true ako /api/analyses fetch padne - razlika od stvarno prazne baze
+  var [bazaLoading,setBazaLoading]=useState(true); // true dok prvi fetch ne zavrsi (sprecava lazno "Nema analiza")
   var [trashItems,setTrashItems]=useState([]);
   var [bazaView,setBazaView]=useState("active"); // "active" | "trash"
   var [toast,setToast]=useState("");
@@ -968,20 +970,39 @@ export default function App(){
     // Inicijalno ucitaj kesirane analize (brz prikaz dok server fetch radi)
     stoGet("analyses",[]).then(function(arr){if(arr&&arr.length>0)setAnalyses(arr);});
     // Load shared analyses from backend - all users see all
-    fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
+    // Suzana 11.6. 8:22 prijava (bb8e3bb1): "u bazi nema nista" iako u DB-u
+    // ima 1477 analiza. fetchSafe (30s timeout, NO retry) je padao kad Render
+    // cold start traje 30s+. Sa fetchWithRetry (4 attempts, ~95s cover) Render
+    // budjenje je pokriveno. bazaErr=true ako svi 4 attempts padnu - UI prikazuje
+    // jasnu poruku umesto laznog "Nema analiza".
+    fetchWithRetry(API+"/api/analyses?limit=2000",{}, {attempts:4}).then(function(r){return r.json();}).then(function(d){
+      setBazaErr(false);
+      setBazaLoading(false);
       if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
       if(typeof d.total==="number")setTotalAnalyses(d.total);
-    }).catch(function(e){console.warn("Could not load shared analyses:",e.message);});
+    }).catch(function(e){
+      console.warn("Could not load shared analyses:",e.message);
+      setBazaErr(true);
+      setBazaLoading(false);
+      try{Sentry.captureMessage("Baza fetch failed: "+e.message,{level:"warning",tags:{source:"baza_load"}});}catch(_){}
+    });
   },[]);
 
   // Refresh analyses from backend periodically while on Baza tab
   useEffect(function(){
     if(tab!=="baza")return;
+    var failCount=0;
     var refresh=function(){
       fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
+        failCount=0;
+        setBazaErr(false);
         if(d.analyses)setAnalyses(d.analyses);
         if(typeof d.total==="number")setTotalAnalyses(d.total);
-      }).catch(function(){});
+      }).catch(function(){
+        failCount++;
+        // 3 uzastopna fail-a tokom polling-a → server je verovatno mrtav, pokaži warning.
+        if(failCount>=3)setBazaErr(true);
+      });
     };
     refresh();
     var interval=setInterval(refresh,15000); // refresh every 15 sec
@@ -3029,8 +3050,30 @@ export default function App(){
           if(q)filtered=filtered.filter(function(a){var bd=a.birthDate||"";var bdSr=bd?fmtDMY(new Date(bd)):"";return((a.clientName||"")+" "+(a.sign||"")+" "+(a.date||"")+" "+(a.mesto||"")+" "+bd+" "+bdSr).toLowerCase().indexOf(q)>=0;});
           if(bazaDateFilter){var dfSr=fmtDMY(new Date(bazaDateFilter));filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
           var dateLabel=bazaDateFilter?fmtDMY(new Date(bazaDateFilter)):"";
+          // Razlika izmedju 3 stanja (Suzana 11.6. prijava bb8e3bb1: vidi
+          // "Nema analiza" iako ih ima 1477 u DB-u - fetch je tiho padao):
+          // 1) bazaLoading \u2192 "Ucitavam..."
+          // 2) bazaErr && nista nije ucitano \u2192 "Server se budi" sa Osvezi
+          // 3) inace \u2192 originalna poruka
+          var showLoading=bazaLoading&&filtered.length===0&&!(q||bazaDateFilter||bazaUserFilter);
+          var showServerErr=bazaErr&&analyses.length===0&&!(q||bazaDateFilter||bazaUserFilter);
           return filtered.length===0
-            ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter||bazaUserFilter)?"Nema rezultata":"Jos nema sacuvanih analiza."))
+            ?(showLoading
+              ?React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\u23F3"),React.createElement("p",null,"U\u010Ditavam Bazu..."))
+              :showServerErr
+                ?React.createElement("div",{className:"empty"},
+                  React.createElement("div",{className:"ico"},"\u26A0"),
+                  React.createElement("p",{style:{color:"#ffb0b0"}},"Server se budi - Baza trenutno nedostupna."),
+                  React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"4px"}},"NE radi iste ljude ponovo - analize SU sacuvane, samo se ne ucitavaju. Klikni Osvezi za 30s."),
+                  React.createElement("button",{className:"btn bgd bsm",style:{marginTop:"10px"},onClick:function(){
+                    setBazaLoading(true);setBazaErr(false);
+                    fetchWithRetry(API+"/api/analyses?limit=2000",{},{attempts:4}).then(function(r){return r.json();}).then(function(d){
+                      setBazaLoading(false);setBazaErr(false);
+                      if(d.analyses)setAnalyses(d.analyses);
+                      if(typeof d.total==="number")setTotalAnalyses(d.total);
+                    }).catch(function(){setBazaLoading(false);setBazaErr(true);});
+                  }},"\u21BB Osve\u017Ei Bazu"))
+                :React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter||bazaUserFilter)?"Nema rezultata":"Jos nema sacuvanih analiza.")))
             :React.createElement(React.Fragment,null,
               React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(bazaUserFilter?" analiza od "+bazaUserFilter:bazaDateFilter?" analiza uradjeno "+dateLabel:q?" pronadjeno":(totalAnalyses>analyses.length?" od "+totalAnalyses+" analiza (prikazano poslednjih "+analyses.length+")":" analiza"))),
               filtered.map(function(a){
