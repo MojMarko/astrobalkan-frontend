@@ -990,7 +990,14 @@ export default function App(){
     fetchWithRetry(API+"/api/analyses?limit=2000",{}, {attempts:4}).then(function(r){return r.json();}).then(function(d){
       setBazaErr(false);
       setBazaLoading(false);
-      if(d.analyses&&d.analyses.length>0){setAnalyses(d.analyses);}
+      if(d.analyses&&d.analyses.length>0){
+        setAnalyses(d.analyses);
+        // Cache invalidate: snimi top 50 svezih u localStorage, da sledeci mount
+        // ne ucita STARE analize (npr. one koje je admin obrisao u medjuvremenu).
+        // Marko 15.6.: Jelena vidi obrisane jer joj localStorage cache jos ima
+        // analize obrisane sa drugog uredjaja.
+        try{stoSet("analyses",d.analyses.slice(0,50));}catch(e){}
+      }
       if(typeof d.total==="number")setTotalAnalyses(d.total);
     }).catch(function(e){
       console.warn("Could not load shared analyses:",e.message);
@@ -1008,7 +1015,13 @@ export default function App(){
       fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
         failCount=0;
         setBazaErr(false);
-        if(d.analyses)setAnalyses(d.analyses);
+        if(d.analyses){
+          setAnalyses(d.analyses);
+          // Ažuriraj cache svakim polling-om (15s) da localStorage ne sadrzi
+          // obrisane analize iz drugog uredjaja (admin obrisao -> radnica
+          // mora da pri sledecem mount-u ucita iz cache-a bez te analize).
+          try{stoSet("analyses",d.analyses.slice(0,50));}catch(e){}
+        }
         if(typeof d.total==="number")setTotalAnalyses(d.total);
       }).catch(function(){
         failCount++;
@@ -3265,7 +3278,7 @@ export default function App(){
               if(all.length<=1){cpText(cleanText);toast2("Kopirano 1 analiza!");}
               else{var txt=all.map(function(a){return fmtText(a.analysis||"");}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
-            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;var id=viewAn.id;fetchSafe(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});setViewAn(null);toast2("Premesteno u korpu.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 U korpu"),
+            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;var id=viewAn.id;fetchSafe(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){var upd=prev.filter(function(a){return a.id!==id;});try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;});setViewAn(null);toast2("Premesteno u korpu.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 U korpu"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);}},"\u005aatvori")
           )
         )
