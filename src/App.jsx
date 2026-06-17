@@ -546,8 +546,29 @@ async function parseMsg(text,provider){
   }
   try{
     var parsed=JSON.parse(t.replace(/```json|```/g,"").trim());
+    // Sanity check za godinu rodjenja: 1900-2026 je razumno. Suzana 17.6. prijava
+    // 5985cc9f "Mesa datume": klijent napisao "78" u Messenger poruci, AI parser
+    // vratio "1878-08-14" umesto "1978-08-14", Astro API racunao kartu za osobu
+    // od 148 godina, analiza "pomesa sve". Ako 4-cifrena godina < 1900, dodaj 100.
+    function fixYear(y){var n=parseInt(y,10);if(n<1900&&n>=1800)return n+100;if(n>2030&&n<=2130)return n-100;return n;}
+    var yearWasFixed=false;
     // Fix date format if AI returned DD.MM.YYYY instead of YYYY-MM-DD
-    function fixDate(d){if(!d)return"";if(/^\d{4}-\d{2}-\d{2}$/.test(d))return d;var m=d.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");return d;}
+    function fixDate(d){
+      if(!d)return"";
+      if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
+        var y=parseInt(d.substring(0,4),10);
+        var fy=fixYear(y);
+        if(fy!==y)yearWasFixed=true;
+        return (fy<1000?"0"+fy:fy)+d.substring(4);
+      }
+      var m=d.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+      if(m){
+        var fy2=fixYear(m[3]);
+        if(fy2!==parseInt(m[3],10))yearWasFixed=true;
+        return fy2+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+      }
+      return d;
+    }
     var pasteTimes=extractTimesFromPaste(text);
     // Vreme se VEZE ZA OSOBU preko njenog datuma, ne po poziciji u tekstu.
     // Razlog: ako paste nije redom (partner pre klijenta), pozicijsko dodeljivanje
@@ -643,6 +664,7 @@ async function parseMsg(text,provider){
       parsed.pitanja=prettifyPitanja(pitanjaTxt);
     }
     console.log("parseMsg result:",JSON.stringify(parsed).slice(0,300));
+    if(yearWasFixed)parsed.__yearFixed=true; // signal radnici da je godina auto-popravljena
     return parsed;
   }catch(e){console.error("parseMsg JSON error:",e,t.slice(0,200));return {__error:"AI odgovor nije valjan JSON: "+t.slice(0,100)};}
 }
@@ -1247,6 +1269,10 @@ export default function App(){
           toast2(p.__error+" Pokušaj sa kraćim paste-om ili klikni 'Ručno' i unesi podatke direktno.");
         }
       }else if(p){
+        // Upozorenje radnici da je godina auto-popravljena (npr. 1878 → 1978).
+        // Suzana 17.6. prijava 5985cc9f: AI vratio nemoguć datum - bez ovog
+        // upozorenja, radnica ne vidi grešku dok ne stigne analiza za 1878 god.
+        if(p.__yearFixed)toast2("⚠ Godina rodjenja auto-popravljena (verovatno tipkaća greška u poruci). Proveri datum pre generisanja!");
         // Detektuj sve datume sa pozicijom u sirovom paste-u (za auto-partner ekstrakciju)
         // Tolerantni separatori: . / - razmak — isto kao parser, da ne propustimo paste sa razmacima
         var dateRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g;
