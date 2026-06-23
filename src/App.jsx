@@ -852,6 +852,26 @@ function GeneratingProgress(props){
   var mm=Math.floor(elapsedSec/60);
   var ss=elapsedSec%60;
   var elapsedStr=mm+":"+(ss<10?"0":"")+ss;
+  // UI HARD LIMIT: ako timer ide preko 18 min, polling logika negde nije
+  // obrisala spinner (Suzana 23.6. prijava 6826907f: spinner 40:03 iako je
+  // backend job tek 4 min star - frontend cache ili stuck slot state pre
+  // #58 fix-a). Ovaj useEffect okida onCancel automatski - bez obzira na
+  // polling.
+  var isStuck=elapsedSec>=1100; // 18.3 min
+  useEffect(function(){
+    if(isStuck&&props.onCancel){
+      var t=setTimeout(function(){try{props.onCancel(true);}catch(_){}},5000);
+      return function(){clearTimeout(t);};
+    }
+  },[isStuck]);
+  if(isStuck){
+    return React.createElement("div",{className:"aout",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"180px",padding:"28px 20px",textAlign:"center",gap:"10px"}},
+      React.createElement("div",{style:{fontSize:"32px"}},"⚠"),
+      React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"#ff9b9b",fontWeight:600}},"Spinner je zaglavljen ("+elapsedStr+")"),
+      React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:"1.6",maxWidth:"360px"}},"Analiza je verovatno gotova u Bazi - pogledaj tamo. Prikaz se resetuje za 5 sekundi."),
+      React.createElement("button",{className:"btn brd bsm",onClick:function(){if(props.onCancel)props.onCancel(true);},type:"button"},"Resetuj odmah")
+    );
+  }
   var step=props.statusText||"Generišem analizu...";
   // Safety valve dugmici se pokazuju tek posle 90s (pre toga normalno generise).
   var showRecovery=elapsedSec>=90 && (props.onForceCheck||props.onCancel);
@@ -2422,23 +2442,23 @@ export default function App(){
     pollJob(s.jobId,idx,tabKey,{birthDate:s.client.datum,mesto:s.client.mesto,clientName:s.client.ime,isSinastrija:!!s.hasPart,pitanja:s.client.pitanja||""});
     toast2("Proveravam status...");
   }
-  function cancelStuckAnaliza(idx){
-    if(!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+  function cancelStuckAnaliza(idx,skipConfirm){
+    if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
     upSlot(idx,function(s){return Object.assign({},s,{status:"idle",analysis:"",jobId:null,genStartedAt:null});});
     var jbs=safeActiveJobs();delete jbs["a"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
-    toast2("Otkazano. Mozes pokrenuti ponovo.");
+    toast2(skipConfirm?"Spinner zaglavljen >18min - resetovan. Analiza je verovatno u Bazi.":"Otkazano. Mozes pokrenuti ponovo.");
   }
-  function cancelStuckDs(idx){
-    if(!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+  function cancelStuckDs(idx,skipConfirm){
+    if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
     upDs(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
     var jbs=safeActiveJobs();delete jbs["ds"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
-    toast2("Otkazano.");
+    toast2(skipConfirm?"Spinner zaglavljen >18min - resetovan. Analiza je verovatno u Bazi.":"Otkazano.");
   }
-  function cancelStuckPq(idx){
-    if(!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+  function cancelStuckPq(idx,skipConfirm){
+    if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
     upPq(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
     var jbs=safeActiveJobs();delete jbs["pq"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
-    toast2("Otkazano.");
+    toast2(skipConfirm?"Spinner zaglavljen >18min - resetovan. Analiza je verovatno u Bazi.":"Otkazano.");
   }
 
   async function translateToSerbian(englishText){
@@ -2706,7 +2726,7 @@ export default function App(){
         React.createElement("div",{className:"ct",style:{marginBottom:"8px"}},"Gotova Analiza"),
         ch.length>0&&React.createElement(ChunkTracker,{ch:ch,ci:s.copyIdx,setCi:function(i){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:i});});}}),
         s.status==="generating"
-          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis,onForceCheck:function(){forceCheckAnaliza(idx);},onCancel:function(){cancelStuckAnaliza(idx);}})
+          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis,onForceCheck:function(){forceCheckAnaliza(idx);},onCancel:function(skip){cancelStuckAnaliza(idx,skip);}})
           :React.createElement(React.Fragment,null,
             // PRE-SEND VIDLJIV WARNING (Marko 9.6.: "isti problemi svaki dan")
             // Backend prepend-uje "[UPOZORENJE..." u tekst kad detektuje issues
@@ -2933,7 +2953,7 @@ export default function App(){
           (ds.an||ds.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(ds.an),ci:ds.ci,setCi:function(fn){upDs(dsIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             ds.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onCancel:function(){cancelStuckDs(dsIdx);}})
+              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onCancel:function(skip){cancelStuckDs(dsIdx,skip);}})
               :React.createElement("div",{className:"aout"},ds.an),
             React.createElement("div",{className:"abar"},
               ds.ci<getChunks(ds.an).length
@@ -2990,7 +3010,7 @@ export default function App(){
           (pq.an||pq.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(pq.an),ci:pq.ci,setCi:function(fn){upPq(pqIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             pq.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onCancel:function(){cancelStuckPq(pqIdx);}})
+              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onCancel:function(skip){cancelStuckPq(pqIdx,skip);}})
               :React.createElement("div",{className:"aout"},pq.an),
             React.createElement("div",{className:"abar"},
               pq.ci<getChunks(pq.an).length
