@@ -852,23 +852,22 @@ function GeneratingProgress(props){
   var mm=Math.floor(elapsedSec/60);
   var ss=elapsedSec%60;
   var elapsedStr=mm+":"+(ss<10?"0":"")+ss;
-  // UI HARD LIMIT: ako timer ide preko 18 min, polling logika negde nije
-  // obrisala spinner (Suzana 23.6. prijava 6826907f: spinner 40:03 iako je
-  // backend job tek 4 min star - frontend cache ili stuck slot state pre
-  // #58 fix-a). Ovaj useEffect okida onCancel automatski - bez obzira na
-  // polling.
-  var isStuck=elapsedSec>=1100; // 18.3 min
+  // UI HARD LIMIT: ako timer ide preko 10 min (normalan job 4-9 min), polling
+  // logika negde nije obrisala spinner. Suzana 25.6. prijava 689dbd19: spinner
+  // 23:28 sa moje #66 stuck UI ali svejedno cekala 23 min - 18 min je predugo.
+  // Sad 10 min trigger + 2 sec auto-reset.
+  var isStuck=elapsedSec>=600; // 10 min
   useEffect(function(){
     if(isStuck&&props.onCancel){
-      var t=setTimeout(function(){try{props.onCancel(true);}catch(_){}},5000);
+      var t=setTimeout(function(){try{props.onCancel(true);}catch(_){}},2000);
       return function(){clearTimeout(t);};
     }
   },[isStuck]);
   if(isStuck){
     return React.createElement("div",{className:"aout",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"180px",padding:"28px 20px",textAlign:"center",gap:"10px"}},
       React.createElement("div",{style:{fontSize:"32px"}},"⚠"),
-      React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"#ff9b9b",fontWeight:600}},"Spinner je zaglavljen ("+elapsedStr+")"),
-      React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:"1.6",maxWidth:"360px"}},"Analiza je verovatno gotova u Bazi - pogledaj tamo. Prikaz se resetuje za 5 sekundi."),
+      React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"#ff9b9b",fontWeight:600}},"AI analiza nije uspela ("+elapsedStr+")"),
+      React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:"1.6",maxWidth:"360px"}},"Verovatno je u Bazi - pogledaj. Resetujem za 2 sek."),
       React.createElement("button",{className:"btn brd bsm",onClick:function(){if(props.onCancel)props.onCancel(true);},type:"button"},"Resetuj odmah")
     );
   }
