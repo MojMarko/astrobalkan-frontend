@@ -1964,7 +1964,11 @@ export default function App(){
       }else{
         friendly="Greska: "+msg+"\n\nKlikni Generiši ponovo. Ako se ponavlja, prijavi problem.";
       }
-      upSlot(ri,function(s){return Object.assign({},s,{status:"done",analysis:friendly});});
+      // Greška pri kreiranju posla: toast umesto "gotove analize" + vrati u idle.
+      // Suzana 1.7.: cold-start poruka završavala u GOTOVA ANALIZA sekciji sa
+      // "Kopiraj" dugmetom — izgledalo kao da je analiza urađena sa pogrešnim tekstom.
+      toast2(friendly);
+      upSlot(ri,function(s){return Object.assign({},s,{status:"idle",genStartedAt:null});});
     }
     } finally {
       // Safety valve cleanup - doGen je zavrsio (uspesno ili sa greskom)
@@ -2136,7 +2140,7 @@ export default function App(){
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       var dsJobId=jobData.id;
       startDsPoll(idx,dsJobId,dsName,dsPayload,ds.pitanja||"");
-    }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genDownsell");Sentry.captureException(e);});}catch(_){}upDs(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
+    }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genDownsell");Sentry.captureException(e);});}catch(_){}var dsMsg=e.message||"";var dsFr=/Failed to fetch|NetworkError|TypeError.*fetch/i.test(dsMsg)?"Server se budi (Render free tier). Sačekaj 30s i klikni Generiši ponovo.":/AbortError|aborted/i.test(dsMsg)?"Veza prekinuta. Klikni Generiši ponovo.":"Greška: "+dsMsg;toast2(dsFr);upDs(idx,function(s){return Object.assign({},s,{st:"idle"});});}
   }
 
   // PITANJA GEN - prima idx (0, 1, 2)
@@ -2191,7 +2195,7 @@ export default function App(){
       jobs[pqKey]={id:jobData.id,clientName:"D. Pitanja - "+pqName,tab:"pitanja"+(idx+1),idx:idx,startedAt:Date.now()};
       localStorage.setItem("activeJobs",JSON.stringify(jobs));
       startPqPoll(idx,jobData.id,pqName,pqPayload,pq.quest||"");
-    }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genPitanja");Sentry.captureException(e);});}catch(_){}upPq(idx,function(s){return Object.assign({},s,{st:"done",an:"Greska: "+e.message});});}
+    }catch(e){try{Sentry.withScope(function(s){s.setTag("source","genPitanja");Sentry.captureException(e);});}catch(_){}var pqMsg=e.message||"";var pqFr=/Failed to fetch|NetworkError|TypeError.*fetch/i.test(pqMsg)?"Server se budi (Render free tier). Sačekaj 30s i klikni Generiši ponovo.":/AbortError|aborted/i.test(pqMsg)?"Veza prekinuta. Klikni Generiši ponovo.":"Greška: "+pqMsg;toast2(pqFr);upPq(idx,function(s){return Object.assign({},s,{st:"idle"});});}
   }
 
   // Garantovano dopisuje fiksni zavrsetak sa savet-rečenicom i email adresom na
