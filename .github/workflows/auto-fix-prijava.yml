@@ -47,6 +47,13 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # KRITICNO (2.7.2026): novije verzije @v1 action-a NE daju nikakve default
+          # dozvole za alate - bez --allowedTools Claude uradi dijagnozu pa mu SVAKI
+          # git push / gh / edit bude odbijen (permission_denials_count u logu) i run
+          # "uspe" bez ikakvog rezultata. Tako su prijave #74 i #76 prosle bez fix-a.
+          claude_args: |
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep,WebFetch,TodoWrite"
+            --max-turns 80
           prompt: |
             Nova prijava problema je upravo stigla.
 
@@ -59,4 +66,8 @@ jobs:
             Postupi tačno prema instrukcijama u CLAUDE.md (sekcija "Automatsko rešavanje prijava problema").
             Cilj: popraviti pre nego što radnica primeti problem ponovo.
 
-            Posle popravke, ostavi komentar na issue-u sa kratkim opisom šta si uradio.
+            OBAVEZNO na kraju (čak i ako ništa ne menjaš): ostavi komentar na issue #${{ github.event.issue.number }}
+            (gh issue comment) sa nalazom i šta si uradio. Ako si popravio i mergovao: zatvori issue
+            (gh issue close) i označi prijavu rešenom po koraku 6 iz CLAUDE.md. Ako NIJE bezbedno
+            automatski mergovati: otvori PR sa nalazom i to napiši u komentaru. Tihi završetak bez
+            komentara je neuspeh run-a.
