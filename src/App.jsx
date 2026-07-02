@@ -563,7 +563,13 @@ async function parseMsg(text,provider){
     if(isOverload){
       errMsg="DeepSeek trenutno nije dostupan.";
     }
-    return {__error:errMsg,__overload:isOverload,__geminiAvailable:!!errObj._gemini_available};
+    // _gemini_available stize samo iz backend 503 putanje. Kod mreznih gresaka /
+    // timeout-a (fetch throw) flag NE postoji — !!undefined je davalo false pa je
+    // radnica videla lazno "Gemini backup nije konfigurisan na serveru" iako je
+    // GEMINI_API_KEY podesen (Suzana 2.7. 11:13). Default je zato TRUE — dugme
+    // "Pokušaj sa Gemini" se nudi uvek osim kad server EKSPLICITNO kaze false.
+    var gemAvail=errObj._gemini_available===false?false:true;
+    return {__error:errMsg,__overload:isOverload,__geminiAvailable:gemAvail};
   }
   var t=(d.content&&d.content[0]&&d.content[0].text)||"";
   if(!t){
