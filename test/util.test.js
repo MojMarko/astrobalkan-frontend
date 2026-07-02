@@ -362,3 +362,20 @@ describe('bindDatesToNames - buduci datumi nisu kandidati', () => {
     expect(result.find(p => p.ime === 'Milica').datum).toBe('1993-05-10');
   });
 });
+
+// Prijava #80 (Suzana 2.7.): datum SMRTI ("...a 25.08.2004 je datum kada mi je muž
+// umro") ne sme u pool - binder bi vezao datum smrti za ime/muza kao rodjenje.
+describe('bindDatesToNames - datumi smrti/dogadjaja nisu kandidati', () => {
+  it('ne prepisuje osobu na datum smrti iz teksta', () => {
+    const text = "Marko je 19.10.2004 9.50h vaga a 25.08.2004 je datum kada mi je muž umro";
+    const persons = [{ ime: 'Marko', odnos: '', datum: '2004-10-19' }];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Marko').datum).toBe('2004-10-19');
+  });
+  it('obican drugi datum rodjenja i dalje normalno ulazi u pool', () => {
+    const text = "17.01.2023.Kalina , moja cerka";
+    const persons = [{ ime: 'Kalina', odnos: 'cerka', datum: '' }];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Kalina').datum).toBe('2023-01-17');
+  });
+});
