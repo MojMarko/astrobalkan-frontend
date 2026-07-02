@@ -46,22 +46,28 @@ export function conventionalSunSign(iso){
 // Vraca prvi match ili -1. Eksportovano za testove i bindDatesToNames.
 export function findNamePos(rawLower, nameLower){
   if(!rawLower||!nameLower)return -1;
+  // NAPOMENA: JS \b je ASCII-only — za imena/reci koje pocinju ili se zavrsavaju na
+  // č/ć/đ/š/ž ("muž", "Miloš", "Đorđe") \b NIKAD ne matchuje (nema granice izmedju
+  // ž i razmaka). Zato rucne granice preko lookaround-a sa punom klasom slova.
+  var L="a-z0-9čćđšž";
+  function boundedSearch(stemEsc){
+    try{
+      // prefiks-granica + (stem + do 2 sufiksna slova za padez) + granica iza
+      var re=new RegExp("(?:^|[^"+L+"])("+stemEsc+"[a-zčćđšž]{0,2})(?!["+L+"])");
+      var m=re.exec(rawLower);
+      if(!m)return -1;
+      return m.index+m[0].length-m[1].length;
+    }catch(e){return -1;}
+  }
   var esc0=nameLower.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  try{
-    var reExact=new RegExp("\\b"+esc0+"[a-zčćđšž]{0,2}\\b");
-    var m0=reExact.exec(rawLower);
-    if(m0)return m0.index;
-  }catch(e){}
+  var p0=boundedSearch(esc0);
+  if(p0>=0)return p0;
   var vowels="aeiou";
   var stem=nameLower;
   if(stem.length>2&&vowels.indexOf(stem.charAt(stem.length-1))>=0)stem=stem.slice(0,-1);
   if(stem.length<2)return -1;
   var esc=stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  try{
-    var re=new RegExp("\\b"+esc+"[a-zčćđšž]{0,2}\\b");
-    var mm=re.exec(rawLower);
-    return mm?mm.index:-1;
-  }catch(e){return -1;}
+  return boundedSearch(esc);
 }
 
 // Pairs persons (sa AI-parsiranog izvora) sa datumima iz teksta po ADJACENCY
@@ -79,15 +85,20 @@ export function bindDatesToNames(rawText, persons){
   var raw=String(rawText);
   var rawLow=raw.toLowerCase();
 
-  // 1. Nadji sve datume sa pozicijama
+  // 1. Nadji sve datume sa pozicijama. Godina mora biti 1900..danas i datum ne sme
+  // biti u buducnosti - "od 5.6.2027" (period iz pitanja) nije datum rodjenja i ne
+  // sme da udje u pool za vezivanje (inace binder dodeli buduci datum osobi).
   var dates=[];
+  var maxIso=new Date().toISOString().slice(0,10);
   var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
   while((m=dRe.exec(raw))!==null){
     var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=m[3];
     var yN=y.length===2?(parseInt(y,10)<=30?2000+parseInt(y,10):1900+parseInt(y,10)):parseInt(y,10);
-    if(d>=1&&d<=31&&mo>=1&&mo<=12){
+    if(d>=1&&d<=31&&mo>=1&&mo<=12&&yN>=1900){
+      var iso=yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+      if(iso>maxIso)continue;
       dates.push({
-        iso:yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"),
+        iso:iso,
         start:m.index,
         end:m.index+m[0].length
       });
@@ -133,11 +144,31 @@ export function bindDatesToNames(rawText, persons){
 
   // 5. Greedy bipartite matching
   var usedN={},usedD={};
+  // 5a. Zakljucaj parove gde se LLM-ov datum poklapa sa datumom iz teksta I adjacency
+  // to potvrdjuje (score 0). Sprecava da tudji "visak" datum kasnije ukrade tu osobu.
+  pairs.forEach(function(pair){
+    if(usedN[pair.nIdx]||usedD[pair.dIdx])return;
+    if(pair.score===0&&namedPersons[pair.nIdx].p.datum===uniqDates[pair.dIdx].iso){
+      usedN[pair.nIdx]=true;usedD[pair.dIdx]=true;
+    }
+  });
+  // 5b. Ostatak greedy po blizini (kao originalni algoritam), ali sa DISTANCOM KAO
+  // OGRADOM: overwrite samo kad su ime i datum razumno blizu (<60 non-adjacent chars).
+  // 60 pokriva "Marka rodjenog 05.07.2018" gap-ove, a iskljucuje kradju usamljenog
+  // datuma TREZE osobe iz druge recenice/pasusa ("Moj muz je rodjen 09.04.1968" daleko
+  // od imenovanog klijenta - prijava #62 "Mesa datume"). LLM-swap korekcija (Kalina/
+  // Mirko) i dalje radi jer su tamo parovi blizu (score 0 ili mali).
+  var MAX_BIND_DIST=60;
   pairs.forEach(function(pair){
     if(usedN[pair.nIdx]||usedD[pair.dIdx])return;
     var np=namedPersons[pair.nIdx];
     var dt=uniqDates[pair.dIdx];
     if(np.p.datum!==dt.iso){
+      if(pair.score>=MAX_BIND_DIST){
+        // Predaleko - zadrzi LLM-ov datum; datum ostaje slobodan za blizu osobu.
+        usedN[pair.nIdx]=true;
+        return;
+      }
       try{console.warn("bindDatesToNames: "+np.p.ime+": "+np.p.datum+" -> "+dt.iso+" (score="+pair.score+")");}catch(e){}
       np.p.datum=dt.iso;
     }

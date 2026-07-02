@@ -286,6 +286,29 @@ describe('bindDatesToNames - pair imena sa datumima po adjacency', () => {
     const result = bindDatesToNames(text, persons);
     expect(result.find(p => p.ime === 'Petar').datum).toBe('1985-01-01'); // ne dira
   });
+
+  // Prijava #62 "Mesa datume": pitanja teksta sadrzi SAMO datum trece osobe (muza),
+  // daleko od imenovane osobe ciji je datum vec ispravno parsiran (ali ne postoji u
+  // tekstu jer je stripovan). Usamljeni tudji datum NE SME da pregazi ispravan datum.
+  it('usamljeni tudji datum daleko u tekstu ne krade imenovanu osobu', () => {
+    const text = "Milica se raspituje za posao i za zdravlje. Ima jos mnogo pitanja o svemu.\n\nNesto se pobrkalo.\n\nMoj muz je rodjen 09.04.1968 u 12 casova u Somboru, pa me zanima i za njega.";
+    const persons = [
+      { ime: 'Milica', odnos: '', datum: '1993-05-10' } // ispravan, stripovan iz teksta
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Milica').datum).toBe('1993-05-10'); // ne dira
+  });
+
+  it('imena sa dijakritikama na kraju/pocetku se pronalaze (Milos sa š)', () => {
+    const text = "Miloš 12.05.1980, Đorđe 03.09.1975";
+    const persons = [
+      { ime: 'Miloš', datum: '1975-09-03' }, // zamenjeno
+      { ime: 'Đorđe', datum: '1980-05-12' }
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Miloš').datum).toBe('1980-05-12');
+    expect(result.find(p => p.ime === 'Đorđe').datum).toBe('1975-09-03');
+  });
 });
 
 describe('findNamePos - pronadji ime sa padezima', () => {
@@ -301,5 +324,41 @@ describe('findNamePos - pronadji ime sa padezima', () => {
   it('vraca -1 za invalid input', () => {
     expect(findNamePos('', 'marko')).toBe(-1);
     expect(findNamePos('test', '')).toBe(-1);
+  });
+
+  it('nadje ime koje se zavrsava dijakritikom (ASCII \\b bug)', () => {
+    expect(findNamePos('miloš 12.5.1980', 'miloš')).toBe(0);
+    expect(findNamePos('moj muž 09.04.1968', 'muž')).toBe(4);
+    expect(findNamePos('đorđe 3.9.1975', 'đorđe')).toBe(0);
+  });
+
+  it('ne matchuje ime unutar duze reci', () => {
+    expect(findNamePos('anamarija 1.1.1990', 'ana')).toBe(-1);
+  });
+});
+
+// Regresija koju je uhvatio review 1.7.2026: LLM-swap korekcija mora da radi i kad
+// datum NIJE odmah uz ime (gap "rodjenog" izmedju) - guard ne sme da je blokira.
+describe('bindDatesToNames - swap korekcija sa gap-om izmedju imena i datuma', () => {
+  it('ispravlja zamenjene datume i kad izmedju stoji "rodjenog"', () => {
+    const text = "Pitam za sina Marka rodjenog 05.07.2018 i brata Mirka rodjenog 02.05.1985.";
+    const persons = [
+      { ime: 'Marko', odnos: 'sin', datum: '1985-05-02' },  // LLM zamenio
+      { ime: 'Mirko', odnos: 'brat', datum: '2018-07-05' }  // LLM zamenio
+    ];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Marko').datum).toBe('2018-07-05');
+    expect(result.find(p => p.ime === 'Mirko').datum).toBe('1985-05-02');
+  });
+});
+
+// Review 1.7.2026: buduci "period" datumi iz pitanja ("od 5.6.2027") ne smeju da
+// udju u pool za vezivanje - binder bi ih inace dodelio osobi kao datum rodjenja.
+describe('bindDatesToNames - buduci datumi nisu kandidati', () => {
+  it('ne prepisuje osobu na buduci datum iz teksta cak ni kad je adjacentan', () => {
+    const text = "Od 5.6.2077 Milica planira da trazi posao. Rodjena je 10.05.1993. u Somboru.";
+    const persons = [{ ime: 'Milica', odnos: '', datum: '1993-05-10' }];
+    const result = bindDatesToNames(text, persons);
+    expect(result.find(p => p.ime === 'Milica').datum).toBe('1993-05-10');
   });
 });
