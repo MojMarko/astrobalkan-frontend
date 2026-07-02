@@ -2105,7 +2105,21 @@ export default function App(){
     var dsInterval=setInterval(async function(){
       try{
         var jbs=safeActiveJobs();
-        if(!jbs[dsKey]){clearInterval(dsInterval);return;}
+        if(!jbs[dsKey]){
+          // Entry moze faliti jer je radnica otkazala (slot idle) ILI jer je registry
+          // obrisan/pokvaren dok slot i dalje generise - rekreiraj sa ORIGINALNIM startedAt.
+          var dsStill=false,dsGenStart=null;
+          try{
+            var dsArr=JSON.parse(localStorage.getItem("ab_dsSlots")||"[]");
+            var ds0=dsArr&&dsArr[idx];
+            if(ds0&&ds0.st==="generating"&&ds0.jobId===jobId){dsStill=true;dsGenStart=ds0.genStartedAt||null;}
+          }catch(_){}
+          if(!dsStill){clearInterval(dsInterval);return;}
+          jbs[dsKey]={id:jobId,tab:"downsell"+(idx+1),idx:idx,startedAt:dsGenStart||Date.now()};
+          try{localStorage.setItem("activeJobs",JSON.stringify(jbs));}catch(_){}
+        }
+        // Registry entry pripada drugom (novijem) poslu - ovaj poller je zastareo.
+        if(jbs[dsKey]&&jbs[dsKey].id&&jbs[dsKey].id!==jobId){clearInterval(dsInterval);return;}
         if(jobExpired(jbs[dsKey])){
           clearInterval(dsInterval);
           var jbsExp=safeActiveJobs();delete jbsExp[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
@@ -2161,7 +2175,18 @@ export default function App(){
     var pqInterval=setInterval(async function(){
       try{
         var jbs=safeActiveJobs();
-        if(!jbs[pqKey]){clearInterval(pqInterval);return;}
+        if(!jbs[pqKey]){
+          var pqStill=false,pqGenStart=null;
+          try{
+            var pqArr=JSON.parse(localStorage.getItem("ab_pqSlots")||"[]");
+            var pq0=pqArr&&pqArr[idx];
+            if(pq0&&pq0.st==="generating"&&pq0.jobId===jobId){pqStill=true;pqGenStart=pq0.genStartedAt||null;}
+          }catch(_){}
+          if(!pqStill){clearInterval(pqInterval);return;}
+          jbs[pqKey]={id:jobId,tab:"pitanja"+(idx+1),idx:idx,startedAt:pqGenStart||Date.now()};
+          try{localStorage.setItem("activeJobs",JSON.stringify(jbs));}catch(_){}
+        }
+        if(jbs[pqKey]&&jbs[pqKey].id&&jbs[pqKey].id!==jobId){clearInterval(pqInterval);return;}
         if(jobExpired(jbs[pqKey])){
           clearInterval(pqInterval);
           var jbsExp=safeActiveJobs();delete jbsExp[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
@@ -2634,26 +2659,77 @@ export default function App(){
       if(Array.isArray(arr)&&arr[idx]){arr[idx]=Object.assign({},arr[idx],patch);localStorage.setItem(key,JSON.stringify(arr));}
     }catch(_){}
   }
-  function cancelStuckAnaliza(idx,skipConfirm){
+  // Pre auto-reseta "zaglavljenog" spinera proveri da li je posao vec ZAVRSEN.
+  // Suzana 2.7. prijava #74 ("Radim vec 4 ti put"): na telefonu se u app vraca posle
+  // >10 min (poll je bio zamrznut u pozadini) - auto-reset je dobijao trku sa tek
+  // restartovanim pollerom i brisao prikaz, iako analiza sedi GOTOVA u bazi. Radnica
+  // onda generise ispocetka (dupli posao + istorijat raste pa je svaki put sporije).
+  async function fetchDoneJob(jobId){
+    if(!jobId)return null;
+    try{
+      var r=await fetchSafe(API+"/api/generate/"+jobId,null,8000);
+      if(!r.ok)return null;
+      var j=await r.json();
+      if(j&&j.status==="done"&&j.serbian_text)return j;
+    }catch(_){}
+    return null;
+  }
+  async function cancelStuckAnaliza(idx,skipConfirm){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+    if(skipConfirm){
+      var sA=slots[idx]||{};
+      var doneA=await fetchDoneJob(sA.jobId);
+      if(doneA){
+        var ftA=applyClosing(fmtText(doneA.serbian_text||""),"analiza",!!sA.hasPart);
+        upSlot(idx,function(s){return Object.assign({},s,{status:"done",analysis:ftA,jobId:null,genStartedAt:null});});
+        syncCancelToStorage("ab_slots",idx,{status:"done",analysis:ftA,jobId:null,genStartedAt:null});
+        var jbsDA=safeActiveJobs();delete jbsDA["a"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbsDA));
+        toast2("Analiza je gotova — prikazana je ispod.");
+        return;
+      }
+    }
     upSlot(idx,function(s){return Object.assign({},s,{status:"idle",analysis:"",jobId:null,genStartedAt:null});});
     syncCancelToStorage("ab_slots",idx,{status:"idle",analysis:"",jobId:null,genStartedAt:null});
     var jbs=safeActiveJobs();delete jbs["a"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
-    toast2(skipConfirm?"Spinner zaglavljen >18min - resetovan. Analiza je verovatno u Bazi.":"Otkazano. Mozes pokrenuti ponovo.");
+    toast2(skipConfirm?"Prikaz resetovan (predugo bez odgovora). Proveri Bazu — ako analize tamo nema, klikni Generiši ponovo.":"Otkazano. Mozes pokrenuti ponovo.");
   }
-  function cancelStuckDs(idx,skipConfirm){
+  async function cancelStuckDs(idx,skipConfirm){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+    if(skipConfirm){
+      var sD=dsSlots[idx]||{};
+      var doneD=await fetchDoneJob(sD.jobId);
+      if(doneD){
+        var ftD=fmtText(doneD.serbian_text||"");
+        upDs(idx,function(s){return Object.assign({},s,{an:ftD,st:"done",jobId:null,genStartedAt:null});});
+        syncCancelToStorage("ab_dsSlots",idx,{an:ftD,st:"done",jobId:null,genStartedAt:null});
+        var jbsDD=safeActiveJobs();delete jbsDD["ds"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbsDD));
+        toast2("Downsell je gotov — prikazan je ispod.");
+        return;
+      }
+    }
     upDs(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
     syncCancelToStorage("ab_dsSlots",idx,{st:"idle",an:"",jobId:null,genStartedAt:null});
     var jbs=safeActiveJobs();delete jbs["ds"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
-    toast2(skipConfirm?"Spinner zaglavljen >18min - resetovan. Analiza je verovatno u Bazi.":"Otkazano.");
+    toast2(skipConfirm?"Prikaz resetovan (predugo bez odgovora). Proveri Bazu — ako analize tamo nema, klikni Generiši ponovo.":"Otkazano.");
   }
-  function cancelStuckPq(idx,skipConfirm){
+  async function cancelStuckPq(idx,skipConfirm){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
+    if(skipConfirm){
+      var sP=pqSlots[idx]||{};
+      var doneP=await fetchDoneJob(sP.jobId);
+      if(doneP){
+        var ftP=applyClosing(fmtText(doneP.serbian_text||""),"pitanja");
+        upPq(idx,function(s){return Object.assign({},s,{an:ftP,st:"done",jobId:null,genStartedAt:null});});
+        syncCancelToStorage("ab_pqSlots",idx,{an:ftP,st:"done",jobId:null,genStartedAt:null});
+        var jbsDP=safeActiveJobs();delete jbsDP["pq"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbsDP));
+        toast2("Odgovori su gotovi — prikazani su ispod.");
+        return;
+      }
+    }
     upPq(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
     syncCancelToStorage("ab_pqSlots",idx,{st:"idle",an:"",jobId:null,genStartedAt:null});
     var jbs=safeActiveJobs();delete jbs["pq"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbs));
-    toast2(skipConfirm?"Spinner zaglavljen >18min - resetovan. Analiza je verovatno u Bazi.":"Otkazano.");
+    toast2(skipConfirm?"Prikaz resetovan (predugo bez odgovora). Proveri Bazu — ako analize tamo nema, klikni Generiši ponovo.":"Otkazano.");
   }
 
   async function translateToSerbian(englishText){
