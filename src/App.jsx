@@ -235,7 +235,13 @@ function fmtText(text){
   t=t.replace(/^([^,\n]{1,30},\s+)(evo tvoje[^.]{5,200}\.\s*|evo ti detaljn[^.]{5,200}\.\s*|na osnovu (tvoje|vasih|vaših)[^.]{5,200}(videcemo|videćemo|videces|videćeš|ceka|čeka|cekaju|čekaju)[^.]{0,200}\.\s*|videcemo (sta|šta|da) [^.]{5,200}\.\s*|videćemo (sta|šta|da) [^.]{5,200}\.\s*|donosim ti [^.]{5,200}\.\s*|krecemo sa [^.]{5,200}\.\s*|krećemo sa [^.]{5,200}\.\s*)/i,"$1");
   return t.replace(/^#{1,6}\s*/gm,"").replace(/^\s*---+\s*$/gm,"").replace(/\*\*(.*?)\*\*/g,"$1").replace(/\*(.*?)\*/g,"$1").replace(/^[-–—*•]\s*/gm,"").replace(/__/g,"").replace(/ [-–—] /g," ").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
 }
+// Backend prepend-uje "[UPOZORENJE: ...]" na pocetak analize kad detektuje problem
+// (npr. AI napisao stare godine kao buducnost). To je poruka ZA RADNICU — vidi se u
+// crvenom banneru iznad. NE sme da ude u tekst koji radnica kopira klijentu ni u prikaz
+// same analize. Skidamo taj blok svuda gde je tekst "za klijenta" (prikaz + kopiranje).
+function stripUpoz(t){return (t||"").replace(/^\s*\[UPOZORENJE\b[^\]]*\]\s*/,"");}
 function getChunks(text,max){
+  text=stripUpoz(text);
   if(!max)max=2900;
   var ch=[],pos=0;
   function isUpper(c){return !!c&&"ABCDEFGHIJKLMNOPQRSTUVWXYZČĆĐŠŽ".indexOf(c)>=0;}
@@ -3014,7 +3020,7 @@ export default function App(){
               /^\[UPOZORENJE/.test(s.analysis||"")&&React.createElement("div",{style:{marginTop:"4px",fontSize:"12px"}},(s.analysis.match(/^\[UPOZORENJE[^\]]*\]/)||[""])[0].replace(/^\[UPOZORENJE:?\s*/,"").replace(/\]$/,"")),
               s.qaWarn&&React.createElement("div",{style:{marginTop:"4px",fontSize:"12px"}},"AI je odgovorio na priblizno "+s.qaWarn+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja — moguce je da nedostaje neko pitanje.")
             ),
-            React.createElement("div",{className:"aout"},s.analysis)
+            React.createElement("div",{className:"aout"},stripUpoz(s.analysis))
           ),
         React.createElement("div",{className:"abar"},
           s.copyIdx<ch.length
@@ -3022,7 +3028,7 @@ export default function App(){
             :React.createElement("button",{className:"btn bol bsm",onClick:function(){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:0});});}},"Ponovi"),
           React.createElement("button",{className:"btn bol bsm",disabled:s.copyIdx===0,onClick:function(){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.max(0,sl.copyIdx-1)});});}},"<"),
           React.createElement("button",{className:"btn bol bsm",disabled:s.copyIdx>=ch.length-1,onClick:function(){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.min(ch.length-1,sl.copyIdx+1)});});}},">" ),
-          React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(s.analysis);toast2("Sve kopirano!");}},"\u0041ll"),
+          React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(stripUpoz(s.analysis));toast2("Sve kopirano!");}},"\u0041ll"),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){if(s.chStale){toast2("Prvo prera\u010Dunaj horoskop \u2014 podaci su izmenjeni.");return;}doGen(idx);},disabled:busy||s.chStale},"\u21BA")
         ),
         // NOVA ANALIZA dugme
