@@ -925,11 +925,12 @@ function GeneratingProgress(props){
   var mm=Math.floor(elapsedSec/60);
   var ss=elapsedSec%60;
   var elapsedStr=mm+":"+(ss<10?"0":"")+ss;
-  // UI HARD LIMIT: ako timer ide preko 10 min (normalan job 4-9 min), polling
-  // logika negde nije obrisala spinner. Suzana 25.6. prijava 689dbd19: spinner
-  // 23:28 sa moje #66 stuck UI ali svejedno cekala 23 min - 18 min je predugo.
-  // Sad 10 min trigger + 2 sec auto-reset.
-  var isStuck=elapsedSec>=600; // 10 min
+  // UI HARD LIMIT: mora biti VECI od backend JOB_DEADLINE-a (15 min) - inace UI
+  // proglasi neuspeh dok posao legitimno jos radi. Suzana 3.7. prijava (Biljana
+  // downsell): UI odustao na 10:09 sa "verovatno je u Bazi", posao jos radio
+  // (V4-Pro lanac realno 12-15 min), u Bazi nije bilo nicega -> "Nema je u bazi".
+  // 16 min: do tada je backend GARANTOVANO zavrsio (done ili error na 15 min).
+  var isStuck=elapsedSec>=960; // 16 min (backend deadline 15 min + margina)
   useEffect(function(){
     if(isStuck&&props.onCancel){
       var t=setTimeout(function(){try{props.onCancel(true);}catch(_){}},2000);
@@ -940,7 +941,7 @@ function GeneratingProgress(props){
     return React.createElement("div",{className:"aout",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"180px",padding:"28px 20px",textAlign:"center",gap:"10px"}},
       React.createElement("div",{style:{fontSize:"32px"}},"⚠"),
       React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"#ff9b9b",fontWeight:600}},"AI analiza nije uspela ("+elapsedStr+")"),
-      React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:"1.6",maxWidth:"360px"}},"Verovatno je u Bazi - pogledaj. Resetujem za 2 sek."),
+      React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",lineHeight:"1.6",maxWidth:"360px"}},"Proveri Bazu — ako je tamo nema, klikni Generiši ponovo. Resetujem za 2 sek."),
       React.createElement("button",{className:"btn brd bsm",onClick:function(){if(props.onCancel)props.onCancel(true);},type:"button"},"Resetuj odmah")
     );
   }
@@ -952,9 +953,11 @@ function GeneratingProgress(props){
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"16px",color:"var(--gd2)",letterSpacing:".5px"}},step),
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"24px",color:"var(--tx)",fontVariantNumeric:"tabular-nums"}},elapsedStr),
     React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},
-      step.indexOf("Prevodim")>=0
-        ? "Prevod na srpski obicno traje 2-5 min. Ukupno generisanje 5-9 min. Sve OK - sacekaj jos malo."
-        : "Generisanje obicno traje 4-9 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
+      elapsedSec>=540
+        ? "Duza analiza — moze trajati do 15 min kad je AI opterecen. Sve je OK, ne prekidaj: kad bude gotovo, tekst ce se sam pojaviti (i uvek ostaje sacuvan u Bazi)."
+        : step.indexOf("Prevodim")>=0
+          ? "Prevod na srpski obicno traje 2-5 min. Ukupno generisanje 5-9 min. Sve OK - sacekaj jos malo."
+          : "Generisanje obicno traje 4-9 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
     showRecovery&&React.createElement("div",{style:{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",marginTop:"4px"}},
       props.onForceCheck&&React.createElement("button",{className:"btn bol bsm",onClick:props.onForceCheck,type:"button"},"🔄 Proveri da li je gotovo"),
       props.onCancel&&React.createElement("button",{className:"btn brd bsm",onClick:props.onCancel,type:"button"},"✖ Otkazi prikaz")
