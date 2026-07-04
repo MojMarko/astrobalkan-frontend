@@ -149,6 +149,95 @@ function localTransitPositions(){
     return out;
   }catch(e){console.warn("localTransitPositions failed:",e&&e.message);return [];}
 }
+// KLJUCNI TRANZITNI DATUMI za narednih ~12 meseci, izracunato pravim efemeridskim
+// racunom (astronomy-engine). AI dobija TACNE datume (ingresi, retro stanice,
+// egzaktni aspekti na natalne planete) umesto da ih izmislja iz training data -
+// direktno podize preciznost "tacnih perioda" u analizi/downsell-u (Marko 4.7.).
+// natalDegs: {Sunce: apsolutna_longituda, ...} ili null (tada samo ingresi/retro).
+function computeTransitCalendar(natalDegs,days){
+  try{
+    days=days||365;
+    // [engleski naziv, srpski naziv, korak uzorkovanja u danima, natalne mete za aspekte]
+    var FAST_TARGETS=["Sunce","Mesec"];
+    var SLOW_TARGETS=["Sunce","Mesec","Merkur","Venera","Mars"];
+    var TR=[["Mars","Mars",2,FAST_TARGETS],["Jupiter","Jupiter",3,SLOW_TARGETS],["Saturn","Saturn",3,SLOW_TARGETS],["Uranus","Uran",5,[]],["Neptune","Neptun",5,[]],["Pluto","Pluton",5,[]]];
+    var ASPECTS=[[0,"konjunkcija"],[60,"sekstil"],[90,"kvadrat"],[120,"trigon"],[180,"opozicija"],[240,"trigon"],[270,"kvadrat"],[300,"sekstil"]];
+    var now=new Date();
+    var J0=jd(now.getUTCFullYear(),now.getUTCMonth()+1,now.getUTCDate(),12);
+    function angDiff(a,b){var d=norm(a-b);return d>180?d-360:d;}
+    var events=[];
+    for(var t=0;t<TR.length;t++){
+      var body=TR[t][0],srName=TR[t][1],step=TR[t][2],targets=TR[t][3];
+      var prevLon=null,prevSign=null,prevSpeedPos=null,prevDelta={};
+      for(var d=0;d<=days;d+=step){
+        var J=J0+d;
+        var lon=geoLon(J,body);
+        var sg=Math.floor(norm(lon)/30);
+        if(prevSign!=null&&sg!==prevSign&&norm(lon)%30<15){
+          events.push({J:J,txt:srName+" ulazi u znak "+SIGNS[sg]});
+        }
+        if(prevLon!=null){
+          var dl=angDiff(lon,prevLon);
+          var speedPos=dl>=0;
+          if(prevSpeedPos!=null&&speedPos!==prevSpeedPos){
+            events.push({J:J,txt:srName+(speedPos?" zavrsava retrogradni hod (krece direktno)":" krece retrogradno")});
+          }
+          prevSpeedPos=speedPos;
+        }
+        if(natalDegs){
+          for(var n=0;n<targets.length;n++){
+            var natLon=natalDegs[targets[n]];
+            if(natLon==null)continue;
+            var rel=norm(lon-natLon);
+            for(var a=0;a<ASPECTS.length;a++){
+              var key=n+"|"+a;
+              var delta=angDiff(rel,ASPECTS[a][0]);
+              var pd=prevDelta[body+key];
+              // prolazak kroz nulu = egzaktan aspekt; |granice|<10 stite od wrap skoka
+              if(pd!=null&&((pd<0&&delta>=0)||(pd>0&&delta<=0))&&Math.abs(pd)<10&&Math.abs(delta)<10){
+                events.push({J:J,txt:srName+" "+ASPECTS[a][1]+" natalni "+targets[n]+" (egzaktno)"});
+              }
+              prevDelta[body+key]=delta;
+            }
+          }
+        }
+        prevLon=lon;prevSign=sg;
+      }
+    }
+    events.sort(function(a,b){return a.J-b.J;});
+    var out=[],lastByTxt={};
+    for(var i=0;i<events.length;i++){
+      var e=events[i];
+      if(lastByTxt[e.txt]!=null&&(e.J-lastByTxt[e.txt])<10)continue; // isti dogadjaj u istoj nedelji = duplikat uzorkovanja
+      lastByTxt[e.txt]=e.J;
+      out.push(fmtDMY(jdToDate(e.J))+": "+e.txt);
+      if(out.length>=45)break;
+    }
+    return out;
+  }catch(e){console.warn("computeTransitCalendar:",e&&e.message);return [];}
+}
+// Apsolutne longitude iz chart.planets ({name,sign,degInSign,...}) - radi i za
+// SwissEph/API i za lokalni chart jer svi nose sign + stepen u znaku.
+function chartToNatalDegs(chart){
+  try{
+    if(!chart||!chart.planets)return null;
+    var degs={};
+    chart.planets.forEach(function(p){
+      var si=SIGNS.indexOf(p.sign);
+      var dd=parseFloat(p.degInSign!=null?p.degInSign:p.deg);
+      if(si>=0&&!isNaN(dd))degs[p.name]=si*30+dd;
+    });
+    return Object.keys(degs).length>0?degs:null;
+  }catch(e){return null;}
+}
+// Blok za prompt: tacni datumi + stroga pravila koriscenja.
+function transitCalendarBlock(natalDegs,todayStr){
+  var cal=computeTransitCalendar(natalDegs,365);
+  if(cal.length===0)return "";
+  return "\n\n*** KLJUCNI TRANZITNI DATUMI U NAREDNIH 12 MESECI (od "+todayStr+", tacno izracunato) ***\n"+
+    cal.join("\n")+
+    "\nPRAVILA ZA DATUME: Kada navodis tranzit ili 'tacan period', koristi ISKLJUCIVO datume iz ove liste (period = oko datuma, npr. nedelja pre do nedelje posle). NIKAD ne izmisljaj datum tranzita koji nije na listi. Slobodne prognoze bez tranzita i dalje smes da vezes za mesece po svom tumacenju, ali svaki POMEN konkretnog tranzita mora da odgovara listi.";
+}
 var CITIES={beograd:[44.8176,20.4633],"novi sad":[45.2671,19.8335],nis:[43.3209,21.8954],sarajevo:[43.8476,18.3564],zagreb:[45.8150,15.9819],split:[43.5081,16.4402],rijeka:[45.3271,14.4422],osijek:[45.5550,18.6955],doboj:[44.7333,18.0833],tuzla:[44.5384,18.6734],"banja luka":[44.7722,17.1910],podgorica:[42.4411,19.2636],skopje:[41.9981,21.4254],london:[51.5074,-0.1278],berlin:[52.5200,13.4050],wien:[48.2082,16.3738],paris:[48.8566,2.3522],"new york":[40.7128,-74.0060],dubai:[25.2048,55.2708],munich:[48.1351,11.5820],stuttgart:[48.7758,9.1829],frankfurt:[50.1109,8.6821],hamburg:[53.5753,10.0153]};
 function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase().trim();var keys=Object.keys(CITIES);for(var i=0;i<keys.length;i++){if(k.indexOf(keys[i])>=0||keys[i].indexOf(k)>=0)return CITIES[keys[i]];}return[44.8176,20.4633];}
 
@@ -2046,6 +2135,9 @@ export default function App(){
       var localTr=localTransitPositions();
       if(localTr.length>0){trTxt="\n\nTRANZITNE POZICIJE DANAS ("+todayStr+", tacno izracunato):\n"+localTr.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n")+"\nKoristi ISKLJUCIVO ove pozicije za trenutno nebo. NIKAD ne navodi trenutnu poziciju planete koje nema u ovoj listi.";}
     }
+    // Tacni tranzitni datumi za 12 meseci - AI vezuje "tacne periode" za PRAVE
+    // astronomske dogadjaje umesto da izmislja datume (preciznost, Marko 4.7.)
+    try{trTxt+=transitCalendarBlock(chartToNatalDegs(sl.ch),todayStr);}catch(eCal){console.warn("transit calendar:",eCal&&eCal.message);}
     var srTxt="";
     if(hasClientChart&&sl.ch.solarReturn&&sl.ch.solarReturn.planets.length>0){
       srTxt="\n\nSOLARNA REVOLUCIJA (karta za "+sl.ch.solarReturn.year+". godinu):\n"+sl.ch.solarReturn.planets.map(function(p){return p.name+": "+p.sign+" "+p.deg+"°"+(p.house?" ("+p.house+". kuca)":"");}).join("\n");
@@ -2344,6 +2436,12 @@ export default function App(){
       // "\n\n***" - bez toga bi ovaj blok upao u "pitanja klijenta" i backend regex bi
       // iz njega izvukao danasnji datum kao "osobu rodjenu danas".
       try{var dsTr=localTransitPositions();if(dsTr.length>0)usrContent+="\n\n*** TRENUTNE POZICIJE PLANETA DANAS ("+todayStr+", tacno izracunato) ***\n"+dsTr.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n")+"\nKoristi ISKLJUCIVO ove pozicije za trenutno nebo. NIKAD ne navodi trenutnu poziciju planete koje nema u ovoj listi.";}catch(eT){}
+      // Tacni tranzitni datumi (12 meseci) na natalne pozicije klijenta - downsell
+      // je bas "tacni periodi" pa datumi moraju biti astronomski, ne izmisljeni.
+      try{
+        var dsNatal=ds.clientBirthDate?chartToNatalDegs(calcChart(ds.clientBirthDate,"",44.8176,20.4633,"Europe/Belgrade")):null;
+        usrContent+=transitCalendarBlock(dsNatal,todayStr);
+      }catch(eCal2){console.warn("ds transit calendar:",eCal2&&eCal2.message);}
       var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
       var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
@@ -2413,6 +2511,11 @@ export default function App(){
       // Tacne danasnje pozicije planeta - bez ovoga AI izmislja trenutno nebo.
       // "***" prefiks: da backend extractPitanjaSection ne uvuce blok u pitanja sekciju.
       try{var pqTr=localTransitPositions();if(pqTr.length>0)pqUsr+="\n\n*** TRENUTNE POZICIJE PLANETA DANAS ("+todayStr+", tacno izracunato) ***\n"+pqTr.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n")+"\nKoristi ISKLJUCIVO ove pozicije za trenutno nebo. NIKAD ne navodi trenutnu poziciju planete koje nema u ovoj listi.";}catch(eT){}
+      // Tacni tranzitni datumi (12 meseci) - odgovori "kada" postaju astronomski tacni.
+      try{
+        var pqNatal=pq.clientBirthDate?chartToNatalDegs(calcChart(pq.clientBirthDate,"",44.8176,20.4633,"Europe/Belgrade")):null;
+        pqUsr+=transitCalendarBlock(pqNatal,todayStr);
+      }catch(eCal3){console.warn("pq transit calendar:",eCal3&&eCal3.message);}
       var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
       var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
