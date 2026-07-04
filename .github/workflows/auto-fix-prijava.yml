@@ -67,7 +67,11 @@ jobs:
             Cilj: popraviti pre nego što radnica primeti problem ponovo.
 
             OBAVEZNO na kraju (čak i ako ništa ne menjaš): ostavi komentar na issue #${{ github.event.issue.number }}
-            (gh issue comment) sa nalazom i šta si uradio. Ako si popravio i mergovao: zatvori issue
-            (gh issue close) i označi prijavu rešenom po koraku 6 iz CLAUDE.md. Ako NIJE bezbedno
-            automatski mergovati: otvori PR sa nalazom i to napiši u komentaru. Tihi završetak bez
-            komentara je neuspeh run-a.
+            (gh issue comment) sa nalazom i šta si uradio. Ako si popravio i mergovao: OBAVEZNO zatvori issue
+            (gh issue close ${{ github.event.issue.number }}) i označi prijavu rešenom po koraku 6 iz CLAUDE.md —
+            run koji popravi a NE zatvori issue je NEUSPEŠAN (4.7. su issue-i #80/#84/#86 ostali da vise otvoreni).
+            AKO JE UZROK U BACKEND repou (MojMarko/astrobalkan-backend): iz ovog workflow-a NEMAŠ pristup tom
+            repou — NE pokušavaj da guraš izmene tamo. Ostavi komentar sa TAČNOM dijagnozom (fajl, funkcija,
+            uzrok, predlog izmene) i NE zatvaraj issue — vlasnik ili sledeća sesija primenjuje popravku.
+            Ako NIJE bezbedno automatski mergovati: otvori PR sa nalazom i to napiši u komentaru.
+            Tihi završetak bez komentara je neuspeh run-a.
