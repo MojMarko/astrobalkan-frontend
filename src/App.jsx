@@ -158,9 +158,12 @@ function computeTransitCalendar(natalDegs,days){
   try{
     days=days||365;
     // [engleski naziv, srpski naziv, korak uzorkovanja u danima, natalne mete za aspekte]
+    // Audit 50 analiza (4.7.): 47% datovanih tvrdnji je bilo o Suncu/Merkuru/Veneri koje
+    // kalendar nije pokrivao - pa ih AI izmislja. Sada su i oni tu (ingresi + retro
+    // periodi, bez aspekata da lista ne eksplodira). Korak 1 dan zbog brzine kretanja.
     var FAST_TARGETS=["Sunce","Mesec"];
     var SLOW_TARGETS=["Sunce","Mesec","Merkur","Venera","Mars"];
-    var TR=[["Mars","Mars",2,FAST_TARGETS],["Jupiter","Jupiter",3,SLOW_TARGETS],["Saturn","Saturn",3,SLOW_TARGETS],["Uranus","Uran",5,[]],["Neptune","Neptun",5,[]],["Pluto","Pluton",5,[]]];
+    var TR=[["Sun","Sunce",1,[]],["Mercury","Merkur",1,[]],["Venus","Venera",1,[]],["Mars","Mars",2,FAST_TARGETS],["Jupiter","Jupiter",3,SLOW_TARGETS],["Saturn","Saturn",3,SLOW_TARGETS],["Uranus","Uran",5,[]],["Neptune","Neptun",5,[]],["Pluto","Pluton",5,[]]];
     var ASPECTS=[[0,"konjunkcija"],[60,"sekstil"],[90,"kvadrat"],[120,"trigon"],[180,"opozicija"],[240,"trigon"],[270,"kvadrat"],[300,"sekstil"]];
     var now=new Date();
     var J0=jd(now.getUTCFullYear(),now.getUTCMonth()+1,now.getUTCDate(),12);
@@ -204,6 +207,29 @@ function computeTransitCalendar(natalDegs,days){
         prevLon=lon;prevSign=sg;
       }
     }
+    // POMRACENJA - prava, izracunata (audit 4.7: sva pomracenja u analizama su bila
+    // izmisljena, npr "pomracenje Sunca u Vagi" koje ne postoji). Astrolozi ih koriste
+    // kao glavne okidace dogadjaja pa AI mora da dobije tacne datume i znakove.
+    try{
+      var KINDS={total:"totalno",annular:"prstenasto",partial:"delimicno",penumbral:"polusenka"};
+      function jdOf(dt){return jd(dt.getUTCFullYear(),dt.getUTCMonth()+1,dt.getUTCDate(),dt.getUTCHours()+dt.getUTCMinutes()/60);}
+      var horizon=J0+days,guard=0;
+      var se=AstroEngine.SearchGlobalSolarEclipse(jdToDate(J0));
+      while(se&&guard++<10){
+        var js=jdOf(se.peak.date);
+        if(js>horizon)break;
+        events.push({J:js,txt:"Pomracenje Sunca u znaku "+signOf(geoLon(js,"Sun"))+(KINDS[se.kind]?" ("+KINDS[se.kind]+")":"")});
+        se=AstroEngine.NextGlobalSolarEclipse(se.peak);
+      }
+      guard=0;
+      var le=AstroEngine.SearchLunarEclipse(jdToDate(J0));
+      while(le&&guard++<10){
+        var jl=jdOf(le.peak.date);
+        if(jl>horizon)break;
+        events.push({J:jl,txt:"Pomracenje Meseca u znaku "+signOf(geoLon(jl,"Moon"))+(KINDS[le.kind]?" ("+KINDS[le.kind]+")":"")});
+        le=AstroEngine.NextLunarEclipse(le.peak);
+      }
+    }catch(ecl){console.warn("eclipse calc:",ecl&&ecl.message);}
     events.sort(function(a,b){return a.J-b.J;});
     var out=[],lastByTxt={};
     for(var i=0;i<events.length;i++){
@@ -211,7 +237,7 @@ function computeTransitCalendar(natalDegs,days){
       if(lastByTxt[e.txt]!=null&&(e.J-lastByTxt[e.txt])<10)continue; // isti dogadjaj u istoj nedelji = duplikat uzorkovanja
       lastByTxt[e.txt]=e.J;
       out.push(fmtDMY(jdToDate(e.J))+": "+e.txt);
-      if(out.length>=45)break;
+      if(out.length>=100)break; // prosireno sa 45 kad su dodati Sunce/Merkur/Venera (~85 dogadjaja godisnje)
     }
     return out;
   }catch(e){console.warn("computeTransitCalendar:",e&&e.message);return [];}
@@ -236,7 +262,7 @@ function transitCalendarBlock(natalDegs,todayStr){
   if(cal.length===0)return "";
   return "\n\n*** KLJUCNI TRANZITNI DATUMI U NAREDNIH 12 MESECI (od "+todayStr+", tacno izracunato) ***\n"+
     cal.join("\n")+
-    "\nPRAVILA ZA DATUME: Kada navodis tranzit ili 'tacan period', koristi ISKLJUCIVO datume iz ove liste (period = oko datuma, npr. nedelja pre do nedelje posle). NIKAD ne izmisljaj datum tranzita koji nije na listi. Slobodne prognoze bez tranzita i dalje smes da vezes za mesece po svom tumacenju, ali svaki POMEN konkretnog tranzita mora da odgovara listi.";
+    "\nPRAVILA ZA DATUME: Kada navodis tranzit, poziciju planete u znaku, retrogradni period, pomracenje ili 'tacan period', koristi ISKLJUCIVO datume iz ove liste (period = oko datuma; pozicija u znaku vazi od ulaska do sledeceg ulaska te planete). NIKAD ne izmisljaj datum tranzita ni pomracenje koje nije na listi. Mesec (Luna) menja znak svaka 2-3 dana i namerno NIJE na listi - NIKAD ne datiraj dogadjaje po Mesecu ('kada Mesec udje u...'). Slobodne prognoze bez tranzita i dalje smes da vezes za mesece po svom tumacenju, ali svaki POMEN konkretnog tranzita/pozicije/pomracenja mora da odgovara listi.";
 }
 var CITIES={beograd:[44.8176,20.4633],"novi sad":[45.2671,19.8335],nis:[43.3209,21.8954],sarajevo:[43.8476,18.3564],zagreb:[45.8150,15.9819],split:[43.5081,16.4402],rijeka:[45.3271,14.4422],osijek:[45.5550,18.6955],doboj:[44.7333,18.0833],tuzla:[44.5384,18.6734],"banja luka":[44.7722,17.1910],podgorica:[42.4411,19.2636],skopje:[41.9981,21.4254],london:[51.5074,-0.1278],berlin:[52.5200,13.4050],wien:[48.2082,16.3738],paris:[48.8566,2.3522],"new york":[40.7128,-74.0060],dubai:[25.2048,55.2708],munich:[48.1351,11.5820],stuttgart:[48.7758,9.1829],frankfurt:[50.1109,8.6821],hamburg:[53.5753,10.0153]};
 function getCoords(city){if(!city)return[44.8176,20.4633];var k=city.toLowerCase().trim();var keys=Object.keys(CITIES);for(var i=0;i<keys.length;i++){if(k.indexOf(keys[i])>=0||keys[i].indexOf(k)>=0)return CITIES[keys[i]];}return[44.8176,20.4633];}
@@ -3750,15 +3776,16 @@ export default function App(){
           React.createElement("div",{className:"abar",style:{marginTop:"12px"}},
             React.createElement("button",{className:"btn bgd bsm",onClick:function(){
               if(stillLoading){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam ceo tekst analize.");return;}
-              cpText(cleanText);toast2("Kopirano!");
+              // stripUpoz: interni [UPOZORENJE...] blok ostaje vidljiv u modalu ali NIKAD ne ide u kopiju za klijenta
+              cpText(stripUpoz(cleanText));toast2("Kopirano!");
             }},"\uD83D\uDCCB Kopiraj"),
             viewAn.clientName&&viewAn.clientName!=="Downsell"&&viewAn.clientName!=="Pitanja"&&React.createElement("button",{className:"btn bpu bsm",onClick:function(){
               // Pun tekst SVIH analiza klijenta je prefetch-ovan u openAnalysis (lista nosi samo preview-e)
               if(!allReady){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam sve analize klijenta.");return;}
               var all=viewAnAll.items||[];
               if(all.length===0){toast2("Nema analiza za tog klijenta.");return;}
-              if(all.length===1){cpText(fmtText(all[0].analysis||""));toast2("Kopirano 1 analiza!");}
-              else{var txt=all.map(function(a){return fmtText(a.analysis||"");}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
+              if(all.length===1){cpText(fmtText(stripUpoz(all[0].analysis||"")));toast2("Kopirano 1 analiza!");}
+              else{var txt=all.map(function(a){return fmtText(stripUpoz(a.analysis||""));}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
             (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){
               if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;
