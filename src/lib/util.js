@@ -90,6 +90,10 @@ export function bindDatesToNames(rawText, persons){
   // sme da udje u pool za vezivanje (inace binder dodeli buduci datum osobi).
   var dates=[];
   var maxIso=new Date().toISOString().slice(0,10);
+  // Datum u kontekstu SMRTI/DOGADJAJA nije datum rodjenja i ne sme u pool za
+  // vezivanje. Suzana 2.7. prijava #80 "Mesa datume": "...a 25.08.2004 je datum
+  // kada mi je muž umro" - binder bi vezao datum smrti za ime/muza.
+  var EVENT_CTX_RE=/umr[loa]|premin|smrt|sahran|pogin|ven[cč]a[nl]|razvod|razvel|razveden|operacij|operis|datum\s+kada/i;
   var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
   while((m=dRe.exec(raw))!==null){
     var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=m[3];
@@ -97,6 +101,7 @@ export function bindDatesToNames(rawText, persons){
     if(d>=1&&d<=31&&mo>=1&&mo<=12&&yN>=1900){
       var iso=yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
       if(iso>maxIso)continue;
+      if(EVENT_CTX_RE.test(raw.slice(Math.max(0,m.index-70),m.index+m[0].length+70)))continue;
       dates.push({
         iso:iso,
         start:m.index,
