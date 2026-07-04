@@ -1098,6 +1098,9 @@ export default function App(){
   }
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
+  // Deo-po-deo kopiranje u Baza modalu (Marko 4.7.: analiza zavrsi u Bazi ali se
+  // u Messenger salje DEO PO DEO - radnica je iz Baze mogla da kopira samo celo).
+  var [viewAnCi,setViewAnCi]=useState(0);
   // Overload modal: kad DeepSeek padne, prikazuje pop-up sa Gemini dugmetom
   var [overloadPrompt,setOverloadPrompt]=useState(null); // {payload, retryFn, geminiAvailable}
   var [bazaSearch,setBazaSearch]=useState("");
@@ -1892,7 +1895,8 @@ export default function App(){
             return (c.birth_date||"").slice(0,10)===sl.client.datum&&normSearch(c.name||c.ime||"")===normSearch(sl.client.ime);
           });
           var dupCount=dupCl&&(dupCl.total_count||dupCl.analyses_count||0);
-          if(dupCount>0&&!window.confirm("PAZNJA: "+sl.client.ime+" ("+fmtDMYFromISO(sl.client.datum)+") vec ima "+dupCount+" analiza u Bazi. Pogledaj Bazu pre ponovnog generisanja.\n\nSigurno zelis JOS JEDNU analizu za istog klijenta?")){
+          if(dupCount>0&&!window.confirm("PAZNJA: "+sl.client.ime+" ("+fmtDMYFromISO(sl.client.datum)+") vec ima "+dupCount+" analiza u Bazi - verovatno je vec uradjena! Otvori Bazu i kopiraj je odatle (ima Kopiraj 1/2/3... dugmice za deo po deo).\n\nOK = ipak generisi NOVU (duplu) analizu.\nCancel = odustani i pogledaj u Bazi.")){
+            toast2("Otkazano. Otvori Bazu - analiza za "+sl.client.ime+" je vec tamo.");
             genBusyRef.current["a"+idx]=false;
             return;
           }
@@ -3434,7 +3438,7 @@ export default function App(){
             :React.createElement(React.Fragment,null,
               React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(bazaUserFilter?" analiza od "+bazaUserFilter:bazaDateFilter?" analiza uradjeno "+dateLabel:q?" pronadjeno":(totalAnalyses>analyses.length?" od "+totalAnalyses+" analiza (prikazano poslednjih "+analyses.length+")":" analiza"))),
               filtered.map(function(a){
-                return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAn(a);}},
+                return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAnCi(0);setViewAn(a);}},
                   React.createElement("div",{className:"acard-top"},
                     React.createElement("div",{className:"acard-name"},(a.clientName||"Nepoznat")+(a.sign?" \u00B7 "+a.sign:"")),
                     React.createElement("div",{className:"acard-date"},a.date)
@@ -3598,10 +3602,23 @@ export default function App(){
     // MODAL
     viewAn&&(function(){
       var cleanText=fmtText(viewAn.analysis||"");
+      // Deo-po-deo kopiranje kao u slotovima (Marko 4.7.): u Messenger se salje
+      // DEO PO DEO, a analiza cesto zavrsi SAMO u Bazi (poll prekinut / slot
+      // resetovan) - radnica je odavde mogla da kopira samo CELO pa je
+      // generisala istog klijenta ispocetka. Sad i Baza ima Kopiraj 1/N dugmice.
+      var vch=getAnalizaChunks(cleanText,country);
       return React.createElement("div",{className:"modal-bg",onClick:function(){setViewAn(null);}},
         React.createElement("div",{className:"modal",onClick:function(e){e.stopPropagation();}},
           React.createElement("div",{className:"modal-title"},(viewAn.clientName||"Analiza")+" · "+viewAn.date),
-          React.createElement("div",{className:"aout",style:{maxHeight:"60vh"}},cleanText),
+          vch.length>1&&React.createElement(ChunkTracker,{ch:vch,ci:viewAnCi,setCi:setViewAnCi}),
+          React.createElement("div",{className:"aout",style:{maxHeight:"50vh"}},cleanText),
+          vch.length>1&&React.createElement("div",{className:"abar",style:{marginTop:"10px"}},
+            viewAnCi<vch.length
+              ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){cpText(vch[viewAnCi]);toast2("Dio "+(viewAnCi+1)+"/"+vch.length+" kopiran!");setViewAnCi(Math.min(viewAnCi+1,vch.length));}},"Kopiraj "+(Math.min(viewAnCi,vch.length-1)+1)+"/"+vch.length)
+              :React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAnCi(0);}},"Ponovi od 1"),
+            React.createElement("button",{className:"btn bol bsm",disabled:viewAnCi===0,onClick:function(){setViewAnCi(Math.max(0,viewAnCi-1));}},"<"),
+            React.createElement("button",{className:"btn bol bsm",disabled:viewAnCi>=vch.length-1,onClick:function(){setViewAnCi(Math.min(vch.length-1,viewAnCi+1));}},">")
+          ),
           React.createElement("div",{className:"abar",style:{marginTop:"12px"}},
             React.createElement("button",{className:"btn bgd bsm",onClick:function(){cpText(cleanText);toast2("Kopirano!");}},"\uD83D\uDCCB Kopiraj"),
             viewAn.clientName&&viewAn.clientName!=="Downsell"&&viewAn.clientName!=="Pitanja"&&React.createElement("button",{className:"btn bpu bsm",onClick:function(){
