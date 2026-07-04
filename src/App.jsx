@@ -1105,7 +1105,8 @@ export default function App(){
   var [overloadPrompt,setOverloadPrompt]=useState(null); // {payload, retryFn, geminiAvailable}
   var [bazaSearch,setBazaSearch]=useState("");
   var [bazaDateFilter,setBazaDateFilter]=useState("");
-  var [bazaUserFilter,setBazaUserFilter]=useState(""); // filter po korisniku (ownerName ili owner email)
+  var [bazaUserFilter,setBazaUserFilter]=useState(""); // filter po radnici (userId - filtrira se na serveru)
+  var [viewAnAll,setViewAnAll]=useState(null); // pun set analiza za "Sve za klijenta" kopiju (prefetch pri otvaranju)
   var [nuData,setNuData]=useState({name:"",email:"",pw:"",country:"sr"});
   var [activeJobs,setActiveJobs]=useState({});
 
@@ -1121,61 +1122,93 @@ export default function App(){
       }).catch(function(){});
     });
     stoGet("session",null).then(function(u){if(u){setUser(u);if(!u.country)setShowCtr(true);}});
-    // Inicijalno ucitaj kesirane analize (brz prikaz dok server fetch radi)
-    stoGet("analyses",[]).then(function(arr){if(arr&&arr.length>0)setAnalyses(arr);});
-    // Load shared analyses from backend - all users see all
-    // Suzana 11.6. 8:22 prijava (bb8e3bb1): "u bazi nema nista" iako u DB-u
-    // ima 1477 analiza. fetchSafe (30s timeout, NO retry) je padao kad Render
-    // cold start traje 30s+. Sa fetchWithRetry (4 attempts, ~95s cover) Render
-    // budjenje je pokriveno. bazaErr=true ako svi 4 attempts padnu - UI prikazuje
-    // jasnu poruku umesto laznog "Nema analiza".
-    fetchWithRetry(API+"/api/analyses?limit=2000",{}, {attempts:4}).then(function(r){return r.json();}).then(function(d){
-      setBazaErr(false);
-      setBazaLoading(false);
-      if(d.analyses&&d.analyses.length>0){
-        setAnalyses(d.analyses);
-        // Cache invalidate: snimi top 50 svezih u localStorage, da sledeci mount
-        // ne ucita STARE analize (npr. one koje je admin obrisao u medjuvremenu).
-        // Marko 15.6.: Jelena vidi obrisane jer joj localStorage cache jos ima
-        // analize obrisane sa drugog uredjaja.
-        try{stoSet("analyses",d.analyses.slice(0,50));}catch(e){}
-      }
-      if(typeof d.total==="number")setTotalAnalyses(d.total);
-    }).catch(function(e){
-      console.warn("Could not load shared analyses:",e.message);
-      setBazaErr(true);
-      setBazaLoading(false);
-      try{Sentry.captureMessage("Baza fetch failed: "+e.message,{level:"warning",tags:{source:"baza_load"}});}catch(_){}
-    });
+    // NAPOMENA: localStorage kes analiza ("analyses") je UKINUT - on je vracao
+    // obrisane analize u prikaz (Marko 4.7: "ako sam obrisao, ne treba da se
+    // vraca") i bio je beskoristan otkad je Baza server-side paginirana.
+    try{localStorage.removeItem("analyses");}catch(e){}
   },[]);
 
-  // Refresh analyses from backend periodically while on Baza tab
+  // ==================== BAZA (server-side, paginirano) ====================
+  // Stari model je vukao SVE analize sa PUNIM tekstom (2163 x ~13KB = ~27MB)
+  // na svakih 15s - zato je Baza "stekala" i prikazivala samo deo. Sada:
+  // - lista vuce kratke preview-e po 50 (~30KB po strani), "Ucitaj jos" za dalje
+  // - pretraga/datum/radnica filtriraju U BAZI (radi i sa 100.000 redova)
+  // - brojevi po radnici stizu iz /api/analyses/stats (Postgres agregat,
+  //   obrisano se NIKAD ne racuna) - tacni istog trenutka posle brisanja
+  var [bazaStats,setBazaStats]=useState([]);
+  var BAZA_PAGE=50;
+  var bazaBusyRef=useRef(false);
+  function bazaQuery(off){
+    var p="preview=1&limit="+BAZA_PAGE+"&offset="+off;
+    var s=(bazaSearch||"").trim();
+    if(s)p+="&q="+encodeURIComponent(s);
+    if(bazaDateFilter)p+="&date="+bazaDateFilter;
+    if(bazaUserFilter)p+="&user_id="+encodeURIComponent(bazaUserFilter);
+    return p;
+  }
+  function loadBaza(reset){
+    if(bazaBusyRef.current)return;
+    bazaBusyRef.current=true;
+    var off=reset?0:analyses.length;
+    if(reset)setBazaLoading(true);
+    fetchWithRetry(API+"/api/analyses?"+bazaQuery(off),{},{attempts:reset?4:2})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        setBazaErr(false);setBazaLoading(false);
+        if(d.analyses)setAnalyses(function(prev){return reset?d.analyses:prev.concat(d.analyses);});
+        if(typeof d.total==="number")setTotalAnalyses(d.total);
+      })
+      .catch(function(e){
+        console.warn("Baza load failed:",e.message);
+        setBazaLoading(false);setBazaErr(true);
+        try{Sentry.captureMessage("Baza fetch failed: "+e.message,{level:"warning",tags:{source:"baza_load"}});}catch(_){}
+      })
+      .then(function(){bazaBusyRef.current=false;});
+  }
+  function loadBazaStats(){
+    fetchSafe(API+"/api/analyses/stats",null,20000)
+      .then(function(r){return r.json();})
+      .then(function(d){if(d&&d.users)setBazaStats(d.users);})
+      .catch(function(e){console.warn("Baza stats failed:",e.message);});
+  }
+  // Ucitaj prvu stranu kad se udje na Bazu ili promeni filter (debounce za kucanje)
   useEffect(function(){
     if(tab!=="baza")return;
-    var failCount=0;
-    var refresh=function(){
-      fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){
-        failCount=0;
-        setBazaErr(false);
-        if(d.analyses){
-          setAnalyses(d.analyses);
-          // Ažuriraj cache svakim polling-om (15s) da localStorage ne sadrzi
-          // obrisane analize iz drugog uredjaja (admin obrisao -> radnica
-          // mora da pri sledecem mount-u ucita iz cache-a bez te analize).
-          try{stoSet("analyses",d.analyses.slice(0,50));}catch(e){}
-        }
-        if(typeof d.total==="number")setTotalAnalyses(d.total);
-      }).catch(function(){
-        failCount++;
-        // 3 uzastopna fail-a tokom polling-a → server je verovatno mrtav, pokaži warning.
-        if(failCount>=3)setBazaErr(true);
-      });
-    };
-    refresh();
-    var interval=setInterval(refresh,15000); // refresh every 15 sec
-    return function(){clearInterval(interval);};
+    var t=setTimeout(function(){loadBaza(true);},(bazaSearch||"").trim()?450:0);
+    return function(){clearTimeout(t);};
+  },[tab,bazaSearch,bazaDateFilter,bazaUserFilter]);
+  // Statistika po radnici: pri ulasku + osvezavanje na 30s (jeftin poziv)
+  useEffect(function(){
+    if(tab!=="baza")return;
+    loadBazaStats();
+    var iv=setInterval(loadBazaStats,30000);
+    return function(){clearInterval(iv);};
   },[tab]);
 
+  // Otvaranje analize iz Baze: lista nosi samo preview, pa se pun tekst povuce
+  // tek ovde. Uz to se prefetch-uje i "sve za tog klijenta" (za dugme kopije) -
+  // mora biti spremno PRE klika jer kopiranje u clipboard trazi korisnicki gest.
+  function openAnalysis(a){
+    setViewAn(a);
+    setViewAnAll(null);
+    if(a&&a.preview&&a.id){
+      fetchSafe(API+"/api/analyses/"+a.id+"/full",null,20000)
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d&&d.analysis){
+            setViewAn(function(cur){return cur&&cur.id===a.id?Object.assign({},cur,{analysis:d.analysis,preview:false}):cur;});
+            setAnalyses(function(prev){return prev.map(function(x){return x.id===a.id?Object.assign({},x,{analysis:d.analysis,preview:false}):x;});});
+          }
+        }).catch(function(e){console.warn("full analysis load failed:",e.message);});
+    }
+    var cn=a&&a.clientName;
+    if(cn&&cn!=="Downsell"&&cn!=="Pitanja"){
+      fetchSafe(API+"/api/analyses?client="+encodeURIComponent(cn)+"&limit=50",null,30000)
+        .then(function(r){return r.json();})
+        .then(function(d){if(d&&d.analyses)setViewAnAll({clientName:cn,items:d.analyses});})
+        .catch(function(){});
+    }
+  }
   // Ucitaj korpu kad korisnik prebaci na "trash" view
   function loadTrash(){
     if(!user||!user.id)return;
@@ -2165,7 +2198,7 @@ export default function App(){
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
-            var upd=[{id:"d"+Date.now(),jobId:jobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
+            var upd=[{id:"d"+Date.now(),jobId:jobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
           });
           toast2("Downsell "+(idx+1)+" gotov!");
         }else if(j.status==="error"){
@@ -2233,7 +2266,7 @@ export default function App(){
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
-            var upd=[{id:"q"+Date.now(),jobId:jobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
+            var upd=[{id:"q"+Date.now(),jobId:jobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
           });
           toast2("D. Pitanja "+(idx+1)+" gotova!");
         }else if(j.status==="error"){
@@ -2553,7 +2586,7 @@ export default function App(){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
             var na={id:"j"+Date.now(),jobId:jobId,clientName:job.client_name||"",sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),birthDate:meta&&meta.birthDate||"",mesto:meta&&meta.mesto||"",types:[job.job_type||"analiza"],analysis:finalText,country:country,owner:user&&user.email};
-            var upd=[na].concat(prev).slice(0,200);try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;
+            var upd=[na].concat(prev).slice(0,200);return upd;
           });
           toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");
         }else if(job.status==="error"){
@@ -3320,7 +3353,7 @@ export default function App(){
         React.createElement("div",{className:"stitle"},bazaView==="trash"?"🗑 Korpa":"Baza Analiza"),
         // Toggle: Aktivne / Korpa
         React.createElement("div",{style:{display:"flex",gap:"6px",marginBottom:"10px"}},
-          React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},"📁 Aktivne ("+analyses.length+")"),
+          React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},"📁 Aktivne ("+(totalAnalyses||analyses.length)+")"),
           React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":""))
         ),
         // KORPA view
@@ -3344,8 +3377,8 @@ export default function App(){
                       .then(function(res){
                         if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri vracanju.");return;}
                         setTrashItems(function(prev){return prev.filter(function(x){return x.id!==a.id;});});
-                        // Refresh aktivnih analiza
-                        fetchSafe(API+"/api/analyses?limit=2000").then(function(r){return r.json();}).then(function(d){if(d.analyses)setAnalyses(d.analyses);}).catch(function(){});
+                        // Refresh aktivnih analiza + brojeva po radnici (vracena se ponovo racuna)
+                        loadBaza(true);loadBazaStats();
                         toast2("Analiza vracena.");
                       }).catch(function(){toast2("Greska pri vracanju.");});
                   }},"↩ Vrati"),
@@ -3367,32 +3400,22 @@ export default function App(){
         })(),
         // AKTIVNE - postojeci kod ide samo ako bazaView === "active"
         bazaView==="active"&&(function(){return React.createElement(React.Fragment,null,
-        // Per-user statistika i filter (klik na pill = filtriraj listu po tom korisniku)
+        // Per-radnica statistika - PRAVI ukupni brojevi iz baze (Postgres agregat,
+        // obrisano se ne racuna), ne vise racunato iz ucitanog parceta liste.
+        // Klik na pill = server-side filter liste po toj radnici.
         (function(){
-          var statsByUser={}; // key -> {key, name, total, analiza, downsell, pitanja}
-          for(var i=0;i<myAnalyses.length;i++){
-            var a=myAnalyses[i];
-            var key=a.ownerName||a.owner||"(nepoznato)";
-            if(!statsByUser[key])statsByUser[key]={key:key,name:key,total:0,analiza:0,downsell:0,pitanja:0};
-            statsByUser[key].total++;
-            var t=(a.types&&a.types[0])||"analiza";
-            if(t==="downsell")statsByUser[key].downsell++;
-            else if(t==="pitanja")statsByUser[key].pitanja++;
-            else statsByUser[key].analiza++;
-          }
-          var pills=Object.keys(statsByUser).map(function(k){return statsByUser[k];}).sort(function(x,y){return y.total-x.total;});
-          if(pills.length===0)return null;
+          if(bazaStats.length===0)return null;
           return React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"10px"}},
-            pills.map(function(p){
-              var active=bazaUserFilter===p.key;
+            bazaStats.map(function(p){
+              var active=bazaUserFilter===p.userId;
               return React.createElement("button",{
-                key:p.key,
+                key:p.userId||p.name,
                 className:"btn bsm "+(active?"bgd":"bol"),
                 style:{fontSize:"11px",padding:"4px 8px",lineHeight:"1.2",textAlign:"left"},
-                onClick:function(){setBazaUserFilter(active?"":p.key);},
+                onClick:function(){if(p.userId)setBazaUserFilter(active?"":p.userId);},
                 title:active?"Klikni da uklonis filter":"Klikni za filter po "+p.name
               },
-                React.createElement("div",{style:{fontWeight:600}},"\uD83D\uDC64 "+p.name+" "+p.total),
+                React.createElement("div",{style:{fontWeight:600}},"\uD83D\uDC64 "+p.name+" "+p.total+(p.danas?" \u00B7 danas "+p.danas:"")),
                 React.createElement("div",{style:{fontSize:"9.5px",opacity:0.85,marginTop:"1px"}},p.analiza+" analiza \u00B7 "+p.downsell+" downsell \u00B7 "+p.pitanja+" pitanja")
               );
             })
@@ -3405,12 +3428,12 @@ export default function App(){
           bazaDateFilter&&React.createElement("button",{className:"btn bol bsm",onClick:function(){setBazaDateFilter("");}},"\u2715")
         ),
         (function(){
-          var q=bazaSearch.toLowerCase().trim();
+          // Filtriranje (pretraga/datum/radnica) se sada radi NA SERVERU - lista
+          // je vec filtrirana i paginirana; ovde se samo prikazuje.
+          var q=bazaSearch.trim();
           var filtered=myAnalyses;
-          if(bazaUserFilter)filtered=filtered.filter(function(a){return(a.ownerName||a.owner||"(nepoznato)")===bazaUserFilter;});
-          if(q)filtered=filtered.filter(function(a){var bd=a.birthDate||"";var bdSr=bd?fmtDMY(new Date(bd)):"";return((a.clientName||"")+" "+(a.sign||"")+" "+(a.date||"")+" "+(a.mesto||"")+" "+bd+" "+bdSr).toLowerCase().indexOf(q)>=0;});
-          if(bazaDateFilter){var dfSr=fmtDMY(new Date(bazaDateFilter));filtered=filtered.filter(function(a){return(a.rawDate||"")===bazaDateFilter||(a.date||"").startsWith(dfSr);});}
           var dateLabel=bazaDateFilter?fmtDMY(new Date(bazaDateFilter)):"";
+          var filterLabel=bazaUserFilter?(function(){var st=bazaStats.find(function(s){return s.userId===bazaUserFilter;});return st?st.name:"radnici";})():"";
           // Razlika izmedju 3 stanja (Suzana 11.6. prijava bb8e3bb1: vidi
           // "Nema analiza" iako ih ima 1477 u DB-u - fetch je tiho padao):
           // 1) bazaLoading \u2192 "Ucitavam..."
@@ -3427,18 +3450,16 @@ export default function App(){
                   React.createElement("p",{style:{color:"#ffb0b0"}},"Server se budi - Baza trenutno nedostupna."),
                   React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"4px"}},"NE radi iste ljude ponovo - analize SU sacuvane, samo se ne ucitavaju. Klikni Osvezi za 30s."),
                   React.createElement("button",{className:"btn bgd bsm",style:{marginTop:"10px"},onClick:function(){
-                    setBazaLoading(true);setBazaErr(false);
-                    fetchWithRetry(API+"/api/analyses?limit=2000",{},{attempts:4}).then(function(r){return r.json();}).then(function(d){
-                      setBazaLoading(false);setBazaErr(false);
-                      if(d.analyses)setAnalyses(d.analyses);
-                      if(typeof d.total==="number")setTotalAnalyses(d.total);
-                    }).catch(function(){setBazaLoading(false);setBazaErr(true);});
+                    setBazaErr(false);loadBaza(true);loadBazaStats();
                   }},"\u21BB Osve\u017Ei Bazu"))
                 :React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter||bazaUserFilter)?"Nema rezultata":"Jos nema sacuvanih analiza.")))
             :React.createElement(React.Fragment,null,
-              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},filtered.length+(bazaUserFilter?" analiza od "+bazaUserFilter:bazaDateFilter?" analiza uradjeno "+dateLabel:q?" pronadjeno":(totalAnalyses>analyses.length?" od "+totalAnalyses+" analiza (prikazano poslednjih "+analyses.length+")":" analiza"))),
+              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},
+                (bazaUserFilter||q||bazaDateFilter)
+                  ?(totalAnalyses+" analiza"+(filterLabel?" od "+filterLabel:"")+(dateLabel?" uradjeno "+dateLabel:"")+(q?" za \""+q+"\"":"")+(analyses.length<totalAnalyses?" (prikazano "+analyses.length+")":""))
+                  :(analyses.length<totalAnalyses?analyses.length+" od "+totalAnalyses+" analiza":totalAnalyses+" analiza")),
               filtered.map(function(a){
-                return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAnCi(0);setViewAn(a);}},
+                return React.createElement("div",{key:a.id,className:"acard",onClick:function(){setViewAnCi(0);openAnalysis(a);}},
                   React.createElement("div",{className:"acard-top"},
                     React.createElement("div",{className:"acard-name"},(a.clientName||"Nepoznat")+(a.sign?" \u00B7 "+a.sign:"")),
                     React.createElement("div",{className:"acard-date"},a.date)
@@ -3447,7 +3468,8 @@ export default function App(){
                   a.mesto&&React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginTop:"1px"}},a.mesto),
                   React.createElement("div",{className:"acard-prev"},fmtText(a.analysis||""))
                 );
-              })
+              }),
+              analyses.length<totalAnalyses&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"8px"},onClick:function(){loadBaza(false);}},"\u2B07 U\u010Ditaj jo\u0161 ("+analyses.length+" od "+totalAnalyses+")")
             );
         })()
         );})()
@@ -3601,18 +3623,21 @@ export default function App(){
 
     // MODAL
     viewAn&&(function(){
+      var stillLoading=!!viewAn.preview; // lista nosi samo preview - pun tekst se ucitava u openAnalysis
       var cleanText=fmtText(viewAn.analysis||"");
+      var allReady=viewAnAll&&viewAnAll.clientName===viewAn.clientName;
       // Deo-po-deo kopiranje kao u slotovima (Marko 4.7.): u Messenger se salje
       // DEO PO DEO, a analiza cesto zavrsi SAMO u Bazi (poll prekinut / slot
       // resetovan) - radnica je odavde mogla da kopira samo CELO pa je
       // generisala istog klijenta ispocetka. Sad i Baza ima Kopiraj 1/N dugmice.
+      // Chunk dugmici se kriju dok se ne ucita PUN tekst (lista nosi samo preview).
       var vch=getAnalizaChunks(cleanText,country);
-      return React.createElement("div",{className:"modal-bg",onClick:function(){setViewAn(null);}},
+      return React.createElement("div",{className:"modal-bg",onClick:function(){setViewAn(null);setViewAnAll(null);}},
         React.createElement("div",{className:"modal",onClick:function(e){e.stopPropagation();}},
-          React.createElement("div",{className:"modal-title"},(viewAn.clientName||"Analiza")+" · "+viewAn.date),
-          vch.length>1&&React.createElement(ChunkTracker,{ch:vch,ci:viewAnCi,setCi:setViewAnCi}),
-          React.createElement("div",{className:"aout",style:{maxHeight:"50vh"}},cleanText),
-          vch.length>1&&React.createElement("div",{className:"abar",style:{marginTop:"10px"}},
+          React.createElement("div",{className:"modal-title"},(viewAn.clientName||"Analiza")+" \u00B7 "+viewAn.date),
+          !stillLoading&&vch.length>1&&React.createElement(ChunkTracker,{ch:vch,ci:viewAnCi,setCi:setViewAnCi}),
+          React.createElement("div",{className:"aout",style:{maxHeight:"50vh"}},cleanText+(stillLoading?"\n\n\u23F3 Ucitavam ceo tekst analize...":"")),
+          !stillLoading&&vch.length>1&&React.createElement("div",{className:"abar",style:{marginTop:"10px"}},
             viewAnCi<vch.length
               ?React.createElement("button",{className:"btn bgd",style:{flex:1,fontSize:"12px"},onClick:function(){cpText(vch[viewAnCi]);toast2("Dio "+(viewAnCi+1)+"/"+vch.length+" kopiran!");setViewAnCi(Math.min(viewAnCi+1,vch.length));}},"Kopiraj "+(Math.min(viewAnCi,vch.length-1)+1)+"/"+vch.length)
               :React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAnCi(0);}},"Ponovi od 1"),
@@ -3620,15 +3645,34 @@ export default function App(){
             React.createElement("button",{className:"btn bol bsm",disabled:viewAnCi>=vch.length-1,onClick:function(){setViewAnCi(Math.min(vch.length-1,viewAnCi+1));}},">")
           ),
           React.createElement("div",{className:"abar",style:{marginTop:"12px"}},
-            React.createElement("button",{className:"btn bgd bsm",onClick:function(){cpText(cleanText);toast2("Kopirano!");}},"\uD83D\uDCCB Kopiraj"),
+            React.createElement("button",{className:"btn bgd bsm",onClick:function(){
+              if(stillLoading){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam ceo tekst analize.");return;}
+              cpText(cleanText);toast2("Kopirano!");
+            }},"\uD83D\uDCCB Kopiraj"),
             viewAn.clientName&&viewAn.clientName!=="Downsell"&&viewAn.clientName!=="Pitanja"&&React.createElement("button",{className:"btn bpu bsm",onClick:function(){
-              var name=viewAn.clientName;
-              var all=analyses.filter(function(a){return a.clientName===name;});
-              if(all.length<=1){cpText(cleanText);toast2("Kopirano 1 analiza!");}
+              // Pun tekst SVIH analiza klijenta je prefetch-ovan u openAnalysis (lista nosi samo preview-e)
+              if(!allReady){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam sve analize klijenta.");return;}
+              var all=viewAnAll.items||[];
+              if(all.length===0){toast2("Nema analiza za tog klijenta.");return;}
+              if(all.length===1){cpText(fmtText(all[0].analysis||""));toast2("Kopirano 1 analiza!");}
               else{var txt=all.map(function(a){return fmtText(a.analysis||"");}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
-            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;var id=viewAn.id;fetchSafe(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(res){if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}setAnalyses(function(prev){var upd=prev.filter(function(a){return a.id!==id;});try{stoSet("analyses",upd.slice(0,50));}catch(e){}return upd;});setViewAn(null);toast2("Premesteno u korpu.");}).catch(function(){toast2("Greska pri brisanju.");});}},"🗑 U korpu"),
-            React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);}},"\u005aatvori")
+            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){
+              if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;
+              var id=viewAn.id;
+              fetchSafe(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
+                .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
+                .then(function(res){
+                  if(!res.ok){toast2(res.j&&res.j.error?res.j.error:"Greska pri brisanju.");return;}
+                  setAnalyses(function(prev){return prev.filter(function(a){return a.id!==id;});});
+                  setTotalAnalyses(function(t){return Math.max(0,t-1);});
+                  // Brojevi po radnici se ODMAH preracunaju u bazi - obrisano se ne racuna
+                  loadBazaStats();
+                  setViewAn(null);setViewAnAll(null);
+                  toast2("Premesteno u korpu.");
+                }).catch(function(){toast2("Greska pri brisanju.");});
+            }},"\uD83D\uDDD1 U korpu"),
+            React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);setViewAnAll(null);}},"Zatvori")
           )
         )
       );
