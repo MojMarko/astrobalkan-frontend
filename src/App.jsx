@@ -206,7 +206,45 @@ function playDing(){
 function askNotifyPermission(){
   try{if("Notification" in window&&Notification.permission==="default")Notification.requestPermission();}catch(e){}
 }
-function notifyDone(msg){
+// GOVORNA NAJAVA (Marko 5.7): posle zvuka robot izgovori na srpskom sta je gotovo
+// ("Analiza za Milicu je gotova"). Bira srpski glas, pa hrvatski/bosanski (isto
+// citaju latinicu), pa prepusta browseru. Gasi se zvucnikom u vrhu ekrana.
+function pickSrVoice(){
+  try{
+    var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];
+    if(!vs||!vs.length)return null;
+    var pref=["sr","hr","bs"];
+    for(var p=0;p<pref.length;p++){
+      for(var i=0;i<vs.length;i++){
+        if(String(vs[i].lang||"").toLowerCase().indexOf(pref[p])===0)return vs[i];
+      }
+    }
+    return null;
+  }catch(e){return null;}
+}
+function speakSr(text){
+  try{
+    if(!window.speechSynthesis||!text)return;
+    if(localStorage.getItem("ab_voice")==="off")return;
+    var u=new SpeechSynthesisUtterance(text);
+    u.lang="sr-RS";u.rate=0.95;u.pitch=1;u.volume=1;
+    var v=pickSrVoice();if(v)u.voice=v;
+    window.speechSynthesis.cancel(); // ne gomilaj najave jednu preko druge
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+// Ime u akuzativ za prirodnu recenicu ("za Milicu", "za Marka"). Gruba ali
+// dovoljna pravila za govor: -a -> -u, suglasnik -> +a, -o -> -a, ostalo ostaje.
+function imeAkuzativ(ime){
+  var n=String(ime||"").trim().split(/\s+/)[0];
+  if(!n)return "klijenta";
+  var last=n.slice(-1).toLowerCase();
+  if(last==="a")return n.slice(0,-1)+"u";
+  if(last==="o")return n.slice(0,-1)+"a";
+  if(/[bcdfghjklmnpqrstvwxzčćđšž]/.test(last))return n+"a";
+  return n;
+}
+function notifyDone(msg,spoken){
   playDing();
   try{
     if("Notification" in window&&Notification.permission==="granted"&&document.hidden){
@@ -214,6 +252,8 @@ function notifyDone(msg){
       n.onclick=function(){try{window.focus();n.close();}catch(e){}};
     }
   }catch(e){}
+  // mali razmak da "ding" odzvoni pre govora
+  setTimeout(function(){speakSr(spoken||msg);},650);
 }
 // IZRACUNATI DOWNSELL PERIODI (Marko 4.7): prozori za 12 meseci iz pravih efemerida -
 // tranzitno Sunce/Venera/Mars u egzaktnom aspektu sa natalnim planetama klijenta.
@@ -1298,6 +1338,7 @@ export default function App(){
     doParse(idx,undefined,it.raw);
   }
   // TEMA + VELICINA SLOVA (Marko 4.7: "premium" - radnice rade po ceo dan u aplikaciji)
+  var [voiceOn,setVoiceOn]=useState(function(){try{return localStorage.getItem("ab_voice")!=="off";}catch(e){return true;}});
   var [theme,setTheme]=useState(function(){try{return localStorage.getItem("ab_theme")||"dark";}catch(e){return "dark";}});
   var [fsize,setFsize]=useState(function(){try{return localStorage.getItem("ab_fs")||"m";}catch(e){return "m";}});
   useEffect(function(){try{document.documentElement.setAttribute("data-theme",theme);localStorage.setItem("ab_theme",theme);}catch(e){}},[theme]);
@@ -2548,7 +2589,7 @@ export default function App(){
             var now=new Date();
             var upd=[{id:"d"+Date.now(),jobId:jobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
           });
-          toast2("Downsell "+(idx+1)+" gotov!");notifyDone("Downsell "+(idx+1)+" je gotov — spreman za kopiranje.");
+          toast2("Downsell "+(idx+1)+" gotov!");notifyDone("Downsell "+(idx+1)+" je gotov — spreman za kopiranje.",dsName?"Downsell za "+imeAkuzativ(dsName)+" je gotov.":"Downsell je gotov.");
         }else if(j.status==="error"){
           clearInterval(dsInterval);
           var jbs3=safeActiveJobs();delete jbs3[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));
@@ -2616,7 +2657,7 @@ export default function App(){
             var now=new Date();
             var upd=[{id:"q"+Date.now(),jobId:jobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
           });
-          toast2("D. Pitanja "+(idx+1)+" gotova!");notifyDone("Dodatna pitanja "+(idx+1)+" su gotova — spremna za kopiranje.");
+          toast2("D. Pitanja "+(idx+1)+" gotova!");notifyDone("Dodatna pitanja "+(idx+1)+" su gotova — spremna za kopiranje.",pqName?"Dodatna pitanja za "+imeAkuzativ(pqName)+" su gotova.":"Dodatna pitanja su gotova.");
         }else if(j.status==="error"){
           clearInterval(pqInterval);
           var jbs3=safeActiveJobs();delete jbs3[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));
@@ -2948,7 +2989,7 @@ export default function App(){
             var na={id:"j"+Date.now(),jobId:jobId,clientName:job.client_name||"",sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),birthDate:meta&&meta.birthDate||"",mesto:meta&&meta.mesto||"",types:[job.job_type||"analiza"],analysis:finalText,country:country,owner:user&&user.email};
             var upd=[na].concat(prev).slice(0,200);return upd;
           });
-          toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");notifyDone("Analiza za "+(job.client_name||"klijenta")+" je gotova — spremna za kopiranje.");
+          toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");notifyDone("Analiza za "+(job.client_name||"klijenta")+" je gotova — spremna za kopiranje.","Analiza za "+imeAkuzativ(job.client_name)+" je gotova.");
         }else if(job.status==="error"){
           clearInterval(interval);
           var jbs2=safeActiveJobs();
@@ -3580,6 +3621,7 @@ export default function App(){
             user.role==="admin"&&React.createElement("span",{className:"abadge"},"ADMIN"),
             React.createElement("span",null,country==="hr"?"\uD83C\uDDED\uD83C\uDDF7":"\uD83C\uDDF7\uD83C\uDDF8"),
             React.createElement("span",null,user.name),
+            React.createElement("button",{className:"hlout",title:"Govorna najava uklj/isklj",onClick:function(){var off=localStorage.getItem("ab_voice")==="off";try{localStorage.setItem("ab_voice",off?"on":"off");}catch(e){}setVoiceOn(off);if(off)speakSr("Govorna najava je uklju\u010Dena.");}},voiceOn?"\uD83D\uDD0A":"\uD83D\uDD07"),
             React.createElement("button",{className:"hlout",title:"Svetla/tamna tema",onClick:function(){setTheme(theme==="light"?"dark":"light");}},theme==="light"?"\uD83C\uDF19":"\u2600\uFE0F"),
             React.createElement("button",{className:"hlout",title:"Veli\u010Dina slova",onClick:function(){setFsize(fsize==="m"?"l":fsize==="l"?"xl":"m");}},"A"+(fsize==="l"?"+":fsize==="xl"?"++":"")),
             React.createElement("button",{className:"hlout",style:{fontSize:"9px",padding:"3px 8px"},onClick:function(){setShowCtr(true);}},"\uD83C\uDF0D"),
