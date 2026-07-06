@@ -379,3 +379,29 @@ describe('bindDatesToNames - datumi smrti/dogadjaja nisu kandidati', () => {
     expect(result.find(p => p.ime === 'Kalina').datum).toBe('2023-01-17');
   });
 });
+
+// Prijava 6.7. "Nece da prepoznaje podatke": AI vratio isecen JSON
+// ('..."partn') - repair mora da spase kompletna polja umesto greske.
+import { repairTruncatedJson } from '../src/lib/util.js';
+describe('repairTruncatedJson - popravka isecenog AI JSON-a', () => {
+  it('spasava klijenta iz JSON-a isecenog usred kljuca "partner"', () => {
+    const cut = '{"klijent":{"ime":"","datum":"1983-12-13","vreme":"02:30","mesto":"Vranje","zemlja":"Srbija"},"partn';
+    const obj = repairTruncatedJson(cut);
+    expect(obj).not.toBeNull();
+    expect(obj.klijent.datum).toBe('1983-12-13');
+    expect(obj.klijent.mesto).toBe('Vranje');
+  });
+  it('spasava JSON isecen usred string vrednosti', () => {
+    const cut = '{"klijent":{"ime":"Ana","datum":"1990-01-04"},"imaPartnera":false,"pitanja":"Da li cu dobiti pos';
+    const obj = repairTruncatedJson(cut);
+    expect(obj).not.toBeNull();
+    expect(obj.klijent.ime).toBe('Ana');
+  });
+  it('vraca null za potpuno neupotrebljiv tekst', () => {
+    expect(repairTruncatedJson('nema jsona ovde')).toBeNull();
+  });
+  it('validan JSON prolazi netaknut', () => {
+    const ok = '{"a":1,"b":[1,2]}';
+    expect(repairTruncatedJson(ok)).toEqual({a:1,b:[1,2]});
+  });
+});

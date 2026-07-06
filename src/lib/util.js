@@ -258,3 +258,42 @@ export async function fetchSafe(url, options, timeoutMs){
     throw e;
   }
 }
+
+// Popravka ISECENOG JSON odgovora iz AI parsera (Suzana 6.7. "Nece da prepoznaje
+// podatke"): v4-flash zna da stane usred stringa ('..."partn') kad potrosi token
+// budzet. Secemo tekst unazad do poslednje tacke gde su navodnici upareni i
+// vitice/uglaste zagrade balansirane, skidamo zaostali zarez/dvotacku (i kljuc
+// bez vrednosti), pa dodajemo zatvarajuce zagrade. Vraca objekat ili null.
+export function repairTruncatedJson(s){
+  if(!s||typeof s!=="string")return null;
+  var start=s.indexOf("{");
+  if(start<0)return null;
+  s=s.slice(start);
+  for(var end=s.length;end>1;end--){
+    var cand=s.slice(0,end);
+    // Broj neescape-ovanih navodnika - neparan znaci da smo usred stringa
+    var quotes=0,i;
+    for(i=0;i<cand.length;i++){if(cand[i]==='"'&&cand[i-1]!=="\\")quotes++;}
+    if(quotes%2!==0)continue;
+    // Skini trailing zarez/dvotacku/whitespace ("...","partn": → "...")
+    var trimmed=cand.replace(/[\s,]+$/,"");
+    // Kljuc bez vrednosti na kraju ('..., "partner":') - skini i kljuc
+    trimmed=trimmed.replace(/,?\s*"[^"]*"\s*:\s*$/,"");
+    // Balans zagrada (samo van stringova)
+    var opens=0,closes=0,sq=0,sqc=0,inStr=false;
+    for(i=0;i<trimmed.length;i++){
+      var c=trimmed[i];
+      if(c==='"'&&trimmed[i-1]!=="\\"){inStr=!inStr;continue;}
+      if(inStr)continue;
+      if(c==="{")opens++;else if(c==="}")closes++;
+      else if(c==="[")sq++;else if(c==="]")sqc++;
+    }
+    if(closes>opens||sqc>sq||inStr)continue;
+    var fixed=trimmed+Array(sq-sqc+1).join("]")+Array(opens-closes+1).join("}");
+    try{
+      var obj=JSON.parse(fixed);
+      if(obj&&typeof obj==="object")return obj;
+    }catch(_){}
+  }
+  return null;
+}
