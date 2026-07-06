@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -812,7 +812,10 @@ async function parseMsg(text,provider){
       // REALNO traje ~45s (reasoning tokeni), a backend per-attempt cap je 75s. Sa 60s
       // ovde je frontend sekao pozive koji bi USPELI za jos par sekundi pa je radnica
       // videla "Nece da ocita" (Suzana 2.7. prijava #76, ranije 11.6. 36f5cf6a).
-      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:4096,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})},95000);
+      // max_tokens 8192 (bilo 4096): v4-flash trosi reasoning tokene iz istog budzeta,
+      // pa je JSON za duze poruke bio ISECEN na pola ("AI odgovor nije valjan JSON",
+      // Suzana 6.7. prijava - JSON stao na '"partn').
+      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:8192,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})},95000);
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       var errLow=(d.error&&(d.error.message||"")).toLowerCase();
@@ -862,7 +865,24 @@ async function parseMsg(text,provider){
     return {__error:"Prazan odgovor od AI - proveri Anthropic API kljuc"};
   }
   try{
-    var parsed=JSON.parse(t.replace(/```json|```/g,"").trim());
+    var jsonText=t.replace(/```json|```/g,"").trim();
+    var parsed;
+    try{
+      parsed=JSON.parse(jsonText);
+    }catch(ePrimary){
+      // POPRAVKA ISECENOG JSON-a (Suzana 6.7. "Nece da prepoznaje podatke"):
+      // AI zna da vrati validan pocetak pa stane usred stringa ('..."partn').
+      // Umesto greske, secemo do poslednje kompletne vrednosti i zatvaramo
+      // vitice - klijent (prvo polje) je skoro uvek ceo, partner/pitanja
+      // popunjavamo default-ima pa fallback iz sirovog teksta odradi ostalo.
+      parsed=repairTruncatedJson(jsonText);
+      if(!parsed)throw ePrimary;
+      console.warn("parseMsg: JSON isecen, popravljen truncation repair-om");
+      parsed.klijent=parsed.klijent||{};
+      parsed.partner=parsed.partner||{ime:"",datum:"",vreme:"",mesto:"",zemlja:""};
+      parsed.imaPartnera=!!parsed.imaPartnera;
+      parsed.pitanja=typeof parsed.pitanja==="string"?parsed.pitanja:"";
+    }
     // Sanity check za godinu rodjenja: 1900-2026 je razumno. Suzana 17.6. prijava
     // 5985cc9f "Mesa datume": klijent napisao "78" u Messenger poruci, AI parser
     // vratio "1878-08-14" umesto "1978-08-14", Astro API racunao kartu za osobu
