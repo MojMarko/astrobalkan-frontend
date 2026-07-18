@@ -2597,8 +2597,9 @@ export default function App(){
           return;
         }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
-        if(j.status==="generating")upDs(idx,function(s){return Object.assign({},s,{an:"Generisem analizu..."});});
-        else if(j.status==="translating")upDs(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
+        // GUARD (Suzana 18.7.): progres pisi samo ako slot jos pripada OVOM downsell-u.
+        if(j.status==="generating")upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Generisem analizu..."}):s;});
+        else if(j.status==="translating")upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Prevodim na srpski..."}):s;});
         else if(j.status==="done"){
           clearInterval(dsInterval);
           var jbs2=safeActiveJobs();delete jbs2[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
@@ -2612,7 +2613,7 @@ export default function App(){
               notifyOps("qa_skipped_downsell","Downsell moguce preskocena pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("DS Q&A check:",eQ&&eQ.message);}
-          upDs(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
+          upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null}):s;});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
@@ -2664,8 +2665,9 @@ export default function App(){
           return;
         }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
-        if(j.status==="generating")upPq(idx,function(s){return Object.assign({},s,{an:"Generisem odgovore..."});});
-        else if(j.status==="translating")upPq(idx,function(s){return Object.assign({},s,{an:"Prevodim na srpski..."});});
+        // GUARD (Suzana 18.7.): progres pisi samo ako slot jos pripada OVIM pitanjima.
+        if(j.status==="generating")upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Generisem odgovore..."}):s;});
+        else if(j.status==="translating")upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Prevodim na srpski..."}):s;});
         else if(j.status==="done"){
           clearInterval(pqInterval);
           var jbs2=safeActiveJobs();delete jbs2[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs2));
@@ -2680,7 +2682,7 @@ export default function App(){
               notifyOps("qa_skipped_pitanja","D.Pitanja moguce preskocena pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("PQ Q&A check:",eQ&&eQ.message);}
-          upPq(idx,function(s){return Object.assign({},s,{an:ft,st:"done",jobId:null});});
+          upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null}):s;});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
@@ -2975,9 +2977,12 @@ export default function App(){
         if(!resp.ok)return;
         var job=await resp.json();
         if(job.status==="generating"){
-          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{analysis:"Generisem analizu..."});});
+          // GUARD (Suzana 18.7. "U toku kopiranja analiza nestala"): pisi progres SAMO
+          // ako slot jos pripada OVOM poslu. Inace bi poller drugog/starog job-a pregazio
+          // gotovu analizu koju radnica kopira (slot.jobId je null kad je prethodni gotov).
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{analysis:"Generisem analizu..."}):s;});
         }else if(job.status==="translating"){
-          if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{analysis:"Prevodim na srpski..."});});
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{analysis:"Prevodim na srpski..."}):s;});
         }else if(job.status==="done"){
           clearInterval(interval);
           // Remove from active jobs FIRST to prevent duplicates
@@ -3009,7 +3014,10 @@ export default function App(){
             }
           }catch(qaErr){console.warn("Q&A validation error:",qaErr&&qaErr.message);}
           if(slotIdx!==null){
-            upSlot(slotIdx,function(s){return Object.assign({},s,{status:"done",analysis:finalText,jobId:null,qaWarn:qaWarnVal});});
+            // Prikazi u slotu SAMO ako slot jos ceka OVAJ posao (jobId match). Ako je
+            // radnica u medjuvremenu pokrenula NOVU generaciju (slot.jobId=drugi) ili
+            // ocistila slot (jobId null), ne diramo prikaz - analiza je svakako u Bazi.
+            upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{status:"done",analysis:finalText,jobId:null,qaWarn:qaWarnVal}):s;});
           }
           // Save to analyses only if not already saved
           setAnalyses(function(prev){
