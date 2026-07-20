@@ -1638,7 +1638,9 @@ export default function App(){
   async function doLogin(){
     setLerr("");
     try{
-      var r=await fetchSafe(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:lEmail.trim().toLowerCase(),password:lPw})});
+      // .trim() na lozinku: mobilni tastatura/autocomplete cesto doda razmak na kraj
+      // (Tinka 20.7. "kaze pogresna" - lozinka tacna ali sa velikim slovom/razmakom).
+      var r=await fetchSafe(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:lEmail.trim().toLowerCase(),password:lPw.trim()})});
       var d=await r.json();
       if(!r.ok)return setLerr(d.error||"Pogresna lozinka ili email.");
       if(!d.user.verified)return setLerr("Email nije verifikovan.");
@@ -3586,8 +3588,10 @@ export default function App(){
             React.createElement("button",{className:"ltab "+(lm==="register"?"on":""),onClick:function(){setLm("register");setLerr("");setLsuc("");}},"\u004eapravi Nalog")
           ),
           lm==="login"&&React.createElement(React.Fragment,null,
-            React.createElement("div",{className:"lfld"},React.createElement("label",null,"Email"),React.createElement("input",{type:"email",value:lEmail,onChange:function(e){setLEmail(e.target.value);},placeholder:"vas@email.com",onKeyDown:function(e){if(e.key==="Enter")doLogin();}})),
-            React.createElement("div",{className:"lfld"},React.createElement("label",null,"Lozinka"),React.createElement("input",{type:"password",value:lPw,onChange:function(e){setLPw(e.target.value);},placeholder:"••••••••",onKeyDown:function(e){if(e.key==="Enter")doLogin();}})),
+            React.createElement("div",{className:"lfld"},React.createElement("label",null,"Email"),React.createElement("input",{type:"email",value:lEmail,onChange:function(e){setLEmail(e.target.value);},placeholder:"vas@email.com",autoCapitalize:"none",autoCorrect:"off",spellCheck:false,autoComplete:"email",onKeyDown:function(e){if(e.key==="Enter")doLogin();}})),
+            // autoCapitalize:none - mobilni je Tinki (20.7.) prvo slovo lozinke pretvarao
+            // u veliko ("Astrobalkan26" umesto "astrobalkan26") pa je login odbijao.
+            React.createElement("div",{className:"lfld"},React.createElement("label",null,"Lozinka"),React.createElement("input",{type:"password",value:lPw,onChange:function(e){setLPw(e.target.value);},placeholder:"••••••••",autoCapitalize:"none",autoCorrect:"off",spellCheck:false,autoComplete:"current-password",onKeyDown:function(e){if(e.key==="Enter")doLogin();}})),
             lerr&&React.createElement("div",{className:"lerr"},lerr),
             lsuc&&React.createElement("div",{className:"lsuc"},lsuc),
             React.createElement("button",{className:"lbtn",onClick:doLogin},"Prijavi Se"),
