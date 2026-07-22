@@ -2219,25 +2219,31 @@ export default function App(){
     var events=raw.events||raw.aspects||raw.transit_aspects||[];
     var result=[];
     if(Array.isArray(events)&&events.length>0){
+      // API "events" su EGZAKTNI aspekti (trenutak kad tranzit postane tacan, pa je orb=0
+      // po definiciji). Korisna info je DATUM egzaktnosti (e.date), ne orb. Suzana 22.7.
+      // prijava: prikaz je pokazivao "orb 0.00°" za sve - izgledalo pokvareno. Sad
+      // prikazujemo NADOLAZECE egzaktne tranzite sa datumom (to 12-mesecna prognoza koristi).
+      var todayIso=new Date().toISOString().slice(0,10);
       events.forEach(function(e){
         var tpRaw=e.transiting_planet||e.transit_planet||e.point1||"";
         if(SLOW.indexOf(tpRaw.toLowerCase())<0)return;
+        var evDate=String(e.date||e.exact_time||"").slice(0,10);
+        if(evDate&&evDate<todayIso)return; // preskoci proslost
         var tp=PMAP[tpRaw.toLowerCase()]||tpRaw;
         var npRaw=e.stationed_planet||e.natal_planet||e.point2||"";
         var np=PMAP[npRaw.toLowerCase()]||npRaw;
         var type=AMAP[e.aspect_type||e.type||""]||(e.aspect_type||e.type||"");
-        var orb=Math.abs(parseFloat(e.orb||0));
-        result.push({planet:"T."+tp,natalPlanet:np,aspect:type,orb:orb.toFixed(2),orbNum:orb,house:e.natal_house||e.house||null,interpretation:e.interpretation||""});
+        result.push({planet:"T."+tp,natalPlanet:np,aspect:type,date:evDate,house:e.natal_house||e.house||null,interpretation:e.interpretation||""});
       });
-      // Deduplicate: keep smallest orb per planet+natal+aspect combo
+      // Dedup: zadrzi NAJRANIJI nadolazeci datum po planet+natal+aspect
       var seen={};
       result.forEach(function(t){
         var key=t.planet+"|"+t.natalPlanet+"|"+t.aspect;
-        if(!seen[key]||t.orbNum<seen[key].orbNum)seen[key]=t;
+        if(!seen[key]||(t.date&&t.date<seen[key].date))seen[key]=t;
       });
       result=Object.keys(seen).map(function(k){return seen[k];});
-      // Sort by orb ascending, limit to 20
-      result.sort(function(a,b){return a.orbNum-b.orbNum;});
+      // Sortiraj po datumu (najblizi prvo), limit 20
+      result.sort(function(a,b){return String(a.date||"9999").localeCompare(String(b.date||"9999"));});
       return result.slice(0,20);
     }
     // Fallback: transit positions
@@ -2428,7 +2434,7 @@ export default function App(){
     // nikad ne ostane bez podataka o trenutnom nebu.
     var trTxt="";
     var trFresh=sl.transits&&sl.transits.length>0&&sl.transitsAt&&(Date.now()-sl.transitsAt)<48*3600*1000;
-    if(trFresh&&sl.transits[0].natalPlanet){trTxt="\n\nTRANZITI ZA DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" (orb "+t.orb+"°)"+(t.interpretation?" - "+t.interpretation:"");}).join("\n");}
+    if(trFresh&&sl.transits[0].natalPlanet){trTxt="\n\nNADOLAZECI EGZAKTNI TRANZITI (od "+todayStr+", koristi datume za prognozu):\n"+sl.transits.map(function(t){return t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+(t.date?" - egzaktno "+fmtDMYFromISO(t.date):"")+(t.interpretation?" - "+t.interpretation:"");}).join("\n");}
     else if(trFresh){trTxt="\n\nTRANZITNE POZICIJE DANAS ("+todayStr+"):\n"+sl.transits.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n");}
     else{
       var localTr=localTransitPositions();
@@ -3469,14 +3475,14 @@ export default function App(){
           ),
           // TRANSITS
           s.transits&&s.transits.length>0&&React.createElement("div",{className:"card",style:{marginTop:"8px"}},
-            React.createElement("div",{className:"ct"},"Trenutni Tranziti ("+s.transits.length+")"),
+            React.createElement("div",{className:"ct"},(s.transits[0].natalPlanet?"Nadolazeći Tranziti (":"Trenutni Tranziti (")+s.transits.length+")"),
             s.transits[0].natalPlanet
               ?React.createElement("div",{className:"asplist"},
                 s.transits.map(function(t,i){
                   var isPoz=POSITIVE_ASP.indexOf(t.aspect)>=0;
                   return React.createElement("div",{key:i,className:isPoz?"at":"ao",style:{padding:"3px 0"}},
                     t.planet+" "+t.aspect+" "+t.natalPlanet+(t.house?" ("+t.house+". kuca)":"")+" ",
-                    React.createElement("span",{style:{opacity:.5}},"orb "+t.orb+"\u00B0")
+                    React.createElement("span",{style:{opacity:.6}},t.date?"egzaktno "+fmtDMYFromISO(t.date):"")
                   );
                 })
               )
