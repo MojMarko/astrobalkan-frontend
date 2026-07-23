@@ -191,16 +191,30 @@ function anyWorkBusy(){
 }
 // PREMIUM: zvuk + browser notifikacija kad je posao gotov — radnica je obicno u
 // Messenger tabu i do sada je morala da se vraca i proverava da li je zavrseno.
+// Zvucnik u vrhu ekrana (ab_voice=off) gasi SVE: i zvonce i govor (Marko 23.7.:
+// "kad precrtaju, zvuk ne sme da se cuje").
+function soundMuted(){try{return localStorage.getItem("ab_voice")==="off";}catch(e){return false;}}
+// Mekani troton "dzing" (E5-G#5-H5 arpeggio + oktavni sjaj) umesto starog sirovog
+// 880Hz bipa - Marko 23.7. trazio lepsi zvuk.
 function playDing(){
+  if(soundMuted())return;
   try{
     var C=window.AudioContext||window.webkitAudioContext;if(!C)return;
-    var ctx=new C(),o=ctx.createOscillator(),g=ctx.createGain();
-    o.type="sine";o.frequency.value=880;
-    g.gain.setValueAtTime(0.0001,ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.12,ctx.currentTime+0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.7);
-    o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+0.75);
-    setTimeout(function(){try{ctx.close();}catch(e){}},900);
+    var ctx=new C();
+    var notes=[[659.25,0,0.9],[830.61,0.12,0.9],[987.77,0.24,1.1]]; // E5, G#5, H5
+    notes.forEach(function(n){
+      var f=n[0],at=ctx.currentTime+n[1],dur=n[2];
+      [1,2].forEach(function(mult){ // osnovni ton + tihi oktavni harmonik ("staklo")
+        var o=ctx.createOscillator(),g=ctx.createGain();
+        o.type="sine";o.frequency.value=f*mult;
+        var peak=mult===1?0.085:0.02;
+        g.gain.setValueAtTime(0.0001,at);
+        g.gain.exponentialRampToValueAtTime(peak,at+0.025);
+        g.gain.exponentialRampToValueAtTime(0.0001,at+dur);
+        o.connect(g);g.connect(ctx.destination);o.start(at);o.stop(at+dur+0.05);
+      });
+    });
+    setTimeout(function(){try{ctx.close();}catch(e){}},1700);
   }catch(e){}
 }
 function askNotifyPermission(){
@@ -244,14 +258,24 @@ function imeAkuzativ(ime){
   if(/[bcdfghjklmnpqrstvwxzčćđšž]/.test(last))return n+"a";
   return n;
 }
-function notifyDone(msg,spoken){
-  playDing();
+// dedupKey (obicno jobId): isti posao sme da zazvoni SAMO JEDNOM - dupli polleri
+// (tab-switch) su znali da okinu zvuk dva puta (Marko 23.7. "ne sme dva puta da se pali").
+var NOTIFIED_KEYS={};
+function notifyDone(msg,spoken,dedupKey){
+  if(dedupKey){
+    if(NOTIFIED_KEYS[dedupKey])return;
+    NOTIFIED_KEYS[dedupKey]=true;
+  }
+  var muted=soundMuted();
+  if(!muted)playDing();
   try{
     if("Notification" in window&&Notification.permission==="granted"&&document.hidden){
-      var n=new Notification("AstroBalkan",{body:msg,tag:"ab-done"});
+      // silent:true kad je zvucnik precrtan - ni sistemski zvuk notifikacije ne sme
+      var n=new Notification("AstroBalkan",{body:msg,tag:"ab-done",silent:muted});
       n.onclick=function(){try{window.focus();n.close();}catch(e){}};
     }
   }catch(e){}
+  if(muted)return; // precrtan zvucnik = potpuna tisina (speakSr ima i svoj check)
   // mali razmak da "ding" odzvoni pre govora
   setTimeout(function(){speakSr(spoken||msg);},650);
 }
@@ -2629,7 +2653,7 @@ export default function App(){
             var now=new Date();
             var upd=[{id:"d"+Date.now(),jobId:jobId,clientName:"Downsell - "+(dsName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["downsell"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
           });
-          toast2("Downsell "+(idx+1)+" gotov!");notifyDone("Downsell "+(idx+1)+" je gotov — spreman za kopiranje.",dsName?"Downsell za "+imeAkuzativ(dsName)+" je gotov.":"Downsell je gotov.");
+          toast2("Downsell "+(idx+1)+" gotov!");notifyDone("Downsell "+(idx+1)+" je gotov — spreman za kopiranje.",dsName?"Downsell za "+imeAkuzativ(dsName)+" je gotov.":"Downsell je gotov.",jobId);
         }else if(j.status==="error"){
           clearInterval(dsInterval);
           var jbs3=safeActiveJobs();delete jbs3[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));
@@ -2698,7 +2722,7 @@ export default function App(){
             var now=new Date();
             var upd=[{id:"q"+Date.now(),jobId:jobId,clientName:"D. Pitanja - "+(pqName||belgradeDate(now)),sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),types:["pitanja"],analysis:ft,country:country,owner:user&&user.email}].concat(prev).slice(0,200);return upd;
           });
-          toast2("D. Pitanja "+(idx+1)+" gotova!");notifyDone("Dodatna pitanja "+(idx+1)+" su gotova — spremna za kopiranje.",pqName?"Dodatna pitanja za "+imeAkuzativ(pqName)+" su gotova.":"Dodatna pitanja su gotova.");
+          toast2("D. Pitanja "+(idx+1)+" gotova!");notifyDone("Dodatna pitanja "+(idx+1)+" su gotova — spremna za kopiranje.",pqName?"Dodatna pitanja za "+imeAkuzativ(pqName)+" su gotova.":"Dodatna pitanja su gotova.",jobId);
         }else if(j.status==="error"){
           clearInterval(pqInterval);
           var jbs3=safeActiveJobs();delete jbs3[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs3));
@@ -3036,7 +3060,7 @@ export default function App(){
             var na={id:"j"+Date.now(),jobId:jobId,clientName:job.client_name||"",sign:"",date:belgradeDateTime(now),rawDate:belgradeRawDate(now),birthDate:meta&&meta.birthDate||"",mesto:meta&&meta.mesto||"",types:[job.job_type||"analiza"],analysis:finalText,country:country,owner:user&&user.email};
             var upd=[na].concat(prev).slice(0,200);return upd;
           });
-          toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");notifyDone("Analiza za "+(job.client_name||"klijenta")+" je gotova — spremna za kopiranje.","Analiza za "+imeAkuzativ(job.client_name)+" je gotova.");
+          toast2("Analiza za "+(job.client_name||"klijenta")+" je gotova!");notifyDone("Analiza za "+(job.client_name||"klijenta")+" je gotova — spremna za kopiranje.","Analiza za "+imeAkuzativ(job.client_name)+" je gotova.",jobId);
         }else if(job.status==="error"){
           clearInterval(interval);
           var jbs2=safeActiveJobs();
@@ -3680,7 +3704,7 @@ export default function App(){
             user.role==="admin"&&React.createElement("span",{className:"abadge"},"ADMIN"),
             React.createElement("span",null,country==="hr"?"\uD83C\uDDED\uD83C\uDDF7":"\uD83C\uDDF7\uD83C\uDDF8"),
             React.createElement("span",null,user.name),
-            React.createElement("button",{className:"hlout",title:"Govorna najava uklj/isklj",onClick:function(){var off=localStorage.getItem("ab_voice")==="off";try{localStorage.setItem("ab_voice",off?"on":"off");}catch(e){}setVoiceOn(off);if(off)speakSr("Govorna najava je uklju\u010Dena.");}},voiceOn?"\uD83D\uDD0A":"\uD83D\uDD07"),
+            React.createElement("button",{className:"hlout",title:"Zvuk uklj/isklj (zvonce + govor)",onClick:function(){var off=localStorage.getItem("ab_voice")==="off";try{localStorage.setItem("ab_voice",off?"on":"off");}catch(e){}setVoiceOn(off);if(off){speakSr("Zvuk je uklju\u010Den.");}else{try{window.speechSynthesis&&window.speechSynthesis.cancel();}catch(e){}}}},voiceOn?"\uD83D\uDD0A":"\uD83D\uDD07"),
             React.createElement("button",{className:"hlout",title:"Svetla/tamna tema",onClick:function(){setTheme(theme==="light"?"dark":"light");}},theme==="light"?"\uD83C\uDF19":"\u2600\uFE0F"),
             React.createElement("button",{className:"hlout",title:"Veli\u010Dina slova",onClick:function(){setFsize(fsize==="m"?"l":fsize==="l"?"xl":"m");}},"A"+(fsize==="l"?"+":fsize==="xl"?"++":"")),
             React.createElement("button",{className:"hlout",style:{fontSize:"9px",padding:"3px 8px"},onClick:function(){setShowCtr(true);}},"\uD83C\uDF0D"),
