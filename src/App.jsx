@@ -1579,7 +1579,9 @@ export default function App(){
 
   useEffect(function(){
     if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
-    if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients();
+    // force=true (Jelena 23.7.): radnica zavrsi analizu pa ODMAH otvori Downsell/Pitanja -
+    // 30s kes je jos drzao staru listu bez novog klijenta ("ne pronadje ga u bazi").
+    if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients(true);
   },[tab]);
 
   function toast2(m){setToast(m);setTimeout(function(){setToast("");},3000);}
