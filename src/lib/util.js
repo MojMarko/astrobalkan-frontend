@@ -114,13 +114,39 @@ export function bindDatesToNames(rawText, persons){
   dates.forEach(function(dt){if(!seenIso[dt.iso]){seenIso[dt.iso]=true;uniqDates.push(dt);}});
   if(uniqDates.length===0)return persons;
 
-  // 2. Nadji pozicije svih imena
+  // 2. Nadji pozicije svih imena. Ako osoba NEMA ime (samo relaciju: "muz mi 16.5.1979",
+  // "osoba koja me zanima 21.9.1975"), sidri se na RELACIJSKU rec u tekstu - inace se
+  // pogresan LLM datum ne ispravlja (Suzana 23.7. "Mesa datume": muz i osoba zamenjeni).
+  // rawLow je lowercase ALI zadrzava dijakritike (ž,ć,č,š,đ) pa regexi pokrivaju oba oblika.
+  var REL_ANCHOR=[
+    ["muz",/mu[zž]|suprug(?!a)/],["zena",/[zž]en[aeiou]|suprug[ae]/],
+    ["sin",/\bsin/],["cerka",/[ck][ćc]erk|k[ćc]er/],
+    ["brat",/\bbrat/],["sestra",/sestr/],
+    ["tata",/\btat[aeiou]|\botac|\boca\b/],["mama",/\bmam[aeiou]|majk/],
+    ["baba",/\bbab[aeiou]/],["deda",/\bded[aeiou]/],
+    ["partner",/partner|dev(ojk|ojc)|de[čc]k|momak|dragi|draga|zanima|interesuje|svi[đdj]a|osoba|mladi[ćc]|verenik|verenic/],
+    ["bivsi",/biv[sš]/]
+  ];
+  function findRelPos(odnos){
+    if(!odnos)return -1;
+    var od=String(odnos).toLowerCase();
+    for(var i=0;i<REL_ANCHOR.length;i++){
+      // Podudari LLM-ov odnos sa kljucem (muz, zena, partner...) ILI direktno regex
+      if(od.indexOf(REL_ANCHOR[i][0])>=0||REL_ANCHOR[i][1].test(od)){
+        var m=rawLow.match(REL_ANCHOR[i][1]);
+        if(m)return m.index;
+      }
+    }
+    return -1;
+  }
   var namedPersons=[];
   persons.forEach(function(p,pi){
-    if(!p||!p.ime)return;
-    var ni=findNamePos(rawLow,String(p.ime).toLowerCase());
+    if(!p)return;
+    var ni=p.ime?findNamePos(rawLow,String(p.ime).toLowerCase()):-1;
+    var anchorLen=p.ime?String(p.ime).length:3;
+    if(ni<0){ni=findRelPos(p.odnos);}
     if(ni<0)return;
-    namedPersons.push({p:p,pi:pi,start:ni,end:ni+String(p.ime).length});
+    namedPersons.push({p:p,pi:pi,start:ni,end:ni+anchorLen});
   });
   if(namedPersons.length===0)return persons;
 
@@ -129,7 +155,9 @@ export function bindDatesToNames(rawText, persons){
   // izmedju razlicitih (ime, datum) parova kao u "Marko 5.5, Ana 3.3").
   function isAdjacent(aEnd,bStart){
     if(aEnd>bStart)return false;
-    return /^[\s.;:]*$/.test(raw.slice(aEnd,bStart));
+    // NOVI RED prekida susedstvo: "16.05.1979\nOsoba" - osoba pripada datumu na SVOM
+    // redu, ne datumu sa prethodnog (Suzana 23.7. "Mesa datume"). Zato NE dozvoljavamo \n.
+    return /^[ \t.;:]*$/.test(raw.slice(aEnd,bStart));
   }
   // Score: 0 ako immediately adjacent, inace absolute distance
   function pairScore(np,dt){

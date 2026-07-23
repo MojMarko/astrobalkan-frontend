@@ -405,3 +405,32 @@ describe('repairTruncatedJson - popravka isecenog AI JSON-a', () => {
     expect(repairTruncatedJson(ok)).toEqual({a:1,b:[1,2]});
   });
 });
+
+// Prijava 23.7. (Suzana) "Mesa datume": klijent napisao "Muz mi 16.05.1979" i
+// "Osoba koja me zanima je 21.09.1975". LLM je zamenio datume (muz dobio 21.09.1975).
+// Osobe nemaju IME (samo relaciju) pa bindDatesToNames nije ispravljao. Sad se sidri
+// na relacijsku rec u tekstu.
+describe('bindDatesToNames - sidrenje po relaciji kad nema imena', () => {
+  it('ispravlja zamenjene datume muza i osobe od interesa', () => {
+    const text = "Muz mi 16.05.1979\nOsoba koja me zanima je 21.09.1975";
+    const persons = [
+      { ime: '', odnos: 'muz', datum: '1975-09-21' },      // LLM zamenio
+      { ime: '', odnos: 'partner', datum: '1979-05-16' }   // LLM zamenio
+    ];
+    const out = bindDatesToNames(text, persons);
+    const muz = out.find(p => p.odnos === 'muz');
+    const partner = out.find(p => p.odnos === 'partner');
+    expect(muz.datum).toBe('1979-05-16');       // muz je 16.05.1979 (Bik)
+    expect(partner.datum).toBe('1975-09-21');   // osoba od interesa je 21.09.1975 (Devica)
+  });
+  it('ne dira ispravno vezane relacije', () => {
+    const text = "Sin mi 05.07.2018, cerka 03.09.2020";
+    const persons = [
+      { ime: '', odnos: 'sin', datum: '2018-07-05' },
+      { ime: '', odnos: 'cerka', datum: '2020-09-03' }
+    ];
+    const out = bindDatesToNames(text, persons);
+    expect(out.find(p => p.odnos === 'sin').datum).toBe('2018-07-05');
+    expect(out.find(p => p.odnos === 'cerka').datum).toBe('2020-09-03');
+  });
+});
