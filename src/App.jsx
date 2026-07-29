@@ -13,13 +13,15 @@ function safeActiveJobs(){
   catch(e){try{localStorage.removeItem("activeJobs");}catch(_){}return {};}
 }
 
-// APSOLUTNI hard limit za job - 18 min. Backend worst-case ~11 min, +safety.
+// APSOLUTNI hard limit za job - 22 min. Backend sweep obara osirotele poslove
+// na 20 min (STALE_JOB_MS), pa posao moze legitimno biti ziv do 20 - +2 margine.
+// Suzana 29.7: Biljana downsell REALNO zavrsio na 16.2 min a UI odustao na 16:00.
 // KLJUCNA RAZLIKA od starog MAX_POLLS countera (per-poller): ovaj je nezavisan
 // od restart-a polling-a. Suzana 11.6. prijava (777e363f): spinner 21:05 min jer
 // je tab-switch resetovao pollCount svaki put. Sad citamo startedAt iz
 // localStorage i poredimo sa Date.now() - restart polling-a NE pomaze da
 // zaobidje limit.
-var JOB_HARD_LIMIT_MS=18*60*1000;
+var JOB_HARD_LIMIT_MS=22*60*1000;
 function jobExpired(entry){
   if(!entry||!entry.startedAt)return false;
   return (Date.now()-entry.startedAt)>JOB_HARD_LIMIT_MS;
@@ -1248,12 +1250,12 @@ function GeneratingProgress(props){
   var mm=Math.floor(elapsedSec/60);
   var ss=elapsedSec%60;
   var elapsedStr=mm+":"+(ss<10?"0":"")+ss;
-  // UI HARD LIMIT: mora biti VECI od backend JOB_DEADLINE-a (15 min) - inace UI
+  // UI HARD LIMIT: mora biti VECI od backend STALE_JOB_MS (20 min) - inace UI
   // proglasi neuspeh dok posao legitimno jos radi. Suzana 3.7. prijava (Biljana
   // downsell): UI odustao na 10:09 sa "verovatno je u Bazi", posao jos radio
   // (V4-Pro lanac realno 12-15 min), u Bazi nije bilo nicega -> "Nema je u bazi".
-  // 16 min: do tada je backend GARANTOVANO zavrsio (done ili error na 15 min).
-  var isStuck=elapsedSec>=960; // 16 min (backend deadline 15 min + margina)
+  // 21 min: do tada je backend GARANTOVANO zavrsio ili je sweep oborio posao (20 min).
+  var isStuck=elapsedSec>=1260; // 21 min (backend sweep obara na 20 min + margina; Biljana 29.7. zavrsila na 16.2 min)
   useEffect(function(){
     if(isStuck&&props.onCancel){
       var t=setTimeout(function(){try{props.onCancel(true);}catch(_){}},2000);
@@ -1277,7 +1279,7 @@ function GeneratingProgress(props){
     React.createElement("div",{style:{fontFamily:"'Marcellus',serif",fontSize:"24px",color:"var(--tx)",fontVariantNumeric:"tabular-nums"}},elapsedStr),
     React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",lineHeight:1.5,maxWidth:"320px"}},
       elapsedSec>=540
-        ? "Duza analiza — moze trajati do 15 min kad je AI opterecen. Sve je OK, ne prekidaj: kad bude gotovo, tekst ce se sam pojaviti (i uvek ostaje sacuvan u Bazi)."
+        ? "Duza analiza — moze trajati i do 20 min kad je AI opterecen. Sve je OK, ne prekidaj: kad bude gotovo, tekst ce se sam pojaviti (i uvek ostaje sacuvan u Bazi)."
         : step.indexOf("Prevodim")>=0
           ? "Prevod na srpski obicno traje 2-5 min. Ukupno generisanje 5-9 min. Sve OK - sacekaj jos malo."
           : "Generisanje obicno traje 4-9 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
@@ -2637,7 +2639,7 @@ export default function App(){
           clearInterval(dsInterval);
           var jbsExp=safeActiveJobs();delete jbsExp[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
           upDs(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
-          toast2("Downsell predugo (18min). Verovatno je gotov u Bazi — pogledaj tamo pre ponovnog generisanja.");
+          toast2("Downsell predugo (22 min). Verovatno je gotov u Bazi — pogledaj tamo pre ponovnog generisanja.");
           return;
         }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
@@ -2705,7 +2707,7 @@ export default function App(){
           clearInterval(pqInterval);
           var jbsExp=safeActiveJobs();delete jbsExp[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbsExp));
           upPq(idx,function(s){return Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null});});
-          toast2("Pitanja predugo (18min). Verovatno su gotova u Bazi — pogledaj tamo pre ponovnog generisanja.");
+          toast2("Pitanja predugo (22 min). Verovatno su gotova u Bazi — pogledaj tamo pre ponovnog generisanja.");
           return;
         }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
@@ -2971,7 +2973,7 @@ export default function App(){
 
   function pollJob(jobId,slotIdx,tabKey,meta){
     var pollCount=0;
-    var MAX_POLLS=300; // ~15 min na 3s interval - hard limit (Marko 9.6.: Suzana 27 min spinner)
+    var MAX_POLLS=440; // ~22 min na 3s interval - usaglaseno sa JOB_HARD_LIMIT_MS
     var interval=setInterval(async function(){
       try{
         // Check if job already completed (prevent duplicate saves)
@@ -3003,7 +3005,7 @@ export default function App(){
           // radnica je error tekst videla kao analizu sa Kopiraj dugmetom, pomislila da
           // mora ispocetka i radila istog klijenta 4x - prijava #71).
           if(slotIdx!==null)upSlot(slotIdx,function(s){return Object.assign({},s,{status:"idle",analysis:"",jobId:null,genStartedAt:null});});
-          toast2("Generisanje predugo (18min). Analiza je verovatno gotova u Bazi — pogledaj tamo, pa tek onda generisi ponovo.");
+          toast2("Generisanje predugo (22 min). Analiza je verovatno gotova u Bazi — pogledaj tamo, pa tek onda generisi ponovo.");
           return;
         }
         pollCount++;
