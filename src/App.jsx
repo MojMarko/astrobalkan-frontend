@@ -1302,6 +1302,9 @@ function GeneratingProgress(props){
         : step.indexOf("Prevodim")>=0
           ? "Prevod na srpski obicno traje 2-5 min. Ukupno generisanje 5-9 min. Sve OK - sacekaj jos malo."
           : "Generisanje obicno traje 4-9 minuta. Mozes mirno da nastavis sa drugim radom — kad bude gotovo, tekst ce se sam pojaviti."),
+    // ZAUSTAVI (Marko 29.7): vidljivo ODMAH, ne posle 90s. Radnica klikne Generisi pa
+    // se seti da fali pitanje - stane, dopuni polja (ostaju popunjena) i klikne ponovo.
+    props.onStop&&React.createElement("button",{className:"btn brd bsm",style:{marginTop:"2px"},onClick:function(){props.onStop();},type:"button"},"⏹ Zaustavi i dopuni podatke"),
     showRecovery&&React.createElement("div",{style:{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",marginTop:"4px"}},
       props.onForceCheck&&React.createElement("button",{className:"btn bol bsm",onClick:props.onForceCheck,type:"button"},"🔄 Proveri da li je gotovo"),
       props.onCancel&&React.createElement("button",{className:"btn brd bsm",onClick:props.onCancel,type:"button"},"✖ Otkazi prikaz")
@@ -2667,6 +2670,7 @@ export default function App(){
         }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
         // GUARD (Suzana 18.7.): progres pisi samo ako slot jos pripada OVOM downsell-u.
+        if(j.status==="cancelled"){clearInterval(dsInterval);return;} // radnica kliknula Zaustavi
         if(j.status==="generating")upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Generisem analizu..."}):s;});
         else if(j.status==="translating")upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Prevodim na srpski..."}):s;});
         else if(j.status==="done"){
@@ -2735,6 +2739,7 @@ export default function App(){
         }
         var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
         // GUARD (Suzana 18.7.): progres pisi samo ako slot jos pripada OVIM pitanjima.
+        if(j.status==="cancelled"){clearInterval(pqInterval);return;} // radnica kliknula Zaustavi
         if(j.status==="generating")upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Generisem odgovore..."}):s;});
         else if(j.status==="translating")upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Prevodim na srpski..."}):s;});
         else if(j.status==="done"){
@@ -3045,6 +3050,7 @@ export default function App(){
         var resp=await fetchSafe(API+"/api/generate/"+jobId);
         if(!resp.ok)return;
         var job=await resp.json();
+        if(job.status==="cancelled"){clearInterval(interval);return;} // radnica kliknula Zaustavi
         if(job.status==="generating"){
           // GUARD (Suzana 18.7. "U toku kopiranja analiza nestala"): pisi progres SAMO
           // ako slot jos pripada OVOM poslu. Inace bi poller drugog/starog job-a pregazio
@@ -3231,6 +3237,47 @@ export default function App(){
       if(j&&j.status==="done"&&j.serbian_text)return j;
     }catch(_){}
     return null;
+  }
+  // ZAUSTAVI GENERISANJE (Marko 29.7): radnica klikne Generisi pa se seti da fali
+  // pitanje. Prekida posao i na serveru (status='cancelled' - processJob preskace upis
+  // rezultata, ne trosi se AI na prevod), a UNETI PODACI OSTAJU u formi da samo dopuni
+  // pitanja i klikne ponovo. Vraca true ako je radnica potvrdila zaustavljanje.
+  async function stopGeneration(jobId,tabKey,label){
+    if(!window.confirm("Zaustaviti "+label+"?\n\nUneti podaci ostaju — mozes dopuniti pitanja i kliknuti Generisi ponovo."))return false;
+    if(jobId){
+      try{await fetchSafe(API+"/api/generate/"+jobId+"/cancel",{method:"POST"},8000);}
+      catch(e){console.warn("stopGeneration: cancel poziv pao (nastavljam sa lokalnim resetom):",e.message);}
+    }
+    try{
+      var jbs=safeActiveJobs();
+      if(tabKey)delete jbs[tabKey];
+      localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    }catch(_){}
+    return true;
+  }
+  async function stopGenAnaliza(idx){
+    var s=slots[idx]||{};
+    if(!(await stopGeneration(s.jobId,"a"+(idx+1),"generisanje analize")))return;
+    genBusyRef.current["a"+idx]=false;
+    upSlot(idx,function(sl){return Object.assign({},sl,{status:"idle",analysis:"",jobId:null,genStartedAt:null});});
+    syncCancelToStorage("ab_slots",idx,{status:"idle",analysis:"",jobId:null,genStartedAt:null});
+    toast2("Zaustavljeno. Dopuni pitanja pa klikni Generiši Analizu.");
+  }
+  async function stopGenDs(idx){
+    var s=dsSlots[idx]||{};
+    if(!(await stopGeneration(s.jobId,"ds"+(idx+1),"generisanje downsell-a")))return;
+    genBusyRef.current["ds"+idx]=false;
+    upDs(idx,function(sl){return Object.assign({},sl,{st:"idle",an:"",jobId:null,genStartedAt:null});});
+    syncCancelToStorage("ab_dsSlots",idx,{st:"idle",an:"",jobId:null,genStartedAt:null});
+    toast2("Zaustavljeno. Dopuni pitanja pa klikni Generiši.");
+  }
+  async function stopGenPq(idx){
+    var s=pqSlots[idx]||{};
+    if(!(await stopGeneration(s.jobId,"pq"+(idx+1),"generisanje odgovora")))return;
+    genBusyRef.current["pq"+idx]=false;
+    upPq(idx,function(sl){return Object.assign({},sl,{st:"idle",an:"",jobId:null,genStartedAt:null});});
+    syncCancelToStorage("ab_pqSlots",idx,{st:"idle",an:"",jobId:null,genStartedAt:null});
+    toast2("Zaustavljeno. Dopuni pitanja pa klikni Generiši Odgovore.");
   }
   async function cancelStuckAnaliza(idx,skipConfirm){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
@@ -3566,7 +3613,7 @@ export default function App(){
         React.createElement("div",{className:"ct",style:{marginBottom:"8px"}},"Gotova Analiza"),
         ch.length>0&&React.createElement(ChunkTracker,{ch:ch,ci:s.copyIdx,setCi:function(i){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:i});});}}),
         s.status==="generating"
-          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis,onForceCheck:function(){forceCheckAnaliza(idx);},onCancel:function(skip){cancelStuckAnaliza(idx,skip);}})
+          ?React.createElement(GeneratingProgress,{startedAt:s.genStartedAt,statusText:s.analysis,onForceCheck:function(){forceCheckAnaliza(idx);},onCancel:function(skip){cancelStuckAnaliza(idx,skip);},onStop:function(){stopGenAnaliza(idx);}})
           :React.createElement(React.Fragment,null,
             // PRE-SEND VIDLJIV WARNING (Marko 9.6.: "isti problemi svaki dan")
             // Backend prepend-uje "[UPOZORENJE..." u tekst kad detektuje issues
@@ -3828,7 +3875,7 @@ export default function App(){
           (ds.an||ds.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(ds.an),ci:ds.ci,setCi:function(fn){upDs(dsIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             ds.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onCancel:function(skip){cancelStuckDs(dsIdx,skip);}})
+              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onCancel:function(skip){cancelStuckDs(dsIdx,skip);},onStop:function(){stopGenDs(dsIdx);}})
               :React.createElement("div",{className:"aout"},ds.an),
             React.createElement("div",{className:"abar"},
               ds.ci<getChunks(ds.an).length
@@ -3885,7 +3932,7 @@ export default function App(){
           (pq.an||pq.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(pq.an),ci:pq.ci,setCi:function(fn){upPq(pqIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             pq.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onCancel:function(skip){cancelStuckPq(pqIdx,skip);}})
+              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onCancel:function(skip){cancelStuckPq(pqIdx,skip);},onStop:function(){stopGenPq(pqIdx);}})
               :React.createElement("div",{className:"aout"},pq.an),
             React.createElement("div",{className:"abar"},
               pq.ci<getChunks(pq.an).length
