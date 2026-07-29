@@ -1063,11 +1063,30 @@ async function parseMsg(text,provider){
 // findNamePos i bindDatesToNames su sada u src/lib/util.js (testabilno + jedan izvor istine).
 // Iz teksta "Pitanja klijenta" izvuce listu osoba koje imaju bar datum rodjenja.
 // Vraca [] ako nema nikoga, ili [{ime, odnos, datum, vreme, mesto}, ...].
+// MEMOIZACIJA (Suzana 29.7. "Radjeno 3 puta po 20 min" - Milena bez ijednog posla u
+// bazi): doGen zove ovaj SPORI LLM parse DVA puta (direktno + kroz buildPersonSignFacts)
+// sa istim tekstom. Kad je AI spor, 2x parse + karte probiju 8-min ventil pa posao
+// nikad ne stigne do backenda. Kes po tekstu cuva Promise - dupli poziv deli isti zahtev.
+var PPFP_CACHE={};
 async function parsePersonsFromPitanja(text){
   if(!text||text.trim().length<10)return [];
+  var ck=text.trim();
+  if(PPFP_CACHE[ck])return PPFP_CACHE[ck];
+  var p=parsePersonsFromPitanjaUncached(text);
+  PPFP_CACHE[ck]=p;
+  // ne kesiraj greske/prazno zauvek: po zavrsetku, prazan rezultat izbaci iz kesa
+  p.then(function(r){if(!r||r.length===0)delete PPFP_CACHE[ck];},function(){delete PPFP_CACHE[ck];});
+  // ogranici velicinu kesa
+  var keys=Object.keys(PPFP_CACHE);
+  if(keys.length>6)delete PPFP_CACHE[keys[0]];
+  return p;
+}
+async function parsePersonsFromPitanjaUncached(text){
   var systemPrompt=`Iz poruke izvuci listu svih osoba koje su pomenute SA BAREM DATUMOM RODJENJA. Vrati SAMO JSON niz, bez ikakvog teksta oko njega.\n\nFormat: [{"ime":"","odnos":"","datum":"YYYY-MM-DD","vreme":"HH:MM","mesto":""}, ...]\n\nPRAVILA:\n1. "ime" je ime osobe (Marko, Milica, Ana...).\n2. "odnos" je tip odnosa: 'sin', 'cerka', 'brat', 'sestra', 'tata', 'mama', 'muz', 'zena', 'partner', 'bivsi partner', 'prijatelj', 'tetka', 'ujak', 'kolega', 'unuk', 'unuka' itd. Ako odnos nije jasan iz teksta, ostavi prazan string "".\n3. "datum" mora biti YYYY-MM-DD format. Ako u tekstu pise "12.05.2018" konvertuj u "2018-05-12".\n4. "vreme" je opcionalno. Ako je u tekstu pomenuto vreme rodjenja (npr. "u 14:30", "10.40", "u podne") konvertuj u HH:MM. Ako nije pomenuto, ostavi prazan string "". KRITICNO AM/PM PRAVILO: '12:XX AM' = 00:XX (ponoc), '12:XX PM' = 12:XX (podne), 'X:XX PM' (X=1-11) → dodaj 12 na sat (5:30 PM = 17:30), 'X:XX AM' (X=1-11) ostaje uz zero-padding (5:30 AM = 05:30). Srpske oznake: 'popodne'/'uvece' = PM, 'ujutru'/'nocu' = AM, 'u ponoc' = 00:00, 'u podne' = 12:00. NIKAD 00:XX ne pretvaraj u 12:XX.\n5. "mesto" je opcionalno. Ako je u tekstu pomenut grad rodjenja (npr. "Beograd", "Novi Sad"), zapisi ga. Ako nije pomenuto, ostavi prazan string "".\n6. UKLJUCI svakoga sa datumom rodjenja, BEZ obzira na odnos.\n7. NE UKLJUCUJ osobe koje nemaju datum rodjenja u tekstu (npr. "muz mi je bolestan" bez datuma — preskoci).\n8. Ako nema nikoga sa datumom, vrati prazan niz [].\n\n*** KRITICNO - NE MESAJ IMENA I DATUME ***\nSvako ime MORA da ostane vezano za datum koji se u tekstu pojavljuje NAJBLIZE tom imenu (skoro uvek odmah posle imena). Ako tekst kaze "Katarina 2.1.2010 ... Milena 4.5.2010", onda je Katarina=2010-01-02 i Milena=2010-05-04 — NIKADA obrnuto. POGRESNO bi bilo vratiti Katarinu sa 2010-05-04. Pre nego sto vratis JSON, proveri za svako ime da je dobilo datum koji mu je u tekstu najblizi.\n\nPRIMERI:\n\nUnos: "Imam sina Marka 12.05.2018 14:30 Beograd, kakav je?"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"}]\n\nUnos: "Cerka Milica 10.05.1993, sestra Dragica 14.12.1975"\nIzlaz: [{"ime":"Milica","odnos":"cerka","datum":"1993-05-10","vreme":"","mesto":""},{"ime":"Dragica","odnos":"sestra","datum":"1975-12-14","vreme":"","mesto":""}]\n\nUnos: "Marko 12.05.2018 14:30 Beograd\\nMilica 03.09.2020 09:15 Novi Sad"\nIzlaz: [{"ime":"Marko","odnos":"","datum":"2018-05-12","vreme":"14:30","mesto":"Beograd"},{"ime":"Milica","odnos":"","datum":"2020-09-03","vreme":"09:15","mesto":"Novi Sad"}]\n\nUnos: "muza mi se nesto desilo, brine me kako mu je"\nIzlaz: []\n\nUnos: "Imam dvoje dece, sina Marka 5.7.2018 i cerku Anu 3.9.2020 oboje rodjeni u Beogradu"\nIzlaz: [{"ime":"Marko","odnos":"sin","datum":"2018-07-05","vreme":"","mesto":"Beograd"},{"ime":"Ana","odnos":"cerka","datum":"2020-09-03","vreme":"","mesto":"Beograd"}]\n\nVAZNO: Vrati SAMO JSON niz, bez markdown formatiranja, bez komentara. Ako nema nikoga vrati [].`;
   try{
-    var resp=await fetchWithRetry(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:systemPrompt,messages:[{role:"user",content:text}],max_tokens:2000})});
+    // attempts:2, 45s: stari default (4x30s + backoff = do 3.5 min) je u dvostrukom
+    // pozivu drzao doGen i po 7 min PRE submita - preko 8-min ventila sa kartama.
+    var resp=await fetchWithRetry(API+"/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:systemPrompt,messages:[{role:"user",content:text}],max_tokens:2000})},{attempts:2,timeoutMs:45000});
     var j=await resp.json();
     var t=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
     t=t.replace(/```json|```/g,"").trim();
@@ -2371,6 +2390,10 @@ export default function App(){
     if(hasPitanjaText){
       try{
         extraPersons=await parsePersonsFromPitanja(sl.client.pitanja);
+        // Max 4 karte: svaka je do 45s poziv - 5+ osoba je guralo pripremu preko
+        // 8-min ventila. Osobe preko limita svejedno dobiju Suncev znak kroz
+        // DODATNE DATUME na backendu.
+        if(extraPersons.length>4)extraPersons=extraPersons.slice(0,4);
         for(var ipi=0;ipi<extraPersons.length;ipi++){
           var pp=extraPersons[ipi];
           // Skip if this person is the same as the client (avoid duplicate)
