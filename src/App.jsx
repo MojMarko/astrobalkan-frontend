@@ -1252,6 +1252,12 @@ function ParsingProgress(props){
   },[]);
   var started=props.startedAt||now;
   var elapsedSec=Math.max(0,Math.floor((now-started)/1000));
+  // VENTIL (Jelena 3.8): parse najgore traje ~3.5 min (retry lanac). Ako predje 4 min,
+  // zahtev je tiho umro (mobilni uspavao karticu) - oslobodi dugme umesto vecnog spinera.
+  var stuck=elapsedSec>=240;
+  useEffect(function(){
+    if(stuck&&props.onTimeout){var t=setTimeout(function(){try{props.onTimeout();}catch(_){}},300);return function(){clearTimeout(t);};}
+  },[stuck]);
   return React.createElement(React.Fragment,null,
     React.createElement("span",{className:"spin"}),
     " AI cita... (",elapsedSec,"s)"
@@ -1350,6 +1356,13 @@ export default function App(){
     return arr.map(function(s){
       if(s&&s[stKey]==="done"&&ERR_ANALYSIS_RE.test(String(s[txtKey]||"").trim())){
         var c=Object.assign({},s);c[txtKey]="";c[stKey]="idle";c.jobId=null;c.genStartedAt=null;return c;
+      }
+      // ZAGLAVLJENO "AI cita..." / "Racunam..." (Jelena 3.8. "vrti vec 2 dana uzaludno",
+      // tajmer 214932s = 60h): parsing/computing zive SAMO u ovoj kartici - nemaju posao
+      // na serveru koji bi se nastavio. Ako je aplikacija zatvorena/osvezena usred njih,
+      // sacuvano stanje ostane zauvek i dugme je trajno onemoguceno. Na ucitavanju resetuj.
+      if(s&&(s[stKey]==="parsing"||s[stKey]==="computing")){
+        var c2=Object.assign({},s);c2[stKey]="idle";c2.parseStartedAt=null;return c2;
       }
       return s;
     });
@@ -3438,7 +3451,7 @@ export default function App(){
           React.createElement("textarea",{value:s.paste,onChange:function(e){upSlot(idx,function(sl){return Object.assign({},sl,{paste:e.target.value});});},placeholder:"Nalepi celu poruku klijenta...",style:{minHeight:"100px"}})
         ),
         React.createElement("button",{className:"btn bpu bfull",onClick:function(){doParse(idx);},disabled:busy||!s.paste.trim()},
-          s.status==="parsing"?React.createElement(ParsingProgress,{startedAt:s.parseStartedAt}):"\u2746 Prepoznaj Sve Automatski"
+          s.status==="parsing"?React.createElement(ParsingProgress,{startedAt:s.parseStartedAt,onTimeout:function(){upSlot(idx,function(sl){return Object.assign({},sl,{status:"idle",parseStartedAt:null});});toast2("Citanje poruke je predugo trajalo — probaj ponovo ili unesi podatke rucno.");}}):"\u2746 Prepoznaj Sve Automatski"
         ),
         // OVERLOAD UI: DeepSeek pao - dugme za Gemini fallback
         s.parseOverload&&React.createElement("div",{style:{marginTop:"10px",padding:"12px",background:"rgba(255,180,80,.1)",border:"1px solid rgba(255,180,80,.4)",borderRadius:"8px"}},
