@@ -70,6 +70,20 @@ export function findNamePos(rawLower, nameLower){
   return boundedSearch(esc);
 }
 
+// TIPFELER "03.03.06.1965" (Suzana 4.8: "covek je 1965 a on je napisao 2006"):
+// klijent otkuca i dvocifrenu i cetvorocifrenu godinu. Regex uhvati "03.03.06" (posle
+// "06" je tacka = granica reci) pa 2-cifrena "06" postane 2006, a prava godina 1965
+// se izgubi. Ako ODMAH iza dvocifrene godine sledi separator + 4-cifrena godina, ta
+// 4-cifrena je prava. Vraca {year, end} - end pomeren preko potrosenog dela.
+export function resolveTypoYear(raw, year, matchEnd){
+  var y=String(year==null?"":year);
+  if(y.length!==2)return {year:y,end:matchEnd};
+  var tail=String(raw||"").slice(matchEnd,matchEnd+6);
+  var m=tail.match(/^[.\/\- ](\d{4})\b/);
+  if(!m)return {year:y,end:matchEnd};
+  return {year:m[1],end:matchEnd+m[0].length};
+}
+
 // Pairs persons (sa AI-parsiranog izvora) sa datumima iz teksta po ADJACENCY
 // (broj non-whitespace/non-punctuation chars izmedju). To garantuje da formati
 // "DATUM Ime", "Ime DATUM" i "DATUM.Ime" svi rade — bind se nikada nije kasnije
@@ -96,16 +110,19 @@ export function bindDatesToNames(rawText, persons){
   var EVENT_CTX_RE=/umr[loa]|premin|smrt|sahran|pogin|ven[cč]a[nl]|razvod|razvel|razveden|operacij|operis|datum\s+kada/i;
   var dRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g,m;
   while((m=dRe.exec(raw))!==null){
-    var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=m[3];
+    var mEnd=m.index+m[0].length;
+    var fx=resolveTypoYear(raw,m[3],mEnd);
+    var d=parseInt(m[1],10),mo=parseInt(m[2],10),y=fx.year;
+    dRe.lastIndex=fx.end; // ne skeniraj zaostatak "…1965" kao zaseban datum
     var yN=y.length===2?(parseInt(y,10)<=30?2000+parseInt(y,10):1900+parseInt(y,10)):parseInt(y,10);
     if(d>=1&&d<=31&&mo>=1&&mo<=12&&yN>=1900){
       var iso=yN+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
       if(iso>maxIso)continue;
-      if(EVENT_CTX_RE.test(raw.slice(Math.max(0,m.index-70),m.index+m[0].length+70)))continue;
+      if(EVENT_CTX_RE.test(raw.slice(Math.max(0,m.index-70),fx.end+70)))continue;
       dates.push({
         iso:iso,
         start:m.index,
-        end:m.index+m[0].length
+        end:fx.end
       });
     }
   }
