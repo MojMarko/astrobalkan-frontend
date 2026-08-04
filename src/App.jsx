@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -1863,7 +1863,10 @@ export default function App(){
         var dateRe=/\b(\d{1,2})[.\/\- ](\d{1,2})[.\/\- ](\d{2,4})\b/g;
         var dateMatches=[],dm;
         while((dm=dateRe.exec(s.paste))!==null){
-          dateMatches.push({pos:dm.index,full:dm[0],day:dm[1],month:dm[2],year:dm[3]});
+          // "03.03.06.1965" (Suzana 4.8): uzmi 4-cifrenu godinu, ne "06"->2006
+          var fxD=resolveTypoYear(s.paste,dm[3],dm.index+dm[0].length);
+          dateMatches.push({pos:dm.index,full:s.paste.slice(dm.index,fxD.end),day:dm[1],month:dm[2],year:fxD.year});
+          dateRe.lastIndex=fxD.end;
         }
         // Defenzivni signal: paste ima vise linija ili pominje partner-keyword,
         // a parser je vratio samo jednu osobu - vrlo verovatno bag

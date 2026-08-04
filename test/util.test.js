@@ -4,7 +4,7 @@
 // pokvari neka popravka koju smo vec radili.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { prettifyPitanja, fetchWithRetry, conventionalSunSign } from '../src/lib/util.js';
+import { prettifyPitanja, fetchWithRetry, conventionalSunSign, resolveTypoYear } from '../src/lib/util.js';
 
 describe('prettifyPitanja - lepo formatiranje pitanja klijenta', () => {
   it('vraca prazan string/null nepromenjen', () => {
@@ -432,5 +432,48 @@ describe('bindDatesToNames - sidrenje po relaciji kad nema imena', () => {
     const out = bindDatesToNames(text, persons);
     expect(out.find(p => p.odnos === 'sin').datum).toBe('2018-07-05');
     expect(out.find(p => p.odnos === 'cerka').datum).toBe('2020-09-03');
+  });
+});
+
+// Prijava 4.8. (Suzana): klijent otkucao "03.03.06.1965" (i 2-cifrena i 4-cifrena
+// godina). Regex je hvatao "03.03.06" pa je partner dobio 2006 umesto 1965.
+describe('resolveTypoYear - DD.MM.YY.YYYY tipfeler', () => {
+  it('uzima 4-cifrenu godinu kad sledi odmah iza 2-cifrene', () => {
+    const raw = '03.03.06.1965 Šid 05h';
+    const r = resolveTypoYear(raw, '06', '03.03.06'.length);
+    expect(r.year).toBe('1965');
+    expect(r.end).toBe('03.03.06.1965'.length);
+  });
+  it('ne dira normalnu 4-cifrenu godinu', () => {
+    const r = resolveTypoYear('24.04.1987 10:40 Beograd', '1987', '24.04.1987'.length);
+    expect(r.year).toBe('1987');
+    expect(r.end).toBe('24.04.1987'.length);
+  });
+  it('ne dira 2-cifrenu godinu kad iza NE sledi 4-cifrena', () => {
+    const r = resolveTypoYear('4.1.95 Doboj', '95', '4.1.95'.length);
+    expect(r.year).toBe('95');
+  });
+  it('ne guta obican broj iza datuma (27.5.2006 Jelena 1234)', () => {
+    const r = resolveTypoYear('27.5.2006 1234', '2006', '27.5.2006'.length);
+    expect(r.year).toBe('2006');
+  });
+});
+
+describe('bindDatesToNames - tipfeler godine u pitanjima', () => {
+  it('vezuje 1965 (ne 2006) za imenovanu osobu iz "03.03.06.1965"', () => {
+    const text = 'Milica 12.05.1970 Šid 16:30h\nNenad 03.03.06.1965 Šid 05h';
+    const persons = [
+      { ime: 'Milica', odnos: '', datum: '1970-05-12' },
+      { ime: 'Nenad', odnos: '', datum: '2006-03-03' }
+    ];
+    const out = bindDatesToNames(text, persons);
+    expect(out.find(p => p.ime === 'Nenad').datum).toBe('1965-03-03');
+    expect(out.find(p => p.ime === 'Milica').datum).toBe('1970-05-12');
+  });
+  it('vezuje po relaciji kad nema imena (muz 03.03.06.1965)', () => {
+    const text = 'Moj muz 03.03.06.1965 Šid';
+    const persons = [{ ime: '', odnos: 'muz', datum: '2006-03-03' }];
+    const out = bindDatesToNames(text, persons);
+    expect(out[0].datum).toBe('1965-03-03');
   });
 });
