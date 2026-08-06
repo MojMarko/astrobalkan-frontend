@@ -20,8 +20,10 @@ on:
 
 jobs:
   auto-fix:
-    # Aktiviraj se SAMO za prijave od radnica (label 'prijava-radnice')
-    if: contains(github.event.issue.labels.*.name, 'prijava-radnice')
+    # Prijave od radnica (label 'prijava-radnice') ILI rucno pokretanje za dijagnozu.
+    # Bez druge grane workflow_dispatch je uvek bio PRESKOCEN (nema issue -> nema labela),
+    # pa se 'Run workflow' dugme ponasalo kao da nista ne radi.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'prijava-radnice')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -47,6 +49,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # DIJAGNOSTIKA (6.8.2026): svi run-ovi su padali za <1s sa is_error:true i
+          # total_cost_usd 0 - dakle AI poziv nije ni krenuo, a prava poruka je bila
+          # sakrivena ("full output hidden for security"). GitHub ionako maskira
+          # secrets u logovima, a repo je privatan.
+          show_full_output: true
           # KRITICNO (2.7.2026): novije verzije @v1 action-a NE daju nikakve default
           # dozvole za alate - bez --allowedTools Claude uradi dijagnozu pa mu SVAKI
           # git push / gh / edit bude odbijen (permission_denials_count u logu) i run
