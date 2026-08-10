@@ -1264,6 +1264,33 @@ function ParsingProgress(props){
   );
 }
 
+// ISTORIJAT KLIJENTA na Downsell/Pitanja ekranu (Marko 8.8.). Do sada je tu stajalo
+// samo obecanje "istorijat ce se povuci pri generisanju" pa radnica nije znala da
+// klijent vec ima analize dok ne potrosi 5-15 min na generisanje. Sada vidi ODMAH.
+function ClientHistoryBox(props){
+  var TIP={analiza:"Analiza",downsell:"Downsell",pitanja:"D. Pitanja"};
+  var box={padding:"8px 10px",background:"rgba(220,180,80,0.1)",borderLeft:"3px solid var(--gd2)",borderRadius:"4px",marginBottom:"10px",fontSize:"11px",color:"var(--mt)"};
+  if(props.loading){
+    return React.createElement("div",{style:box},React.createElement("span",{className:"spin"})," Tražim ranije analize ovog klijenta...");
+  }
+  var h=props.hist;
+  if(!h)return React.createElement("div",{style:box},"\u2713 Klijent prepoznat. Istorijat se automatski koristi pri generisanju.");
+  if(h.length===0){
+    return React.createElement("div",{style:box},"\u2713 Klijent prepoznat \u2014 ovo mu je PRVA analiza (nema ranijih u Bazi).");
+  }
+  return React.createElement("div",{style:Object.assign({},box,{color:"var(--tx)"})},
+    React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)",marginBottom:"5px"}},"\uD83D\uDCC1 Ovaj klijent već ima "+h.length+" "+(h.length===1?"analizu":(h.length<5?"analize":"analiza"))+" u Bazi:"),
+    h.slice(0,6).map(function(x,i){
+      return React.createElement("div",{key:x.id||i,
+        onClick:function(){if(props.onOpen)props.onOpen(x);},
+        style:{padding:"3px 0",cursor:props.onOpen?"pointer":"default",textDecoration:props.onOpen?"underline":"none"}},
+        "\u2022 "+(TIP[x.job_type]||x.job_type||"Analiza")+" \u2014 "+(x.date||""));
+    }),
+    h.length>6&&React.createElement("div",{style:{padding:"3px 0",opacity:.7}},"...i još "+(h.length-6)),
+    React.createElement("div",{style:{marginTop:"5px",fontSize:"10px",opacity:.8}},"Klikni na stavku da je otvoriš. Sve ovo AI automatski koristi kao istorijat pri generisanju.")
+  );
+}
+
 function GeneratingProgress(props){
   var [now,setNow]=useState(Date.now());
   useEffect(function(){
@@ -1367,8 +1394,8 @@ export default function App(){
       return s;
     });
   }
-  var emptyDs={paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};
-  var emptyPq={prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};
+  var emptyDs={paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null,hist:null,histLoading:false};
+  var emptyPq={prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null,hist:null,histLoading:false};
   var [slots,setSlots]=useState(function(){return scrubErrorSlots(loadSlots("ab_slots",[emptySlot(),emptySlot(),emptySlot()]),"analysis","status");});
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
@@ -1643,6 +1670,16 @@ export default function App(){
     // force=true (Jelena 23.7.): radnica zavrsi analizu pa ODMAH otvori Downsell/Pitanja -
     // 30s kes je jos drzao staru listu bez novog klijenta ("ne pronadje ga u bazi").
     if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients(true);
+    // Istorijat i kad se VRATI na ekran sa vec izabranim klijentom (slot je sacuvan u
+    // telefonu, ali hist nije - bez ovoga bi videla stari opsti tekst umesto liste).
+    if(tab&&tab.indexOf("downsell")===0){
+      var di=parseInt(tab.slice(-1))-1, dsl=dsSlots[di];
+      if(dsl&&dsl.clientId&&!dsl.hist&&!dsl.histLoading)loadClientHistory("ds",di,dsl.clientId);
+    }
+    if(tab&&tab.indexOf("pitanja")===0){
+      var pi=parseInt(tab.slice(-1))-1, pql=pqSlots[pi];
+      if(pql&&pql.clientId&&!pql.hist&&!pql.histLoading)loadClientHistory("pq",pi,pql.clientId);
+    }
   },[tab]);
 
   function toast2(m){setToast(m);setTimeout(function(){setToast("");},3000);}
@@ -2799,6 +2836,27 @@ export default function App(){
   }
 
   // DOWNSELL GEN - prima idx (0, 1, ili 2) za jedan od 3 slota
+  // ISTORIJAT ODMAH (Marko 8.8.): radnica na Downsell/Pitanja ekranu do sada nije
+  // videla da klijent vec ima analize - stajalo je samo obecanje "istorijat ce se
+  // povuci pri generisanju", pa je saznavala TEK posle generisanja. Sad se lista
+  // ranijih analiza povlaci cim izabere klijenta (light=1: samo tip+datum, bez
+  // punih tekstova - brzo i jeftino na mobilnom).
+  async function loadClientHistory(kind,idx,clientId){
+    if(!clientId)return;
+    var up=kind==="ds"?upDs:upPq;
+    up(idx,function(s){return Object.assign({},s,{histLoading:true,hist:null});});
+    try{
+      var r=await fetchSafe(API+"/api/clients/"+clientId+"/history?light=1",{},12000);
+      var d=await r.json();
+      var h=(d&&d.history)||[];
+      // najnovije prvo (backend vraca hronoloski)
+      h=h.slice().reverse();
+      up(idx,function(s){return s.clientId===clientId?Object.assign({},s,{hist:h,histLoading:false}):s;});
+    }catch(e){
+      console.warn("loadClientHistory:",e&&e.message);
+      up(idx,function(s){return Object.assign({},s,{histLoading:false});});
+    }
+  }
   async function doDsGen(idx){
     var ds=dsSlots[idx];
     if(!ds)return;
@@ -3874,14 +3932,14 @@ export default function App(){
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();},placeholder:"Npr. Karolina"}),
               dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
-                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});toast2("Klijent izabran - istorijat ce se povuci automatski");}},
+                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});loadClientHistory("ds",dsIdx,c.id);}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
                   React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
                 );})
               )
             ),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum rodjenja klijenta (za uparivanje)"),React.createElement(DateInput3,{value:ds.clientBirthDate,onChange:function(v){upDs(dsIdx,function(s){return Object.assign({},s,{clientBirthDate:v,clientId:null});});}})),
-            ds.clientId&&React.createElement("div",{style:{padding:"8px 10px",background:"rgba(220,180,80,0.1)",borderLeft:"3px solid var(--gd2)",borderRadius:"4px",marginBottom:"10px",fontSize:"11px",color:"var(--mt)"}},"\u2713 Klijent prepoznat. Istorijat (sve prethodne analize, downsell, pitanja) ce se automatski povuci pri generisanju."),
+            ds.clientId&&React.createElement(ClientHistoryBox,{hist:ds.hist,loading:ds.histLoading,onOpen:function(x){openAnalysis({id:x.id,preview:true,clientName:ds.clientName,date:x.date,types:[x.job_type]});}}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza"+(ds.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:ds.paste,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{paste:v});});},style:{minHeight:"110px"},placeholder:ds.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu klijenta..."})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:ds.pitanja,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{pitanja:v});});},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
             React.createElement("button",{className:"btn bgd bfull",onClick:function(){doDsGen(dsIdx);},disabled:ds.st==="generating"||(!ds.paste.trim()&&!ds.clientId)},
@@ -3931,14 +3989,14 @@ export default function App(){
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();},placeholder:"Npr. Karolina"}),
               pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
-                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});toast2("Klijent izabran - istorijat ce se povuci automatski");}},
+                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});loadClientHistory("pq",pqIdx,c.id);}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
                   React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
                 );})
               )
             ),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum rodjenja klijenta (za uparivanje)"),React.createElement(DateInput3,{value:pq.clientBirthDate,onChange:function(v){upPq(pqIdx,function(s){return Object.assign({},s,{clientBirthDate:v,clientId:null});});}})),
-            pq.clientId&&React.createElement("div",{style:{padding:"8px 10px",background:"rgba(220,180,80,0.1)",borderLeft:"3px solid var(--gd2)",borderRadius:"4px",marginBottom:"10px",fontSize:"11px",color:"var(--mt)"}},"\u2713 Klijent prepoznat. Istorijat (sve prethodne analize, downsell, pitanja) ce se automatski povuci pri generisanju."),
+            pq.clientId&&React.createElement(ClientHistoryBox,{hist:pq.hist,loading:pq.histLoading,onOpen:function(x){openAnalysis({id:x.id,preview:true,clientName:pq.clientName,date:x.date,types:[x.job_type]});}}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"+(pq.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:pq.prev,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{prev:v});});},placeholder:pq.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pq.quest,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{quest:v});});},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
             React.createElement("button",{className:"btn bgd bfull",onClick:function(){doPqGen(pqIdx);},disabled:pq.st==="generating"||(!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim()},
