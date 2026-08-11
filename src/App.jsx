@@ -2850,6 +2850,33 @@ export default function App(){
   }
 
   // DOWNSELL GEN - prima idx (0, 1, ili 2) za jedan od 3 slota
+  // PRETRAGA NA SERVERU (Marko 11.8.): lokalni kes je resenje dok je lista mala, ali
+  // raste ~130 klijenata nedeljno. Kad radnica kuca ime, pitamo i server - tako se
+  // klijent NADJE i ako nije u kesu (stara lista, prekinuto ucitavanje, spor internet).
+  // Ovo je trajno resenje: radi isto sa 2.000 i sa 50.000 klijenata.
+  var [srvSearch,setSrvSearch]=useState({q:"",results:[]});
+  var srvSearchTimer=useRef(null);
+  function searchClientsServer(q){
+    var qq=(q||"").trim();
+    if(qq.length<2){setSrvSearch({q:"",results:[]});return;}
+    if(srvSearchTimer.current)clearTimeout(srvSearchTimer.current);
+    srvSearchTimer.current=setTimeout(async function(){
+      try{
+        var r=await fetchSafe(API+"/api/clients?q="+encodeURIComponent(qq),{},12000);
+        var d=await r.json();
+        setSrvSearch({q:qq,results:(d&&d.clients)||[]});
+      }catch(e){console.warn("searchClientsServer:",e&&e.message);}
+    },350);
+  }
+  // Spoji lokalne i serverske pogotke, bez duplikata (server je dopuna, ne zamena).
+  function mergeClientMatches(local,q){
+    var out=local.slice(), seen={};
+    out.forEach(function(c){seen[c.id]=true;});
+    if(srvSearch.q&&(q||"").trim().toLowerCase().indexOf(srvSearch.q.toLowerCase())===0){
+      srvSearch.results.forEach(function(c){if(c&&c.id&&!seen[c.id]){seen[c.id]=true;out.push(c);}});
+    }
+    return out.slice(0,20);
+  }
   // ISTORIJAT ODMAH (Marko 8.8.): radnica na Downsell/Pitanja ekranu do sada nije
   // videla da klijent vec ima analize - stajalo je samo obecanje "istorijat ce se
   // povuci pri generisanju", pa je saznavala TEK posle generisanja. Sad se lista
@@ -3935,7 +3962,7 @@ export default function App(){
             if(n.indexOf(q)===0)starts.push(c);
             else if(n.indexOf(q)>0)contains.push(c);
           });
-          return starts.concat(contains).slice(0,20);
+          return mergeClientMatches(starts.concat(contains),ds.clientName);
         })();
         return React.createElement("div",{className:"sec"},
           React.createElement("div",{className:"stitle"},"Downsell "+(dsIdx+1)),
@@ -3944,7 +3971,7 @@ export default function App(){
             React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Ako je klijent vec u bazi, izaberi ga iz liste i istorijat ce se automatski povuci. Inace nalepi prethodnu analizu rucno."),
             React.createElement("div",{className:"fld",style:{position:"relative"}},
               React.createElement("label",null,"Ime klijenta"),
-              React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();},placeholder:"Npr. Karolina"}),
+              React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v);},placeholder:"Npr. Karolina"}),
               dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
                 dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});loadClientHistory("ds",dsIdx,c.id);}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
@@ -3993,7 +4020,7 @@ export default function App(){
             if(n.indexOf(q)===0)starts.push(c);
             else if(n.indexOf(q)>0)contains.push(c);
           });
-          return starts.concat(contains).slice(0,20);
+          return mergeClientMatches(starts.concat(contains),pq.clientName);
         })();
         return React.createElement("div",{className:"sec"},
           React.createElement("div",{className:"stitle"},"D. Pitanja "+(pqIdx+1)),
@@ -4001,7 +4028,7 @@ export default function App(){
             React.createElement("p",{style:{fontSize:"12px",color:"var(--mt)",marginBottom:"10px",lineHeight:"1.7"}},"Ako je klijent vec u bazi, izaberi ga iz liste i istorijat ce se automatski povuci. Inace nalepi prethodnu analizu rucno."),
             React.createElement("div",{className:"fld",style:{position:"relative"}},
               React.createElement("label",null,"Ime klijenta"),
-              React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();},placeholder:"Npr. Karolina"}),
+              React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v);},placeholder:"Npr. Karolina"}),
               pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
                 pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});loadClientHistory("pq",pqIdx,c.id);}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
