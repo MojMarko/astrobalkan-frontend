@@ -631,7 +631,7 @@ function PlaceStatus(props){
     );
   }
   if(st==="not_found")return React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",padding:"4px 0"}},"❌ Mesto nije pronadjeno - proveri ime grada i zemlje");
-  if(st==="error")return React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",padding:"4px 0"}},"⚠ Geocoding nije dostupan - koristice se Beograd fallback");
+  if(st==="error")return React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",padding:"4px 0"}},"⚠ Mesto trenutno nije prepoznato (server se budi). Klikni ponovo u polje Mesto ili sacekaj par sekundi - BEZ ovoga karta se racuna za Beograd.");
   return null;
 }
 
@@ -1834,9 +1834,12 @@ export default function App(){
       return Object.assign({},person||{},{lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:""});
     }
     try{
-      // TIMEOUT 15s: geocode je brz lookup, ne sme visiti.
-      // 15s timeout - geocode je brz lookup
-      var r=await fetchSafe(API+"/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({grad:person.mesto,zemlja:person.zemlja||""})},15000);
+      // RETRY (Jelena 11.8. "nece da pronadje grad" za Berane): backend je vracao
+      // TACNE koordinate, ali je jedan poziv od 15s bio prekratak dok se Render budi
+      // (free tier spava, budjenje traje 30-60s). Posle isteka je slot ostajao BEZ
+      // koordinata pa se karta tiho racunala za BEOGRAD - pomeren Ascendent i kuce.
+      // fetchWithRetry pokriva budjenje (3 pokusaja x 20s + backoff).
+      var r=await fetchWithRetry(API+"/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({grad:person.mesto,zemlja:person.zemlja||""})},{attempts:3,timeoutMs:20000});
       var data=await r.json();
       var opts=(data&&data.results)||[];
       if(opts.length===1){
@@ -2243,12 +2246,14 @@ export default function App(){
       // LAZY GEOCODE: ako klijent ima mesto ali nema koordinate (stari klijent iz Baze ili import),
       // pozovi geocoding pre racunanja natalke da bi koristili tacne lat/lon/tz.
       var clientForCalc=fixedClient, partnerForCalc=fixedPartner;
-      if(fixedClient.mesto&&fixedClient.lat==null&&fixedClient.placeStatus!=="not_found"&&fixedClient.placeStatus!=="error"){
+      // "error" je PROLAZNA greska (mreza/budjenje servera) - MORA se ponoviti, inace
+      // ostajemo bez koordinata i karta ide na Beograd. Preskace se samo "not_found".
+      if(fixedClient.mesto&&fixedClient.lat==null&&fixedClient.placeStatus!=="not_found"){
         var geoC=await geocodePerson(fixedClient);
         clientForCalc=Object.assign({},fixedClient,geoC);
         upSlot(idx,function(s){return Object.assign({},s,{client:Object.assign({},s.client,{vreme:fixedClient.vreme},geoC)});});
       }
-      if(sl.hasPart&&fixedPartner.mesto&&fixedPartner.lat==null&&fixedPartner.placeStatus!=="not_found"&&fixedPartner.placeStatus!=="error"){
+      if(sl.hasPart&&fixedPartner.mesto&&fixedPartner.lat==null&&fixedPartner.placeStatus!=="not_found"){
         var geoP=await geocodePerson(fixedPartner);
         partnerForCalc=Object.assign({},fixedPartner,geoP);
         upSlot(idx,function(s){return Object.assign({},s,{partner:Object.assign({},s.partner,{vreme:fixedPartner.vreme},geoP)});});
@@ -2395,6 +2400,15 @@ export default function App(){
     if(sl.client.pol!=="m"&&sl.client.pol!=="z"){
       toast2("Izaberi pol klijenta (Muškarac ili Žena) pre generisanja — obavezno.");
       return;
+    }
+    // MESTO BEZ KOORDINATA (Jelena 11.8.): ako je mesto uneto ali geokodiranje nije
+    // uspelo, backend racuna kartu za BEOGRAD (podrazumevana vrednost) - Ascendent i
+    // kuce budu pogresni, a radnica to NIGDE ne vidi. Sada mora svesno da potvrdi.
+    var mestaBezKoord=[];
+    if(sl.client.mesto&&sl.client.mesto.trim()&&sl.client.lat==null)mestaBezKoord.push("klijent ("+sl.client.mesto.trim()+")");
+    if(sl.hasPart&&sl.partner&&sl.partner.mesto&&sl.partner.mesto.trim()&&sl.partner.lat==null)mestaBezKoord.push("partner ("+sl.partner.mesto.trim()+")");
+    if(mestaBezKoord.length>0){
+      if(!window.confirm("PAZNJA: mesto rodjenja nije prepoznato za "+mestaBezKoord.join(" i ")+".\n\nAko nastavis, karta se racuna za BEOGRAD - Ascendent i kuce ce biti POGRESNI.\n\nOK = ipak generisi\nCancel = odustani i popravi mesto (proveri ime grada i zemlju, pa klikni van polja da se ponovo prepozna)"))return;
     }
     genBusyRef.current["a"+idx]=true;
     // Upozorenje na duplikat: isti klijent (ime+datum) vec ima analize u Bazi.
