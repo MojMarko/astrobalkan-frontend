@@ -84,6 +84,136 @@ export function resolveTypoYear(raw, year, matchEnd){
   return {year:m[1],end:matchEnd+m[0].length};
 }
 
+// ==================== VRACANJE IMENA IZ TEKSTA ====================
+// Marko 12.8.: ista pitanja, dva pokretanja - u jednom je parser vratio ime "Duško",
+// u drugom "Sin" (rec za odnos umesto imena). Zaglavlje je onda pisalo
+// "Ćerka (Ćerka): rođena 5.12.2000" DVA puta, a AI je morao da pogadja koja je koja.
+// Ovde deterministicki vracamo ime iz sirovog teksta: radnica pise "Ćerka Ana" /
+// "Sin Duško" pa je ime rec KOJA STOJI ODMAH POSLE odnosa, ispred datuma te osobe.
+var RN_REL = 'sin|sina|sinu|[ćc]erk[aeiou]|k[ćc]erk[aeiou]|k[ćc]i|brat[aeu]?|sestr[aeiou]|mu[zž][aeu]?|suprug[aeu]?|[zž]en[aeu]|mam[aeu]|majk[aeiou]|tat[aeu]|otac|oca|unuk[aeu]?|partner[kaeu]*|prijatelj[icaeu]*|snah[aeu]|zet[aeu]?|tetk[aeiou]|stric[aeu]?|ujak|ujaka|kum[aeu]?|bab[aeu]|ded[aeu]';
+var RN_NOT_NAME = /^(sin|sina|sinu|cerka|cerke|cerku|kcerka|kci|brat|brata|sestra|sestre|muz|muza|suprug|supruga|zena|zene|mama|mame|majka|majke|tata|tate|otac|oca|unuk|unuka|partner|partnerka|prijatelj|prijateljica|snaha|zet|tetka|stric|ujak|kum|kuma|baba|deda|januar|februar|mart|april|maj|jun|jul|avgust|septembar|oktobar|novembar|decembar|godine|godina|sati|casova|ujutru|uvece|podne|ponoc|klijent|osoba)$/;
+function rnAscii(s){return String(s||"").toLowerCase().replace(/[ćč]/g,"c").replace(/[žš]/g,"z").replace(/đ/g,"d");}
+// Sve pozicije na kojima se datum osobe pojavljuje u tekstu (D.M.YYYY, bez/sa nulom).
+function rnDatePositions(raw, iso){
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));
+  if(!m)return [];
+  var y=m[1], mo=parseInt(m[2],10), d=parseInt(m[3],10);
+  var re=new RegExp("(?:0?"+d+")\\s*[.\\/-]\\s*(?:0?"+mo+")\\s*[.\\/-]\\s*"+y,"g");
+  var out=[],mm;
+  while((mm=re.exec(String(raw||""))))out.push(mm.index);
+  return out;
+}
+// Vrati kopiju persons gde je "ime" popunjeno pravim imenom kad je bilo prazno ili je
+// bila sama rec za odnos. Ne dira osobe koje vec imaju pravo ime.
+export function recoverNamesFromText(rawText, persons){
+  var raw=String(rawText||"");
+  if(!raw||!Array.isArray(persons)||persons.length===0)return persons;
+  var relRe=new RegExp("(?:"+RN_REL+")[^A-Za-zČĆŽŠĐčćžšđ0-9]{1,4}([A-ZŠĐČĆŽ][a-zšđčćž]{2,20})","gi");
+  return persons.map(function(p){
+    if(!p)return p;
+    var ime=String(p.ime||"").trim();
+    var imeA=rnAscii(ime);
+    // pravo ime? ostavi ga na miru
+    if(ime&&!RN_NOT_NAME.test(imeA)&&imeA!==rnAscii(p.odnos))return p;
+    var positions=rnDatePositions(raw,p.datum);
+    if(positions.length===0)return p;
+    var found=null;
+    positions.forEach(function(pos){
+      if(found)return;
+      var win=raw.slice(Math.max(0,pos-90),pos);
+      var mm,last=null;
+      relRe.lastIndex=0;
+      while((mm=relRe.exec(win)))last=mm[1];
+      if(last&&!RN_NOT_NAME.test(rnAscii(last)))found=last;
+    });
+    if(!found)return p;
+    var out={};for(var k in p)out[k]=p[k];
+    out.ime=found;
+    return out;
+  });
+}
+
+// ==================== JEDINSTVENA OZNAKA OSOBE ====================
+// Marko 12.8.: "napisemo tacno ko je sin ko je cerka, a on zameni uloge".
+// Uzrok: radnica upise samo odnos bez imena ("Ćerka 15.10.1994 / Ćerka 29.10.1986 /
+// Sin 3.5.1984"), parser vrati ime:"" pa je u promptu SVE bilo "Osoba (cerka)" —
+// dve cerke doslovno identicno oznacene. AI nije imao po cemu da ih razlikuje, pa je
+// mesao njihove karte i uloge. Resenje: oznaka je uvek jedinstvena i citljiva
+// ("starija ćerka", "mladja ćerka"), nikad "Osoba" kad znamo odnos.
+var REL_NICE={sin:"Sin",cerka:"Ćerka",kcerka:"Ćerka","ćerka":"Ćerka","kćerka":"Ćerka",brat:"Brat",sestra:"Sestra",muz:"Muž","muž":"Muž",zena:"Supruga","žena":"Supruga",supruga:"Supruga",suprug:"Suprug",majka:"Majka",mama:"Mama",otac:"Otac",tata:"Tata",unuk:"Unuk",unuka:"Unuka",partner:"Partner",partnerka:"Partnerka",prijatelj:"Prijatelj",prijateljica:"Prijateljica",snaha:"Snaha",zet:"Zet",tetka:"Tetka",stric:"Stric",ujak:"Ujak"};
+// Muski odnosi koji se zavrsavaju na "a" (inace pravilo "zavrsava na a = zenski").
+var REL_MASC_A={tata:1,deda:1,kolega:1,vojvoda:1};
+export function relIsFemale(rel){
+  var r=String(rel||"").toLowerCase().trim();
+  if(!r)return false;
+  if(REL_MASC_A[r])return false;
+  return /a$/.test(r);
+}
+function relPretty(rel){
+  var r=String(rel||"").toLowerCase().trim();
+  if(!r)return "";
+  if(REL_NICE[r])return REL_NICE[r];
+  return r.charAt(0).toUpperCase()+r.slice(1);
+}
+// "starija ćerka" / "mladja ćerka" — po datumu rodjenja, rodno usklađeno.
+var ORD2=[["starij","mladj"],["najstarij","srednj","najmladj"]];
+function ordWord(word,female){return word+(female?"a":"i");}
+// persons: [{ime,odnos,datum}] — vraca niz oznaka iste duzine, garantovano jedinstvenih.
+export function personLabels(persons){
+  var arr=Array.isArray(persons)?persons:[];
+  var base=arr.map(function(p){
+    var ime=String((p&&p.ime)||"").trim();
+    var odn=String((p&&p.odnos)||"").trim();
+    // Radnica cesto u polje imena upise sam odnos ("Cerka", "sin") — ne duplaj ga.
+    var imeLow=ime.toLowerCase().replace(/[ćč]/g,"c").replace(/[žš]/g,"z").replace(/đ/g,"d");
+    var odnLow=odn.toLowerCase().replace(/[ćč]/g,"c").replace(/[žš]/g,"z").replace(/đ/g,"d");
+    if(ime&&(imeLow===odnLow||(odnLow&&imeLow.indexOf(odnLow)===0&&imeLow.length<=odnLow.length+2)))ime="";
+    if(ime&&odn)return ime+" ("+odn+")";
+    if(ime)return ime;
+    if(odn)return relPretty(odn);
+    return "Osoba";
+  });
+  // Grupisi po istoj oznaci — samo tamo treba razlikovanje.
+  var groups={};
+  base.forEach(function(b,i){(groups[b]=groups[b]||[]).push(i);});
+  var out=base.slice();
+  Object.keys(groups).forEach(function(b){
+    var idxs=groups[b];
+    if(idxs.length<2)return;
+    // stariji prvi (manji datum = ranije rodjen); bez datuma idu na kraj
+    var sorted=idxs.slice().sort(function(a,c){
+      var da=String((arr[a]&&arr[a].datum)||"9999"),dc=String((arr[c]&&arr[c].datum)||"9999");
+      return da<dc?-1:(da>dc?1:a-c);
+    });
+    var female=relIsFemale((arr[sorted[0]]&&arr[sorted[0]].odnos)||"")||/a$/.test(b);
+    var relLow=b.toLowerCase();
+    if(sorted.length===2){
+      out[sorted[0]]=ordWord(ORD2[0][0],female)+" "+relLow;
+      out[sorted[1]]=ordWord(ORD2[0][1],female)+" "+relLow;
+    }else if(sorted.length===3){
+      out[sorted[0]]=ordWord(ORD2[1][0],female)+" "+relLow;
+      out[sorted[1]]=ordWord(ORD2[1][1],female)+" "+relLow;
+      out[sorted[2]]=ordWord(ORD2[1][2],female)+" "+relLow;
+    }else{
+      // 4+ istih: oznaka po datumu rodjenja (uvek jedinstven posle bind-a)
+      sorted.forEach(function(i){
+        var d=String((arr[i]&&arr[i].datum)||"");
+        out[i]=b+(d?" rodjen/a "+d.split("-").reverse().join("."):" ("+(i+1)+")");
+      });
+    }
+  });
+  // Poslednja mreza: ako je i posle svega nesto duplo, dodaj datum.
+  var used={};
+  out.forEach(function(l,i){
+    if(used[l]){
+      var d=String((arr[i]&&arr[i].datum)||"");
+      out[i]=l+(d?" ("+d.split("-").reverse().join(".")+")":" ("+(i+1)+")");
+    }
+    used[out[i]]=true;
+  });
+  return out;
+}
+
 // Pairs persons (sa AI-parsiranog izvora) sa datumima iz teksta po ADJACENCY
 // (broj non-whitespace/non-punctuation chars izmedju). To garantuje da formati
 // "DATUM Ime", "Ime DATUM" i "DATUM.Ime" svi rade — bind se nikada nije kasnije

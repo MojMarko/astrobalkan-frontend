@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -1102,6 +1102,9 @@ async function parsePersonsFromPitanjaUncached(text){
     // Redosled je bitan: bind posle filtera ne moze da uvede buduci datum jer
     // bindDatesToNames sada sam izbacuje buduce/pre-1900 datume iz pool-a.
     arr=bindDatesToNames(text,arr);
+    // Vrati pravo ime kad je parser umesto imena vratio rec za odnos ("Sin" umesto
+    // "Duško") - inace su dve cerke u promptu bile identicno oznacene (Marko 12.8.).
+    arr=recoverNamesFromText(text,arr);
     // Godina mora biti 1900..danas i datum ne sme biti u buducnosti — "od 5.6.2027"
     // (period iz pitanja) ili halucinirana 1878 nisu datumi rodjenja.
     var maxPY=new Date().getFullYear();
@@ -1156,10 +1159,11 @@ async function buildPersonSignFacts(questionsText,clientName,clientBirthDate,par
   }
   try{
     var persons=await parsePersonsFromPitanja(questionsText||"");
-    persons.forEach(function(p){
+    var pLabels=personLabels(persons);
+    persons.forEach(function(p,pi){
       if(!p||!p.datum||seen[p.datum])return;
       var s=sunSignForDate(p.datum);
-      if(s){lines.push("- "+(p.ime||"Osoba")+(p.odnos?" ("+p.odnos+")":"")+", rodjen/a "+fmtDMYFromISO(p.datum)+": Sunce u "+s);seen[p.datum]=true;}
+      if(s){lines.push("- "+pLabels[pi]+", rodjen/a "+fmtDMYFromISO(p.datum)+": Sunce u "+s);seen[p.datum]=true;}
     });
   }catch(e){console.warn("buildPersonSignFacts:",e.message);}
   if(lines.length===0)return "";
@@ -2570,6 +2574,10 @@ export default function App(){
     }
     // Build extra charts text (DODATNE OSOBE block) - always available for AI to use concretely
     var extraChartsText="";
+    // Jedinstvene oznake osoba (Marko 12.8. "zameni uloge"): dve cerke bez imena su do
+    // sada obe bile "Osoba (cerka)" pa je AI mesao njihove karte. Sad su "starija cerka"
+    // i "mladja cerka" — i u kartama i u tabeli vezivanja identicno.
+    var ecLabels=personLabels(extraCharts.map(function(ec){return ec.person;}));
     if(extraCharts.length>0){
       extraChartsText="\n\nDODATNE OSOBE U ANALIZI (njihove karte - koristi KONKRETNO, bez 'verovatno'):\n";
       extraCharts.forEach(function(ec,ix){
@@ -2592,7 +2600,7 @@ export default function App(){
         }
         if(!ec.hasPlace)notes.push("mesto rodjenja nije dato (default: Beograd)");
         var noteStr=notes.length>0?"\nNAPOMENA: "+notes.join("; ")+".":"";
-        extraChartsText+="\n["+(ix+1)+"] "+(ep.ime||"Osoba")+(ep.odnos?" ("+ep.odnos+")":"")+", rodjen/a "+dmy+(ep.vreme?" u "+ep.vreme:"")+(ep.mesto?", "+ep.mesto:"")+noteStr+"\nSunce: "+ech.sunSign+eMoonInfo+eAsc+"\nPlanete:\n"+ePlanets+(eAspects?"\nAspekti:\n"+eAspects:"")+"\n";
+        extraChartsText+="\n["+(ix+1)+"] "+ecLabels[ix]+", rodjen/a "+dmy+(ep.vreme?" u "+ep.vreme:"")+(ep.mesto?", "+ep.mesto:"")+noteStr+"\nSunce: "+ech.sunSign+eMoonInfo+eAsc+"\nPlanete:\n"+ePlanets+(eAspects?"\nAspekti:\n"+eAspects:"")+"\n";
       });
     }
     // Deterministicka tabela vezivanja ime -> indeks karte. AI ne sme sam da korelira
@@ -2602,10 +2610,51 @@ export default function App(){
       bindingText="\n\nVEZIVANJE OSOBA IZ PITANJA (OBAVEZNO koristi ovu tabelu, NE preracunavaj datume sam):\n";
       extraCharts.forEach(function(ec,ix){
         var bdmy=ec.person.datum.split("-").reverse().join(".");
-        var lbl=(ec.person.ime||"Osoba")+(ec.person.odnos?" ("+ec.person.odnos+")":"");
-        bindingText+="- Kada klijent u pitanjima pomene \""+lbl+"\" → to je OSOBA ["+(ix+1)+"] iz DODATNE OSOBE, rodjena "+bdmy+", Sunce: "+ec.chart.sunSign+". Koristi ISKLJUCIVO kartu ["+(ix+1)+"] za tu osobu.\n";
+        bindingText+="- Kada klijent u pitanjima pomene \""+ecLabels[ix]+"\" → to je OSOBA ["+(ix+1)+"] iz DODATNE OSOBE, rodjena "+bdmy+", Sunce: "+ec.chart.sunSign+". Koristi ISKLJUCIVO kartu ["+(ix+1)+"] za tu osobu.\n";
       });
       bindingText+="NIKADA ne mesaj datume ni karte izmedju ovih osoba. Svaka osoba ima TACNO svoj datum i svoju kartu.\n";
+      // Marko 12.8.: "napisemo tacno ko je sin ko je cerka, a on zameni uloge".
+      // Kad dve osobe imaju ISTI odnos (dve cerke), AI mora da ih razlikuje TACNO onako
+      // kako su oznacene, i da ni u jednoj recenici ne prebaci znak/kartu na drugu.
+      var relCount={};
+      extraCharts.forEach(function(ec){var r=String((ec.person&&ec.person.odnos)||"").toLowerCase().trim();if(r)relCount[r]=(relCount[r]||0)+1;});
+      var viseIstih=Object.keys(relCount).filter(function(r){return relCount[r]>=2;});
+      bindingText+="\n*** KRITICNO - ULOGE (sin/cerka/brat...) SE NE SMEJU ZAMENITI ***\n"+
+        "Uloga svake osobe je vec odredjena gore i NIJE predmet pogadjanja. Sin je sin, cerka je cerka.\n"+
+        "- Kada u tekstu pises o nekoj od tih osoba, oznaci je TACNO onako kako je oznacena gore (npr. \""+ecLabels[0]+"\").\n"+
+        "- NIKAD ne pripisuj suncev znak, Mesec, kartu ni osobine jedne osobe drugoj osobi.\n"+
+        "- Ako ti se cini da neki datum pripada drugoj osobi, GRESIS - tabela vezivanja je tacna, drzi se nje.\n";
+      // ODNOS NIJE UVEK PREMA KLIJENTU (Marko 12.8., slucaj "Sin Darko"): radnica je za
+      // klijenta upisala sina (rodjen 1988), a u pitanjima navela decu MAJKE - "sin"
+      // rodjen 1989. AI je onda pisao "tvoj sin Duško" iako je Duško Darkov BRAT.
+      // Rodbinski odnos u pitanjima je naveden prema NARUCIOCU, ne prema klijentu.
+      var cliY=parseInt(String(sl.client.datum||"").slice(0,4),10);
+      var nemoguce=[];
+      if(cliY>1900){
+        extraCharts.forEach(function(ec,ix){
+          var r=String((ec.person&&ec.person.odnos)||"").toLowerCase().trim();
+          var py=parseInt(String((ec.person&&ec.person.datum)||"").slice(0,4),10);
+          if(!py||py<1900)return;
+          var dete=/^(sin|cerka|kcerka|ćerka|kćerka|unuk|unuka)$/.test(r);
+          var roditelj=/^(mama|majka|tata|otac|baba|deda)$/.test(r);
+          if(dete&&py-cliY<14)nemoguce.push({lbl:ecLabels[ix],rel:r,py:py,smer:"dete"});
+          else if(roditelj&&cliY-py<14)nemoguce.push({lbl:ecLabels[ix],rel:r,py:py,smer:"roditelj"});
+        });
+      }
+      if(nemoguce.length>0){
+        bindingText+="\n*** ODNOS NIJE PREMA KLIJENTU - NE PISI \"tvoj sin\"/\"tvoja cerka\" ZA OVE OSOBE ***\n";
+        nemoguce.forEach(function(n){
+          bindingText+="- Osoba \""+n.lbl+"\" je oznacena kao \""+n.rel+"\", ali je rodjena "+n.py+", a klijent "+cliY+" - klijent NE MOZE biti "+
+            (n.smer==="dete"?"roditelj":"dete")+" te osobe. Odnos je naveden prema NARUCIOCU analize (npr. majci klijenta), ne prema klijentu. "+
+            "NIKAD ne pisi \"tvoj "+n.rel+"\" - pominji tu osobu po imenu/oznaci (\""+n.lbl+"\") bez rodbinske odrednice prema klijentu, ili kao \"osoba o kojoj pitas\".\n";
+        });
+        bindingText+="Karta i datum te osobe su TACNI - menja se samo kako je oslovljavas.\n";
+      }
+      if(viseIstih.length>0){
+        bindingText+="- PAZI: klijent ima VISE osoba sa istim odnosom ("+viseIstih.join(", ")+"). To su RAZLICITE osobe sa razlicitim kartama. "+
+          "Uvek napisi po cemu se razlikuju (npr. \"starija cerka\" / \"mladja cerka\", ili dodaj datum rodjenja) da klijent zna o kome pises. "+
+          "NIKAD ne spajaj dve osobe istog odnosa u jednu i NIKAD im ne zamenjuj znakove.\n";
+      }
     }
     // Zaklina 25.7. "Mesa datume iako mu je dobro napisano": klijent pomene muza BEZ
     // datuma + "osobu" SA datumom -> AI je jedini muski datum pripisao muzu. Pravilo
