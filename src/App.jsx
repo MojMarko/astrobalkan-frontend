@@ -2926,7 +2926,11 @@ export default function App(){
   // dobila 20 od 80 i zakljucila da klijenta NEMA, a nije imala cime da suzi jer vecina
   // klijenata ima samo ime. Zato: (1) datum rodjenja sada FILTRIRA listu, (2) vracamo i
   // ukupan broj pogodaka da radnica vidi da je lista odsecena.
-  var MATCH_SHOW=30;
+  // Marko 12.8. (drugi put): "pise prikazano 30 od 41, radnica ne moze da selektuje
+  // zenu koja je radila prethodne analize". Odsecanje liste je BILO greska - radnica
+  // mora da vidi i moze da klikne SVAKU osobu sa tim imenom. Lista se skroluje.
+  // Cap je samo zastita od patoloskog rendera (upis jednog slova), ne radno ogranicenje.
+  var MATCH_SHOW=300;
   function mergeClientMatches(local,q,birthDate){
     var out=local.slice(), seen={};
     // stavke iz analiza nemaju id - kljuc je ime, da se ne dupliraju
@@ -2945,9 +2949,30 @@ export default function App(){
       var tacni=out.filter(function(c){return c.birth_date===bd;});
       if(tacni.length>0)out=tacni;
     }
+    // Radnica trazi zenu KOJA JE VEC RADILA analizu - takve idu na vrh (najvise analiza
+    // i najsvezija aktivnost prvo), da ne mora da skrolira kroz imenjake bez analiza.
+    out.sort(function(a,b){
+      var ac=Number(a.total_count||0),bc=Number(b.total_count||0);
+      if((ac>0)!==(bc>0))return bc>0?1:-1;
+      var al=String(a.last_activity||""),bl=String(b.last_activity||"");
+      if(al!==bl)return al<bl?1:-1;
+      return bc-ac;
+    });
     var res=out.slice(0,MATCH_SHOW);
     res._total=out.length;   // koliko ih UKUPNO ima (za poruku radnici)
     return res;
+  }
+  // Poruka iznad liste. NE kaze vise "prikazano 30 od 41" (radnica je mislila da ostale
+  // ne moze da izabere) - sad su SVE u listi, pa samo javlja koliko ih je i da lista ide
+  // dalje ako se skroluje.
+  function matchesHint(m){
+    var n=m._total||m.length;
+    if(n<=5)return null;
+    var odseceno=n>m.length;
+    return React.createElement("div",{style:{padding:"6px 10px",fontSize:"10px",color:"#b87010",background:"rgba(184,112,16,.12)",borderBottom:"1px solid var(--bd)",position:"sticky",top:0}},
+      odseceno
+        ? ("Ima "+n+" osoba sa tim imenom - upisi DATUM RODJENJA ispod da suzis na tacnu osobu.")
+        : (n+" osoba sa tim imenom - skroluj listu do kraja, ili upisi DATUM RODJENJA ispod da odmah suzis na tacnu."));
   }
   // ISTORIJAT ODMAH (Marko 8.8.): radnica na Downsell/Pitanja ekranu do sada nije
   // videla da klijent vec ima analize - stajalo je samo obecanje "istorijat ce se
@@ -4044,7 +4069,7 @@ export default function App(){
             React.createElement("div",{className:"fld",style:{position:"relative"}},
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v,ds.clientBirthDate);},placeholder:"Npr. Karolina"}),
-              dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"260px",overflowY:"auto"}},((dsMatches._total||0)>dsMatches.length)&&React.createElement("div",{style:{padding:"6px 10px",fontSize:"10px",color:"#b87010",background:"rgba(184,112,16,.12)",borderBottom:"1px solid var(--bd)"}},"Prikazano "+dsMatches.length+" od "+dsMatches._total+" osoba sa tim imenom \u2014 upisi DATUM RODJENJA ispod da suzis na tacnu osobu."),
+              dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"45vh",overflowY:"auto"}},matchesHint(dsMatches),
                 dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null});});if(c.id)loadClientHistory("ds",dsIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
                   React.createElement("div",{style:{fontSize:"10px",color:c.orphan?"#b87010":"var(--mt)"}},c.orphan?("\u26A0 nadjeno u Bazi ("+(c.total_count||0)+" analiza) \u2014 istorijat se NE povlaci automatski, nalepi prethodnu analizu rucno"):((c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza"))
@@ -4101,7 +4126,7 @@ export default function App(){
             React.createElement("div",{className:"fld",style:{position:"relative"}},
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v,pq.clientBirthDate);},placeholder:"Npr. Karolina"}),
-              pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"260px",overflowY:"auto"}},((pqMatches._total||0)>pqMatches.length)&&React.createElement("div",{style:{padding:"6px 10px",fontSize:"10px",color:"#b87010",background:"rgba(184,112,16,.12)",borderBottom:"1px solid var(--bd)"}},"Prikazano "+pqMatches.length+" od "+pqMatches._total+" osoba sa tim imenom \u2014 upisi DATUM RODJENJA ispod da suzis na tacnu osobu."),
+              pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"45vh",overflowY:"auto"}},matchesHint(pqMatches),
                 pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null});});if(c.id)loadClientHistory("pq",pqIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
                   React.createElement("div",{style:{fontSize:"10px",color:c.orphan?"#b87010":"var(--mt)"}},c.orphan?("\u26A0 nadjeno u Bazi ("+(c.total_count||0)+" analiza) \u2014 istorijat se NE povlaci automatski, nalepi prethodnu analizu rucno"):((c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza"))
