@@ -477,3 +477,103 @@ describe('bindDatesToNames - tipfeler godine u pitanjima', () => {
     expect(out[0].datum).toBe('1965-03-03');
   });
 });
+
+// Marko 12.8. "napisemo tacno ko je sin ko je cerka, a on zameni uloge".
+// Lidijin slucaj: radnica upise samo odnose bez imena, pa je u promptu SVE bilo
+// "Osoba (cerka)" - dve cerke identicno oznacene, AI im zamenio karte.
+import { personLabels, relIsFemale } from '../src/lib/util.js';
+
+describe('personLabels - jedinstvena oznaka osobe u promptu', () => {
+  it('nikad ne vraca "Osoba" kad znamo odnos', () => {
+    const out = personLabels([{ ime: '', odnos: 'sin', datum: '1984-05-03' }]);
+    expect(out).toEqual(['Sin']);
+  });
+  it('razlikuje dve cerke bez imena (starija/mladja po datumu)', () => {
+    const out = personLabels([
+      { ime: '', odnos: 'cerka', datum: '1994-10-15' },
+      { ime: '', odnos: 'cerka', datum: '1986-10-29' }
+    ]);
+    // 1986 je starija, 1994 mladja - bez obzira na redosled u nizu
+    expect(out[1]).toBe('starija ćerka');
+    expect(out[0]).toBe('mladja ćerka');
+    expect(new Set(out).size).toBe(2);
+  });
+  it('tri sina: najstariji / srednji / najmladji', () => {
+    const out = personLabels([
+      { ime: '', odnos: 'sin', datum: '2000-01-01' },
+      { ime: '', odnos: 'sin', datum: '1990-01-01' },
+      { ime: '', odnos: 'sin', datum: '1995-01-01' }
+    ]);
+    expect(out[1]).toBe('najstariji sin');
+    expect(out[2]).toBe('srednji sin');
+    expect(out[0]).toBe('najmladji sin');
+  });
+  it('cetiri iste uloge dobijaju datum u oznaci', () => {
+    const out = personLabels([
+      { ime: '', odnos: 'cerka', datum: '1990-01-01' },
+      { ime: '', odnos: 'cerka', datum: '1992-01-01' },
+      { ime: '', odnos: 'cerka', datum: '1994-01-01' },
+      { ime: '', odnos: 'cerka', datum: '1996-01-01' }
+    ]);
+    expect(new Set(out).size).toBe(4);
+    expect(out[0]).toContain('01.01.1990');
+  });
+  it('ne duplira odnos kad radnica u polje imena upise "Cerka"', () => {
+    expect(personLabels([{ ime: 'Cerka', odnos: 'cerka', datum: '1986-10-29' }])).toEqual(['Ćerka']);
+    expect(personLabels([{ ime: 'Ćerka', odnos: 'cerka', datum: '1986-10-29' }])).toEqual(['Ćerka']);
+  });
+  it('cuva ime i odnos kad ima oba', () => {
+    expect(personLabels([{ ime: 'Lazar', odnos: 'sin', datum: '1997-04-29' }])).toEqual(['Lazar (sin)']);
+  });
+  it('dva ista imena se razlikuju datumom', () => {
+    const out = personLabels([
+      { ime: 'Jelena', odnos: 'cerka', datum: '2000-02-17' },
+      { ime: 'Jelena', odnos: 'cerka', datum: '1998-11-01' }
+    ]);
+    expect(new Set(out).size).toBe(2);
+  });
+  it('relIsFemale - "a" na kraju je zensko, tata/deda nije', () => {
+    expect(relIsFemale('cerka')).toBe(true);
+    expect(relIsFemale('sestra')).toBe(true);
+    expect(relIsFemale('sin')).toBe(false);
+    expect(relIsFemale('tata')).toBe(false);
+    expect(relIsFemale('deda')).toBe(false);
+  });
+});
+
+// Marko 12.8. (slucaj "Sin Darko"): iste pitanja, dva pokretanja - parser je jednom
+// vratio ime "Duško", drugi put "Sin". Zaglavlje je onda dva puta pisalo
+// "Ćerka (Ćerka)" i AI je morao da pogadja koja je koja.
+import { recoverNamesFromText } from '../src/lib/util.js';
+
+describe('recoverNamesFromText - vraca ime kad parser vrati rec za odnos', () => {
+  const text = 'Sin Duško\n29.9.1989 14:30\nĆerka Ana\n5.12.2000 13:25 Sremska Mitrovica\nĆerka Marija\n4.8.2006 9:52 Sremska Mitrovica\nZA SVAKOG OD NJIH ZELIM POJEDINACNI HOROSKOP';
+  it('vraca prava imena umesto "Sin"/"Ćerka"', () => {
+    const out = recoverNamesFromText(text, [
+      { ime: 'Sin', odnos: 'sin', datum: '1989-09-29' },
+      { ime: 'Ćerka', odnos: 'cerka', datum: '2000-12-05' },
+      { ime: 'Ćerka', odnos: 'cerka', datum: '2006-08-04' }
+    ]);
+    expect(out.map(p => p.ime)).toEqual(['Duško', 'Ana', 'Marija']);
+  });
+  it('popunjava i prazno ime', () => {
+    const out = recoverNamesFromText(text, [{ ime: '', odnos: 'cerka', datum: '2006-08-04' }]);
+    expect(out[0].ime).toBe('Marija');
+  });
+  it('ne dira pravo ime koje je parser dobro izvukao', () => {
+    const out = recoverNamesFromText(text, [{ ime: 'Duško', odnos: 'sin', datum: '1989-09-29' }]);
+    expect(out[0].ime).toBe('Duško');
+  });
+  it('ne uzima grad ispred datuma kao ime', () => {
+    const t2 = 'Cerka 5.12.2000 Sremska Mitrovica\nSin\n29.9.1989';
+    const out = recoverNamesFromText(t2, [{ ime: 'Sin', odnos: 'sin', datum: '1989-09-29' }]);
+    expect(out[0].ime).toBe('Sin'); // nema imena u tekstu - ne izmisljaj
+  });
+  it('posle vracanja imena oznake su jedinstvene i imenovane', () => {
+    const rec = recoverNamesFromText(text, [
+      { ime: 'Ćerka', odnos: 'cerka', datum: '2000-12-05' },
+      { ime: 'Ćerka', odnos: 'cerka', datum: '2006-08-04' }
+    ]);
+    expect(personLabels(rec)).toEqual(['Ana (cerka)', 'Marija (cerka)']);
+  });
+});
