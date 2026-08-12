@@ -2871,9 +2871,14 @@ export default function App(){
   // Spoji lokalne i serverske pogotke, bez duplikata (server je dopuna, ne zamena).
   function mergeClientMatches(local,q){
     var out=local.slice(), seen={};
-    out.forEach(function(c){seen[c.id]=true;});
+    // stavke iz analiza nemaju id - kljuc je ime, da se ne dupliraju
+    out.forEach(function(c){seen[c.id||("ime:"+String(c.name||"").toLowerCase())]=true;});
     if(srvSearch.q&&(q||"").trim().toLowerCase().indexOf(srvSearch.q.toLowerCase())===0){
-      srvSearch.results.forEach(function(c){if(c&&c.id&&!seen[c.id]){seen[c.id]=true;out.push(c);}});
+      srvSearch.results.forEach(function(c){
+        if(!c||!c.name)return;
+        var k=c.id||("ime:"+String(c.name).toLowerCase());
+        if(!seen[k]){seen[k]=true;out.push(c);}
+      });
     }
     return out.slice(0,20);
   }
@@ -3973,9 +3978,9 @@ export default function App(){
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v);},placeholder:"Npr. Karolina"}),
               dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
-                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});loadClientHistory("ds",dsIdx,c.id);}},
+                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null});});if(c.id)loadClientHistory("ds",dsIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
-                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
+                  React.createElement("div",{style:{fontSize:"10px",color:c.orphan?"#b87010":"var(--mt)"}},c.orphan?("\u26A0 nadjeno u Bazi ("+(c.total_count||0)+" analiza) \u2014 istorijat se NE povlaci automatski, nalepi prethodnu analizu rucno"):((c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza"))
                 );})
               )
             ),
@@ -4030,9 +4035,9 @@ export default function App(){
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v);},placeholder:"Npr. Karolina"}),
               pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"200px",overflowY:"auto"}},
-                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id});});loadClientHistory("pq",pqIdx,c.id);}},
+                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null});});if(c.id)loadClientHistory("pq",pqIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
-                  React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)"}},(c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza")
+                  React.createElement("div",{style:{fontSize:"10px",color:c.orphan?"#b87010":"var(--mt)"}},c.orphan?("\u26A0 nadjeno u Bazi ("+(c.total_count||0)+" analiza) \u2014 istorijat se NE povlaci automatski, nalepi prethodnu analizu rucno"):((c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza"))
                 );})
               )
             ),
