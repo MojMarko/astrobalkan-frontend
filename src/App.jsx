@@ -1509,18 +1509,41 @@ export default function App(){
       }
     });
   },[]);
-  var [clientsCache,setClientsCache]=useState([]);
+  // Startuj sa poslednjom sacuvanom listom sa telefona - dok server odgovori (Render
+  // se budi i do minut), radnica vec moze da pretrazuje umesto da vidi prazno.
+  var [clientsCache,setClientsCache]=useState(function(){
+    try{var c=JSON.parse(localStorage.getItem("ab_clients")||"null");return (c&&c.c)||[];}catch(e){return [];}
+  });
   var [clientsLoadedAt,setClientsLoadedAt]=useState(0);
   async function loadClients(force){
     // Refresh ako je proteklo > 30 sek od poslednjeg ucitavanja (ili force)
     var age=Date.now()-clientsLoadedAt;
     if(!force&&clientsLoadedAt>0&&age<30000)return;
     try{
-      var r=await fetchSafe(API+"/api/clients");
+      // ?t= (Marko 13.8.): bez parametra je URL uvek isti, pa je telefon (i CDN)
+      // znao da posluzi STARU listu klijenata iz kesa - radnica onda "ne pronalazi
+      // ljude u bazi" iako su tamo. Pretraga po imenu se nikad nije kesirala jer
+      // ima jedinstven URL - zato je u Pitanjima nalazila, a u Downsellu ne.
+      var r=await fetchSafe(API+"/api/clients?t="+Date.now(),{cache:"no-store"});
       var d=await r.json();
-      setClientsCache(d.clients||[]);
+      var lista=(d&&d.clients)||[];
+      // Prazna lista je skoro sigurno greska (baza ima 2000+ klijenata) - ne brisi
+      // postojecu listu, radnica bi ostala bez ijednog imena za pretragu.
+      if(lista.length===0&&clientsCache.length>0){console.warn("loadClients: prazna lista, zadrzavam postojecu");return;}
+      setClientsCache(lista);
       setClientsLoadedAt(Date.now());
-    }catch(e){console.warn("loadClients failed:",e.message);}
+      try{localStorage.setItem("ab_clients",JSON.stringify({at:Date.now(),c:lista}));}catch(eLS){}
+    }catch(e){
+      console.warn("loadClients failed:",e.message);
+      // Server ne odgovara (Render se budi): uzmi poslednju sacuvanu listu sa telefona
+      // umesto da radnica gleda prazan spisak i zakljuci da klijenta nema.
+      if(clientsCache.length===0){
+        try{
+          var cached=JSON.parse(localStorage.getItem("ab_clients")||"null");
+          if(cached&&cached.c&&cached.c.length>0){setClientsCache(cached.c);console.warn("loadClients: koristim sacuvanu listu ("+cached.c.length+")");}
+        }catch(eLS2){}
+      }
+    }
   }
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
@@ -2914,7 +2937,7 @@ export default function App(){
       try{
         var url=API+"/api/clients?q="+encodeURIComponent(qq);
         if(/^\d{4}-\d{2}-\d{2}$/.test(bd))url+="&birth_date="+encodeURIComponent(bd);
-        var r=await fetchSafe(url,{},12000);
+        var r=await fetchSafe(url,{cache:"no-store"},12000);
         var d=await r.json();
         setSrvSearch({q:qq,results:(d&&d.clients)||[]});
       }catch(e){console.warn("searchClientsServer:",e&&e.message);}
