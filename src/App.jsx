@@ -1476,6 +1476,10 @@ export default function App(){
         }
         try{
           var resp=await fetchSafe(API+"/api/generate/"+jobId);
+          // 404 = posao NE POSTOJI u bazi (nikad nije upisan ili je red obrisan).
+          // Bez ovoga je petlja cekala punih 21 minut na nesto cega nema - Suzana 20.8:
+          // "generise pola sata i ne uradi nista, a u bazi nema nista".
+          if(resp.status===404){clearInterval(iv);onError("Ova analiza ne postoji u bazi - nije ni pokrenuta. Klikni Generisi ponovo.");return;}
           if(!resp.ok)return;
           var job=await resp.json();
           if(job.status==="done"){clearInterval(iv);onDone(fmtText(job.serbian_text||""));}
@@ -2459,7 +2463,11 @@ export default function App(){
         }
       }catch(eDup){/* server spava - ne blokiraj generisanje */}
     }
-    upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0,qaWarn:null,genStartedAt:Date.now()});});
+    // jobId:null je OBAVEZAN (Suzana 20.8: "generise pola sata i ne uradi nista, a u
+    // bazi nema nista"). Bez toga u slotu ostane jobId PRETHODNE analize, pa:
+    //  - sigurnosni ventil ispod (uslov !cur.jobId) nikad ne okine i radnica ceka 21 min,
+    //  - poller starog posla moze da upise TUDJU, staru analizu u ovaj slot.
+    upSlot(idx,function(s){return Object.assign({},s,{status:"generating",analysis:"",copyIdx:0,qaWarn:null,jobId:null,genStartedAt:Date.now()});});
     // HARD SAFETY VALVE: ako doGen NE STIGNE da postavi jobId u 8 minuta, sigurno je
     // negde zaglavio (sub-fetch bez timeout-a koji mi nismo pokrili). Forsiraj UI da
     // se vrati u idle i prikazi grešku. Suzana 6.6. 09:25: 3 analize "rade po pola sata",
@@ -2807,7 +2815,15 @@ export default function App(){
           toast2("Downsell predugo (22 min). Verovatno je gotov u Bazi — pogledaj tamo pre ponovnog generisanja.");
           return;
         }
-        var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
+        var r=await fetchSafe(API+"/api/generate/"+jobId);
+        if(r.status===404){   // posao ne postoji u bazi - ne cekaj 22 min uzalud
+          clearInterval(dsInterval);
+          var jbs404=safeActiveJobs();delete jbs404[dsKey];localStorage.setItem("activeJobs",JSON.stringify(jbs404));
+          upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null}):s;});
+          toast2("Downsell nije pokrenut - nema ga u bazi. Klikni Generisi ponovo.");
+          return;
+        }
+        var j=await r.json();
         // GUARD (Suzana 18.7.): progres pisi samo ako slot jos pripada OVOM downsell-u.
         if(j.status==="cancelled"){clearInterval(dsInterval);return;} // radnica kliknula Zaustavi
         if(j.status==="generating")upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Generisem analizu..."}):s;});
@@ -2876,7 +2892,15 @@ export default function App(){
           toast2("Pitanja predugo (22 min). Verovatno su gotova u Bazi — pogledaj tamo pre ponovnog generisanja.");
           return;
         }
-        var r=await fetchSafe(API+"/api/generate/"+jobId);var j=await r.json();
+        var r=await fetchSafe(API+"/api/generate/"+jobId);
+        if(r.status===404){   // posao ne postoji u bazi - ne cekaj 22 min uzalud
+          clearInterval(pqInterval);
+          var jbs404=safeActiveJobs();delete jbs404[pqKey];localStorage.setItem("activeJobs",JSON.stringify(jbs404));
+          upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{st:"idle",an:"",jobId:null,genStartedAt:null}):s;});
+          toast2("Pitanja nisu pokrenuta - nema ih u bazi. Klikni Generisi ponovo.");
+          return;
+        }
+        var j=await r.json();
         // GUARD (Suzana 18.7.): progres pisi samo ako slot jos pripada OVIM pitanjima.
         if(j.status==="cancelled"){clearInterval(pqInterval);return;} // radnica kliknula Zaustavi
         if(j.status==="generating")upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:"Generisem odgovore..."}):s;});
@@ -3034,7 +3058,7 @@ export default function App(){
     }
     if(!ds.paste.trim()&&!ds.clientId)return;
     genBusyRef.current["ds"+idx]=true;
-    upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,genStartedAt:Date.now()});});
+    upDs(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,jobId:null,genStartedAt:Date.now()});});
     var today=new Date(),todayStr=fmtDMY(today);
     var MONTH_EN_DS=["January","February","March","April","May","June","July","August","September","October","November","December"];
     var curYearDS=today.getFullYear(),curMonthDS=today.getMonth(),curMonthNameDS=MONTH_EN_DS[curMonthDS];
@@ -3112,7 +3136,7 @@ export default function App(){
     }
     if((!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim())return;
     genBusyRef.current["pq"+idx]=true;
-    upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,genStartedAt:Date.now()});});
+    upPq(idx,function(s){return Object.assign({},s,{st:"generating",an:"",ci:0,jobId:null,genStartedAt:Date.now()});});
     var isHR=country==="hr";
     var aName=isHR?"Marija":"Suzana";
     var today=new Date(),todayStr=fmtDMY(today);
@@ -3283,6 +3307,14 @@ export default function App(){
         }
 
         var resp=await fetchSafe(API+"/api/generate/"+jobId);
+        if(resp.status===404){   // posao ne postoji u bazi - ne cekaj 21 min uzalud
+          clearInterval(interval);
+          var jbs404=safeActiveJobs(); if(tabKey)delete jbs404[tabKey];
+          localStorage.setItem("activeJobs",JSON.stringify(jbs404));
+          if(slotIdx!==null)upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{status:"idle",analysis:"",jobId:null,genStartedAt:null}):s;});
+          toast2("Analiza nije pokrenuta - nema je u bazi. Klikni Generisi ponovo.");
+          return;
+        }
         if(!resp.ok)return;
         var job=await resp.json();
         if(job.status==="cancelled"){clearInterval(interval);return;} // radnica kliknula Zaustavi
