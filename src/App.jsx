@@ -4116,16 +4116,29 @@ export default function App(){
   }
 
   // MAIN ---------------------------------------------------------------------
-  // Marko 23.8.: "Prompt" i "Pomoc" niko od radnica ne koristi - sklonjeni su
-  // iz donje navigacije da ne zatrpavaju ekran. Kod tih tabova NIJE brisan
-  // (i dalje radi ako se setTab pozove), samo se dugmici ne prikazuju.
-  var navItems=[
-    {id:"a1",l:"Analiza 1",icon:"\u2726"},{id:"a2",l:"Analiza 2",icon:"\u2726"},{id:"a3",l:"Analiza 3",icon:"\u2726"},{id:"baza",l:"Baza",icon:"\uD83D\uDCC1"},
-    {id:"downsell1",l:"Downsell 1",icon:"\u21BB"},{id:"downsell2",l:"Downsell 2",icon:"\u21BB"},{id:"downsell3",l:"Downsell 3",icon:"\u21BB"},
-    {id:"pitanja1",l:"D. Pitanja 1",icon:"\u2753"},{id:"pitanja2",l:"D. Pitanja 2",icon:"\u2753"},{id:"pitanja3",l:"D. Pitanja 3",icon:"\u2753"},
-    {id:"prijava",l:"Prijavi problem",icon:"\ud83d\udce3"}
+  // RASPORED DONJE NAVIGACIJE (Marko 23.8.): svaka grupa u SVOM redu - analize
+  // u prvom, Downsell u drugom, D. Pitanja u trecem - a cetvrta kolona desno
+  // nosi ostalo (Baza, Prijavi problem, Admin).
+  // Traka je mreza od 4 po redu (.bnav-btn ima flex-basis 25%), pa se "ostalo"
+  // UMECE posle svake trojke. Da se dodaje na kraj liste, redovi bi se razlili
+  // i grupe bi se izmesale - tako je i izgledalo pre ovoga.
+  //
+  // "Prompt" i "Pomoc" nema u listi: niko od radnica ih ne koristi. Kod tih
+  // tabova NIJE brisan (radi ako se setTab pozove), samo se dugmici ne vide.
+  var navGrupe=[
+    [{id:"a1",l:"Analiza 1",icon:"\u2726"},{id:"a2",l:"Analiza 2",icon:"\u2726"},{id:"a3",l:"Analiza 3",icon:"\u2726"}],
+    [{id:"downsell1",l:"Downsell 1",icon:"\u21BB"},{id:"downsell2",l:"Downsell 2",icon:"\u21BB"},{id:"downsell3",l:"Downsell 3",icon:"\u21BB"}],
+    [{id:"pitanja1",l:"D. Pitanja 1",icon:"\u2753"},{id:"pitanja2",l:"D. Pitanja 2",icon:"\u2753"},{id:"pitanja3",l:"D. Pitanja 3",icon:"\u2753"}]
   ];
-  if(user.role==="admin")navItems.push({id:"admin",l:"Admin",icon:"\uD83D\uDC64"});
+  var navOstalo=[{id:"baza",l:"Baza",icon:"\uD83D\uDCC1"},{id:"prijava",l:"Prijavi problem",icon:"\ud83d\udce3"}];
+  if(user.role==="admin")navOstalo.push({id:"admin",l:"Admin",icon:"\uD83D\uDC64"});
+  var navItems=[];
+  navGrupe.forEach(function(g,i){
+    navItems=navItems.concat(g);
+    if(navOstalo[i])navItems.push(navOstalo[i]);
+  });
+  // Ako "ostalo" ikad naraste preko 3 stavke, visak ide u novi red ispod.
+  navItems=navItems.concat(navOstalo.slice(navGrupe.length));
 
   return React.createElement(React.Fragment,null,
     React.createElement("style",null,CSS),
