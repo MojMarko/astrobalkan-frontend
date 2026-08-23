@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, validEmail, nadjiEmailUTekstu, mailNaslov } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -607,6 +607,40 @@ function belgradeDate(d){return fmtDMY(d);}
 function belgradeTime(d){return d.toLocaleTimeString("sr-RS",{timeZone:"Europe/Belgrade",hour:"2-digit",minute:"2-digit"});}
 function belgradeDateTime(d){return belgradeDate(d)+", "+belgradeTime(d);}
 function belgradeRawDate(d){var fmt=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"});return fmt.format(d);}
+
+// ============================================================================
+// SLANJE ANALIZE NA EMAIL
+// ============================================================================
+// Radnica klikne "Posalji na email": ceo tekst (analiza + potpis) ode u
+// clipboard, a Gmail se otvori sa vec popunjenim primaocem i naslovom. Radnica
+// samo nalepi (Ctrl+V / drzi pa "Nalepi"), doradi ako treba, i posalje.
+//
+// Zasto se tekst NE stavlja u link: Gmail compose prima telo poruke kroz URL,
+// a analiza je 8.000-20.000 znakova. Takav URL Google odbija (414), pa bi
+// dugme radilo za kratke a tiho pucalo za prave analize. Clipboard nema
+// ogranicenje duzine i radi isto na telefonu i na racunaru.
+var MAIL_OD="kontakt@astrologsuzana.com";
+var MAIL_SAJT="astrologsuzana.com";
+var MAIL_POTPIS="\n\n---\nSuzana\n"+MAIL_SAJT+"\n"+MAIL_OD;
+
+// Vraca "" kad je sve u redu, ili poruku za radnicu kad ne moze da se salje.
+function posaljiMailom(o){
+  var email=validEmail(o&&o.email);
+  var tekst=String(o&&o.tekst||"").trim();
+  if(!email)return "Upisi email klijenta pre slanja.";
+  if(!tekst)return "Nema teksta analize za slanje.";
+  // stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme
+  // da ode klijentu - isto pravilo kao kod Kopiraj dugmica.
+  var telo=fmtText(stripUpoz(tekst))+MAIL_POTPIS;
+  cpText(telo);
+  var url="https://mail.google.com/mail/?authuser="+encodeURIComponent(MAIL_OD)
+    +"&view=cm&fs=1&tf=1"
+    +"&to="+encodeURIComponent(email)
+    +"&su="+encodeURIComponent(mailNaslov(o.tip,o.ime));
+  var w=window.open(url,"_blank","noopener");
+  if(!w)return "Tekst je kopiran, ali browser je blokirao otvaranje Gmail-a. Dozvoli pop-up prozore za ovu stranicu.";
+  return "";
+}
 
 // PlaceStatus - status row ispod Mesto/Zemlja polja: ✅ ok | ⏳ pending | dropdown za ambiguous | ❌ not_found | ⚠️ error
 function PlaceStatus(props){
@@ -1349,7 +1383,7 @@ function GeneratingProgress(props){
   );
 }
 
-function emptySlot(){return{mode:"messenger",paste:"",rawPaste:"",parsed:null,client:{ime:"",pol:"",datum:"",vreme:"",mesto:"",zemlja:"",lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:"",napomena:"",pitanja:""},partner:{ime:"",datum:"",vreme:"",mesto:"",zemlja:"",lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:""},hasPart:false,ch:null,pch:null,chStale:false,transits:null,types:["analiza"],status:"idle",analysis:"",copyIdx:0,jobId:null};}
+function emptySlot(){return{mode:"messenger",paste:"",rawPaste:"",parsed:null,client:{ime:"",pol:"",datum:"",vreme:"",mesto:"",zemlja:"",lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:"",napomena:"",pitanja:"",email:""},partner:{ime:"",datum:"",vreme:"",mesto:"",zemlja:"",lat:null,lon:null,timezone:null,placeOptions:[],placeStatus:""},hasPart:false,ch:null,pch:null,chStale:false,transits:null,types:["analiza"],status:"idle",analysis:"",copyIdx:0,jobId:null};}
 
 // CSS ----------------------------------------------------------------------
 var CSS="@import url('https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500&display=swap');\n*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}\n:root{--bg:#02000d;--sf:rgba(15,10,28,.9);--sf2:rgba(22,15,38,.92);--bd:rgba(180,140,60,.18);--bd2:rgba(180,140,60,.35);--gd:#c9a84c;--gd2:#e8c96d;--tx:#ede5ff;--mt:#9080b0;--ac:#9b6fd4;--ac2:#7c4fc0;--red:#c06060;--grn:#60b060;}\nbody{font-family:'Jost',sans-serif;color:var(--tx);min-height:100vh;background:var(--bg);overflow-x:hidden;padding-bottom:180px;}\nbody::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 15% 25%,rgba(100,30,180,.5) 0%,transparent 50%),radial-gradient(ellipse at 85% 15%,rgba(40,15,100,.6) 0%,transparent 45%),linear-gradient(170deg,#05010f 0%,#090320 35%,#0d0525 65%,#060115 100%);}\nbody::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:radial-gradient(1.5px 1.5px at 8% 5%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1px 1px at 20% 10%,rgba(255,255,220,.9) 0%,transparent 100%),radial-gradient(2px 2px at 33% 4%,rgba(220,230,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 47% 8%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 60% 3%,rgba(255,240,200,.9) 0%,transparent 100%),radial-gradient(2px 2px at 75% 7%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(2.5px 2.5px at 22% 40%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 48% 44%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(2px 2px at 46% 60%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 25% 75%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(2px 2px at 70% 78%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 50% 87%,rgba(255,255,255,.9) 0%,transparent 100%);animation:tw 7s ease-in-out infinite alternate;}\n@keyframes tw{0%{opacity:.5}50%{opacity:1}100%{opacity:.6}}\n.app{position:relative;z-index:1;max-width:720px;margin:0 auto;padding-bottom:190px;}\n.lwrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;position:relative;z-index:1;}\n.lcard{width:100%;max-width:420px;background:linear-gradient(145deg,rgba(18,10,36,.97),rgba(10,5,24,.99));border:1px solid var(--bd2);border-radius:22px;padding:36px 26px;box-shadow:0 0 80px rgba(100,50,200,.2);}\n.llogo{text-align:center;margin-bottom:22px;}\n.llogo h1{font-family:'Marcellus',serif;font-size:34px;font-weight:400;color:var(--gd2);letter-spacing:3px;text-shadow:0 0 30px rgba(201,168,76,.5);}\n.llogo p{font-size:10px;color:var(--mt);letter-spacing:3px;text-transform:uppercase;margin-top:4px;}\n.ldiv{height:1px;background:linear-gradient(90deg,transparent,var(--bd2),transparent);margin:18px 0;}\n.lfld{margin-bottom:13px;}\n.lfld label{display:block;font-size:11px;color:var(--mt);letter-spacing:.5px;margin-bottom:5px;}\n.lfld input{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--bd);border-radius:8px;padding:11px 14px;color:var(--tx);font-family:'Jost',sans-serif;font-size:14px;outline:none;transition:border-color .2s;}\n.lfld input:focus{border-color:var(--gd);}\n.lbtn{width:100%;padding:13px;background:linear-gradient(135deg,#b8922a,#c9a84c,#e8c96d);color:#1a0e00;font-family:'Marcellus',serif;font-size:17px;font-weight:600;letter-spacing:1.5px;border:none;border-radius:9px;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(201,168,76,.3);margin-top:4px;}\n.lbtn:hover{transform:translateY(-1px);}\n.lerr{color:#e07070;font-size:12px;text-align:center;margin:10px 0 0;}\n.lsuc{color:#70e070;font-size:12px;text-align:center;margin:10px 0 0;}\n.ltabs{display:flex;gap:6px;margin-bottom:18px;}\n.ltab{flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--mt);font-family:'Jost',sans-serif;font-size:12px;cursor:pointer;transition:all .2s;}\n.ltab.on{border-color:var(--gd);background:rgba(201,168,76,.1);color:var(--gd2);}\n.llink{display:block;margin:12px auto 0;background:none;border:none;color:var(--mt);font-size:12px;cursor:pointer;font-family:'Jost',sans-serif;text-decoration:underline;}\n.csel{display:flex;gap:10px;margin-bottom:18px;}\n.cbtn{flex:1;padding:14px 8px;border-radius:12px;border:2px solid var(--bd);background:transparent;cursor:pointer;transition:all .2s;text-align:center;}\n.cbtn:hover,.cbtn.on{border-color:var(--gd);background:rgba(201,168,76,.1);}\n.cflag{font-size:28px;display:block;margin-bottom:5px;}\n.cname{font-family:'Marcellus',serif;font-size:15px;color:var(--gd2);font-weight:600;}\n.csub{font-size:10px;color:var(--mt);margin-top:2px;}\n.vcode{font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;color:var(--gd2);font-family:'Marcellus',serif;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:16px;margin:14px 0;}\n.hdr{padding:0;background:linear-gradient(180deg,rgba(12,6,28,.98) 0%,rgba(8,4,20,.85) 100%);backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100;}\n.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;}\n.hbrand{display:flex;align-items:center;gap:11px;}\n.hname{font-family:'Marcellus',serif;font-size:21px;font-weight:600;color:var(--gd2);letter-spacing:2.5px;}\n.hsub{font-size:9px;color:var(--mt);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}\n.huser{display:flex;align-items:center;gap:7px;}\n.huser span{font-size:11px;color:var(--mt);}\n.hlout{background:transparent;border:1px solid var(--bd);color:var(--mt);font-size:10px;padding:4px 10px;border-radius:12px;cursor:pointer;font-family:'Jost',sans-serif;transition:all .2s;}\n.hlout:hover{border-color:var(--red);color:var(--red);}\n.abadge{background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.35);color:var(--gd);font-size:9px;padding:2px 8px;border-radius:10px;}\n.bnav{display:flex;flex-wrap:wrap;background:linear-gradient(0deg,rgba(8,4,20,.99) 0%,rgba(12,6,28,.95) 100%);border-top:1px solid var(--bd);padding:6px 2px;padding-bottom:max(10px,env(safe-area-inset-bottom,10px));position:fixed;bottom:0;left:0;right:0;z-index:200;max-width:720px;margin:0 auto;}\n.bnav-btn{flex:1 0 25%;max-width:25%;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--mt);font-family:'Jost',sans-serif;cursor:pointer;padding:4px 2px;transition:all .2s;border-radius:8px;position:relative;}\n.bnav-btn.on{color:var(--gd2);background:linear-gradient(180deg,rgba(201,168,76,.22) 0%,rgba(201,168,76,.08) 100%);box-shadow:inset 0 2px 0 var(--gd),0 0 20px rgba(201,168,76,.35);transform:translateY(-2px) scale(1.04);}\n.bnav-btn.on .bnav-ico{text-shadow:0 0 18px rgba(232,201,109,.9);font-size:24px;}\n.bnav-btn.on .bnav-lbl{font-weight:700;color:var(--gd2);text-shadow:0 0 10px rgba(232,201,109,.5);}\n.bnav-ico{font-size:20px;line-height:1;position:relative;}\n.bnav-lbl{font-size:8px;font-weight:500;letter-spacing:.2px;}\n.ndot{position:absolute;top:-2px;right:-6px;width:7px;height:7px;background:var(--ac);border-radius:50%;}\n.ndot-run{position:absolute;top:-2px;right:-6px;width:8px;height:8px;background:#e04040;border-radius:50%;box-shadow:0 0 6px rgba(224,64,64,.8);animation:dotPulse 1.2s ease-in-out infinite;}\n.ndot-done{position:absolute;top:-2px;right:-6px;width:8px;height:8px;background:#50c070;border-radius:50%;box-shadow:0 0 6px rgba(80,192,112,.7);}\n@keyframes dotPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:.6}}\n.sec{padding:16px 14px;}\n.stitle{font-family:'Marcellus',serif;font-size:19px;color:var(--gd2);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:9px;}\n.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:10px;}\n.card-hi{border-color:rgba(201,168,76,.3);background:linear-gradient(145deg,rgba(20,14,35,.95),rgba(15,10,28,.98));}\n.ct{font-size:10px;font-weight:500;color:var(--gd);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:9px;}\n.fld{margin-bottom:8px;}\n.fld label{display:block;font-size:10.5px;color:var(--mt);margin-bottom:3px;}\n.fld input,.fld textarea{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:8px 11px;color:var(--tx);font-family:'Jost',sans-serif;font-size:13px;outline:none;transition:border-color .2s;}\n.fld input:focus,.fld textarea:focus{border-color:var(--gd);}\n.fld input[type=date],.fld input[type=time]{-webkit-appearance:none;appearance:none;color-scheme:dark;}\n.fld textarea{resize:vertical;min-height:72px;}\n.r2{display:grid;grid-template-columns:1fr 1fr;gap:7px;}\n.div1{height:1px;background:var(--bd);margin:9px 0;}\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:9px 16px;border-radius:7px;font-family:'Jost',sans-serif;font-size:12.5px;font-weight:500;cursor:pointer;border:none;transition:all .2s;}\n.bgd{background:linear-gradient(135deg,#b8922a,#c9a84c);color:#1a0e00;font-weight:600;box-shadow:0 2px 12px rgba(201,168,76,.25);}\n.bgd:hover{opacity:.9;transform:translateY(-1px);}\n.bpu{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff;}\n.bpu:hover{opacity:.9;transform:translateY(-1px);}\n.bol{background:transparent;border:1px solid var(--bd);color:var(--mt);}\n.bol:hover{border-color:var(--gd);color:var(--tx);}\n.brd{background:transparent;border:1px solid var(--red);color:var(--red);}\n.bsm{padding:5px 10px;font-size:11px;}\n.bfull{width:100%;}\n.btn:disabled{opacity:.4;cursor:not-allowed;}\n.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:11px;}\n.tab{padding:5px 12px;border-radius:16px;font-size:11px;border:1px solid var(--bd);background:transparent;color:var(--mt);cursor:pointer;font-family:'Jost',sans-serif;transition:all .2s;}\n.tab.on{background:var(--ac2);border-color:var(--ac);color:#fff;}\n.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px;}\n.tbtn{padding:11px 5px;border-radius:8px;border:1px solid var(--bd);background:var(--sf2);color:var(--mt);cursor:pointer;text-align:center;font-family:'Jost',sans-serif;font-size:10.5px;transition:all .2s;position:relative;}\n.tbtn.on{border-color:var(--gd);background:rgba(201,168,76,.1);color:var(--gd2);}\n.tico{font-size:18px;display:block;margin-bottom:4px;line-height:1;}\n.srow{display:flex;align-items:center;gap:7px;padding:7px 10px;background:var(--sf2);border-radius:5px;font-size:11px;margin-bottom:7px;}\n.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}\n.dot-w{background:var(--gd);}\n.slhdr{display:flex;align-items:center;gap:7px;margin-bottom:9px;}\n.slbadge{background:linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.08));color:var(--gd2);border:1px solid rgba(201,168,76,.28);border-radius:5px;padding:2px 9px;font-size:10px;font-weight:600;font-family:'Marcellus',serif;}\n.slst{font-size:10px;padding:2px 8px;border-radius:10px;margin-left:auto;}\n.stidl{background:rgba(138,122,170,.12);color:var(--mt);}\n.strun{background:rgba(155,111,212,.2);color:var(--ac);}\n.stdone{background:rgba(96,176,96,.18);color:var(--grn);}\n.aout{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:15px;font-size:13px;line-height:2.05;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;color:var(--tx);min-height:160px;max-height:55vh;overflow-y:auto;font-family:'Jost',sans-serif;}\n.aout::-webkit-scrollbar{width:3px;}\n.aout::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px;}\n.cur::after{content:'|';animation:bl 1s infinite;color:var(--gd);}\n@keyframes bl{0%,100%{opacity:1}50%{opacity:0}}\n.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}\n.prow{display:flex;justify-content:space-between;padding:4px 8px;background:var(--sf2);border-radius:4px;font-size:11px;}\n.pn{color:var(--mt)}.pv{color:var(--gd2);font-weight:500;}\n.sgnrow{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px;}\n.sgni{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;text-align:center;}\n.sgnl{font-size:9px;color:var(--mt);margin-bottom:2px;}\n.sgnv{font-size:14px;color:var(--gd2);font-family:'Marcellus',serif;font-weight:600;}\n.asplist{font-size:10.5px;color:var(--mt);line-height:1.9;}\n.ac0{color:#e8c96d}.ao{color:#c06060}.at{color:#60a090}.aq{color:#c07840}.as{color:#7090d0}.ax{color:#8a7aaa}\n.ctrack{background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:10px 12px;margin-bottom:9px;}\n.cdots{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}\n.cdot{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;cursor:pointer;transition:all .15s;}\n.abar{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;}\n.urow{display:flex;align-items:center;gap:9px;padding:10px 13px;background:var(--sf);border:1px solid var(--bd);border-radius:8px;margin-bottom:7px;}\n.uav{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--ac2),var(--gd));display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0;}\n.acard{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:border-color .2s;}\n.acard:hover{border-color:var(--gd);}\n.acard-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}\n.acard-name{font-size:13.5px;font-weight:500;font-family:'Marcellus',serif;color:var(--gd2);}\n.acard-date{font-size:10px;color:var(--mt);}\n.acard-prev{font-size:11.5px;color:var(--mt);line-height:1.5;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}\n.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;}\n.modal{background:var(--sf);border:1px solid var(--bd);border-radius:16px 16px 0 0;padding:20px 16px;width:100%;max-height:88vh;overflow-y:auto;}\n.modal-title{font-family:'Marcellus',serif;font-size:18px;color:var(--gd2);margin-bottom:14px;}\n.toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(20,12,38,.97);border:1px solid var(--gd);color:var(--tx);padding:10px 20px;border-radius:14px;font-size:12px;z-index:999;max-width:88vw;white-space:normal;text-align:center;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:tIn .3s ease;}\n@keyframes tIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}\n.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--gd);border-radius:50%;animation:sp .7s linear infinite;display:inline-block;}\n@keyframes sp{to{transform:rotate(360deg)}}\n.empty{text-align:center;padding:36px 20px;color:var(--mt);}\n.empty .ico{font-size:30px;margin-bottom:10px;opacity:.4;}\n.sel-input{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:8px 11px;color:var(--tx);font-family:'Jost',sans-serif;font-size:13px;outline:none;}\n.splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#02000d;overflow:hidden;animation:splashFade .8s ease 3.2s forwards;}\n.splash::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,rgba(80,20,160,.4) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(20,10,80,.5) 0%,transparent 50%),radial-gradient(ellipse at 50% 50%,rgba(10,5,40,.3) 0%,transparent 70%);}\n.splash::after{content:'';position:absolute;inset:0;background-image:radial-gradient(1px 1px at 10% 15%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 25% 8%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 40% 22%,rgba(255,240,200,.8) 0%,transparent 100%),radial-gradient(2px 2px at 55% 5%,rgba(220,230,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 70% 18%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 85% 12%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1px 1px at 15% 35%,rgba(255,255,220,.9) 0%,transparent 100%),radial-gradient(2px 2px at 35% 45%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 50% 38%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 65% 42%,rgba(255,240,200,.9) 0%,transparent 100%),radial-gradient(1px 1px at 80% 35%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(2px 2px at 20% 55%,rgba(220,230,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 45% 62%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 60% 58%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 75% 65%,rgba(255,240,200,.8) 0%,transparent 100%),radial-gradient(2px 2px at 90% 52%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1px 1px at 8% 72%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 30% 78%,rgba(220,230,255,1) 0%,transparent 100%),radial-gradient(2px 2px at 55% 85%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(1px 1px at 72% 88%,rgba(255,255,220,.9) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 88% 75%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1px 1px at 42% 92%,rgba(255,255,255,.8) 0%,transparent 100%);animation:tw 5s ease-in-out infinite alternate;}\n.splash-content{position:relative;z-index:1;text-align:center;}\n.splash-title{font-family:'Marcellus',serif;font-size:38px;font-weight:400;color:var(--gd2);letter-spacing:4px;text-shadow:0 0 40px rgba(201,168,76,.6);margin-top:20px;opacity:0;animation:splashIn .8s ease .3s forwards;}\n.splash-text{font-family:'Marcellus',serif;font-size:15px;color:#c9a84c;letter-spacing:1px;margin-top:14px;overflow:hidden;white-space:nowrap;width:0;border-right:2px solid rgba(201,168,76,.7);animation:typing 2s steps(36) .8s forwards,blinkCaret .6s step-end infinite;}\n@keyframes splashIn{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}\n@keyframes splashFade{to{opacity:0;pointer-events:none}}\n@keyframes typing{from{width:0}to{width:100%}}\n@keyframes blinkCaret{0%,100%{border-color:rgba(201,168,76,.7)}50%{border-color:transparent}}\nhtml[data-theme=light]{--bg:#f6f2ea;--sf:rgba(255,255,255,.94);--sf2:#ffffff;--bd:rgba(140,110,50,.28);--bd2:rgba(140,110,50,.5);--gd:#8a6d1f;--gd2:#6e5512;--tx:#2a2438;--mt:#6d6383;--ac:#7c4fc0;--ac2:#5e3a9e;--red:#b04040;--grn:#3d8a3d;}\nhtml[data-theme=light] body::before{background:linear-gradient(170deg,#faf6ee 0%,#f3ecdd 50%,#efe6d4 100%);}\nhtml[data-theme=light] body::after{display:none;}\nhtml[data-theme=light] .hdr{background:linear-gradient(180deg,rgba(250,246,238,.98),rgba(243,236,221,.92));}\nhtml[data-theme=light] .bnav{background:linear-gradient(0deg,rgba(250,246,238,.99),rgba(243,236,221,.96));}\nhtml[data-theme=light] .lcard,html[data-theme=light] .modal{background:#faf6ee;}\nhtml[data-theme=light] .toast{background:rgba(255,252,245,.98);color:#2a2438;}\nhtml[data-theme=light] .card-hi{background:#fffdf8;}\nhtml[data-fs=l] .app,html[data-fs=l] .modal,html[data-fs=l] .bnav{zoom:1.13;}\nhtml[data-fs=xl] .app,html[data-fs=xl] .modal,html[data-fs=xl] .bnav{zoom:1.28;}\n";
@@ -1398,8 +1432,8 @@ export default function App(){
       return s;
     });
   }
-  var emptyDs={paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null,hist:null,histLoading:false};
-  var emptyPq={prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null,hist:null,histLoading:false};
+  var emptyDs={paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null,hist:null,histLoading:false};
+  var emptyPq={prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null,hist:null,histLoading:false};
   var [slots,setSlots]=useState(function(){return scrubErrorSlots(loadSlots("ab_slots",[emptySlot(),emptySlot(),emptySlot()]),"analysis","status");});
   var [custPr,setCustPr]=useState({sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}});
   var [analyses,setAnalyses]=useState([]);
@@ -1551,6 +1585,10 @@ export default function App(){
   }
   var [editPr,setEditPr]=useState("main");
   var [viewAn,setViewAn]=useState(null);
+  // Dosije klijenta cije je analize otvorena (email + znak) - da bi Baza mogla
+  // da posalje analizu na mejl bez vracanja na tab Analiza.
+  var [viewAnDos,setViewAnDos]=useState(null);
+  var [csvBusy,setCsvBusy]=useState(false);
   // Deo-po-deo kopiranje u Baza modalu (Marko 4.7.: analiza zavrsi u Bazi ali se
   // u Messenger salje DEO PO DEO - radnica je iz Baze mogla da kopira samo celo).
   var [viewAnCi,setViewAnCi]=useState(0);
@@ -1657,6 +1695,7 @@ export default function App(){
   function openAnalysis(a){
     setViewAn(a);
     setViewAnAll(null);
+    setViewAnDos(null);
     if(a&&a.preview&&a.id){
       fetchSafe(API+"/api/analyses/"+a.id+"/full",null,20000)
         .then(function(r){return r.json();})
@@ -1669,6 +1708,11 @@ export default function App(){
     }
     var cn=a&&a.clientName;
     if(cn&&cn!=="Downsell"&&cn!=="Pitanja"){
+      // Dosije nosi email i znak klijenta - potreban je dugmetu "Posalji na email"
+      fetchSafe(API+"/api/clients/dossier?name="+encodeURIComponent(cn),{},8000)
+        .then(function(r){return r.json();})
+        .then(function(d){if(d&&d.found&&d.client)setViewAnDos({clientName:cn,client:d.client});})
+        .catch(function(){});
       fetchSafe(API+"/api/analyses?client="+encodeURIComponent(cn)+"&limit=50",null,30000)
         .then(function(r){return r.json();})
         .then(function(d){if(d&&d.analyses)setViewAnAll({clientName:cn,items:d.analyses});})
@@ -2041,6 +2085,13 @@ export default function App(){
           toast2("⚠ U poruci postoji vreme ali parser ga nije prepoznao - proveri rucno.");
         }
         var newClient=Object.assign({},s.client,p.klijent||{},{pitanja:p.pitanja||""});
+        // Klijenti cesto ostave mejl u samoj poruci. Vadimo ga regexom (pouzdanije
+        // od AI parsera - adresa ima strog oblik) i to samo ako radnica jos nije
+        // rucno upisala neki, da joj se unos ne prepise.
+        if(!validEmail(newClient.email)){
+          var emIzPoruke=nadjiEmailUTekstu(s.paste);
+          if(emIzPoruke)newClient.email=emIzPoruke;
+        }
         var newPartner=p.imaPartnera?Object.assign({},s.partner,p.partner||{}):s.partner;
         // Auto geocode (paralelno, ne ceka analizu)
         var geoClientP=geocodePerson(newClient);
@@ -2747,7 +2798,11 @@ export default function App(){
     }catch(eF){console.warn("main astro facts:",eF.message);}
     var ri=idx;
     try{
-      var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",client_gender:sl.client.pol||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null};
+      var genPayload={system_prompt:sys,user_prompt:usr,client_name:sl.client.ime||"",client_gender:sl.client.pol||"",job_type:"analiza",user_id:user&&user.id||"",birth_date:sl.client.datum||null,birth_time:sl.client.vreme||null,birth_place:sl.client.mesto||null,latitude:sl.client.lat,longitude:sl.client.lon,timezone:sl.client.timezone||null,zemlja:sl.client.zemlja||null,
+        // Email + natalni snimak se cuvaju uz klijenta da bi kasnija ponuda
+        // (za 3-12 meseci) mogla da bude personalizovana po znaku i podznaku.
+        client_email:validEmail(sl.client.email)||null,
+        client_natal:sl.ch?{sunSign:sl.ch.sunSign,moonSign:sl.ch.moonSign,ascSign:sl.ch.ascSign,ascDeg:sl.ch.ascDeg,planets:sl.ch.planets,houses:sl.ch.houses,source:sl.ch.source}:null};
       // Submit job to backend for background processing.
       // onRetry: ako server spava (Render free tier), prvi attempts cesto fail, sledeci uspe.
       // Tokom backoff-a obavestavamo radnicu da nije pukla, samo se server budi.
@@ -3104,7 +3159,7 @@ export default function App(){
         usrContent+=transitCalendarBlock(dsNatal,todayStr);
         usrContent+=downsellWindowsBlock(dsNatal);
       }catch(eCal2){console.warn("ds transit calendar:",eCal2&&eCal2.message);}
-      var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null};
+      var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null,client_email:validEmail(ds.clientEmail)||null};
       var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
@@ -3178,7 +3233,7 @@ export default function App(){
         var pqNatal=pq.clientBirthDate?chartToNatalDegs(calcChart(pq.clientBirthDate,"",44.8176,20.4633,"Europe/Belgrade")):null;
         pqUsr+=transitCalendarBlock(pqNatal,todayStr);
       }catch(eCal3){console.warn("pq transit calendar:",eCal3&&eCal3.message);}
-      var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null};
+      var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null,client_email:validEmail(pq.clientEmail)||null};
       var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
@@ -3617,6 +3672,30 @@ export default function App(){
   }
 
   function doCopy(text,label){cpText(text);toast2(label+" kopiran!");}
+
+  // IZVOZ MEJLOVA (samo admin): Marko ovo ubacuje u Resend/Mailchimp kad salje
+  // ponudu 3-12 meseci posle analize. Ide preko fetch-a a ne obicnog linka jer
+  // endpoint trazi x-user-id/x-user-role zaglavlja za admin proveru.
+  function preuzmiCsv(){
+    if(csvBusy)return;
+    setCsvBusy(true);
+    toast2("Pripremam izvoz...");
+    fetchSafe(API+"/api/clients/export.csv",{headers:{"x-user-id":user.id||"","x-user-role":user.role||""}},60000)
+      .then(function(r){
+        if(!r.ok)return r.json().then(function(j){throw new Error(j&&j.error||("Greska "+r.status));});
+        return r.blob();
+      })
+      .then(function(blob){
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement("a");
+        a.href=url;a.download="astrobalkan-klijenti-"+belgradeRawDate(new Date())+".csv";
+        document.body.appendChild(a);a.click();document.body.removeChild(a);
+        setTimeout(function(){URL.revokeObjectURL(url);},2000);
+        toast2("Izvoz preuzet.");
+      })
+      .catch(function(e){toast2(e.message||"Izvoz nije uspeo.");})
+      .then(function(){setCsvBusy(false);});
+  }
   // Svi korisnici vide sve analize iz baze (deljena baza)
   var myAnalyses=analyses;
 
@@ -3729,6 +3808,19 @@ export default function App(){
         React.createElement("div",{className:"card"},
           React.createElement("div",{className:"ct"},"Klijent"),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime"),React.createElement("input",{value:s.client.ime,onChange:function(e){upC("ime",e.target.value);},placeholder:"Ime klijenta"})),
+          // EMAIL KLIJENTA - opciono. Sluzi za dve stvari: (1) dugme "Posalji na
+          // email" ispod gotove analize, (2) bazu za kasnije ponude - uz mejl se
+          // cuva i natalna karta pa ponuda moze biti personalizovana po znaku.
+          React.createElement("div",{className:"fld"},
+            React.createElement("label",null,"Email klijenta (opciono)"),
+            React.createElement("input",{type:"email",inputMode:"email",autoCapitalize:"off",autoCorrect:"off",spellCheck:false,value:s.client.email||"",onChange:function(e){upC("email",e.target.value.trim());},placeholder:"npr. ana@gmail.com"}),
+            (function(){
+              var em=(s.client.email||"").trim();
+              if(!em)return React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"3px"}},"Ako klijent ostavi mejl, analiza mo\u017ee da se po\u0161alje jednim klikom.");
+              if(!validEmail(em))return React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",marginTop:"3px"}},"Ovo ne li\u010di na email adresu \u2014 proveri.");
+              return React.createElement("div",{style:{fontSize:"11px",color:"#3a8a3a",marginTop:"3px"}},"\u2705 Sa\u010duva\u0107e se uz natalnu kartu klijenta.");
+            })()
+          ),
           // POL KLIJENTA - OBAVEZAN izbor (Marko 8.7.): AI je grešio rod (muškarcu pisao
           // u ženskom rodu). Radnica MORA da izabere pre generisanja; bez izbora doGen blokira.
           React.createElement("div",{className:"fld"},
@@ -3902,6 +3994,15 @@ export default function App(){
           React.createElement("button",{className:"btn bol bsm",disabled:s.copyIdx>=ch.length-1,onClick:function(){upSlot(idx,function(sl){return Object.assign({},sl,{copyIdx:Math.min(ch.length-1,sl.copyIdx+1)});});}},">" ),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(stripUpoz(s.analysis));toast2("Sve kopirano!");}},"\u0041ll"),
           React.createElement("button",{className:"btn bol bsm",onClick:function(){if(s.chStale){toast2("Prvo prera\u010Dunaj horoskop \u2014 podaci su izmenjeni.");return;}doGen(idx);},disabled:busy||s.chStale},"\u21BA")
+        ),
+        // POSALJI NA EMAIL - zaseban sirok red ispod Kopiraj dugmica. Kopira ceo
+        // tekst sa potpisom i otvara Gmail sa popunjenim primaocem i naslovom.
+        s.status==="done"&&s.analysis&&React.createElement(React.Fragment,null,
+          React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(s.client.email),onClick:function(){
+            var greska=posaljiMailom({email:s.client.email,ime:s.client.ime,tekst:s.analysis,tip:"analiza"});
+            toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V (na telefonu dr\u017ei pa Nalepi).");
+          }},"\uD83D\uDCE7 Po\u0161alji na email"),
+          !validEmail(s.client.email)&&React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"4px",textAlign:"center"}},"Upi\u0161i email klijenta gore da bi ovo dugme radilo.")
         ),
         // NOVA ANALIZA dugme
         s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});}},"\u21BB Nova analiza")
@@ -4089,8 +4190,12 @@ export default function App(){
           "2. Klikni Očitaj — AI izvuče ime, datum, vreme, mesto i sva pitanja. Ako je klijent već rađen, podaci se dopune iz dosijea (videćeš poruku).\n"+
           "3. PROVERI polja (naročito datume!) pa klikni Generiši. Možeš da se vratiš u Messenger — stiže zvuk i obaveštenje kad je gotovo.\n"+
           "4. Šalji DEO PO DEO dugmićima Kopiraj 1/N. Nikad ne šalji ceo tekst odjednom u Messenger.\n\n"+
+          "EMAIL KLIJENTA\n"+
+          "Polje Email klijenta je opciono, ali popuni ga kad god klijent ostavi mejl — ako ga je napisao u poruci, sam se prepozna kad klikneš Očitaj.\n"+
+          "Kad je analiza gotova, dugme 📧 Pošalji na email kopira ceo tekst i otvori Gmail sa već popunjenim primaocem i naslovom — pritisni Ctrl+V (na telefonu drži pa Nalepi), doradi ako treba i pošalji.\n"+
+          "Uz mejl se čuva i natalna karta klijenta (znak, podznak, Mesec), pa Marko kasnije može da šalje personalizovane ponude po znaku.\n\n"+
           "RED ČEKANJA\nUjutru nalepi poruke više klijenata u Red čekanja (+ Dodaj u red). Kad je slot slobodan, klikni ▶ Sledeći iz reda — sam se očita.\n\n"+
-          "BAZA\nSve završene analize su u Bazi (i kad slot pukne — analiza JE tamo). Otvori analizu → kopiraj deo-po-deo (pamti dokle si stigla) ili 📥 U slot za novu analizu istog klijenta.\n\n"+
+          "BAZA\nSve završene analize su u Bazi (i kad slot pukne — analiza JE tamo). Otvori analizu → kopiraj deo-po-deo (pamti dokle si stigla), 📧 Pošalji na mejl (ako je sačuvan) ili 📥 U slot za novu analizu istog klijenta. U polju za pretragu možeš da kucaš i email adresu.\n\n"+
           "CRVENO UPOZORENJE na početku analize\nTo je poruka TEBI, ne klijentu — pročitaj je i proveri tekst. Pri kopiranju se automatski skida.\n\n"+
           "ČESTA PITANJA\n• Generisanje traje 3-6 min. Ako traje duže od 15 min, pogledaj u Bazu — verovatno je tamo.\n"+
           "• 'PAŽNJA — klijent već ima analizu': OK pravi NOVU, Cancel = pogledaj postojeću u Bazi (ne generiši duplo!).\n"+
@@ -4125,13 +4230,20 @@ export default function App(){
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:ds.clientName,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v,ds.clientBirthDate);},placeholder:"Npr. Karolina"}),
               dsMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"45vh",overflowY:"auto"}},matchesHint(dsMatches),
-                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null});});if(c.id)loadClientHistory("ds",dsIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
+                dsMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null,clientEmail:c.email||s.clientEmail||""});});if(c.id)loadClientHistory("ds",dsIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
                   React.createElement("div",{style:{fontSize:"10px",color:c.orphan?"#b87010":"var(--mt)"}},c.orphan?("\u26A0 nadjeno u Bazi ("+(c.total_count||0)+" analiza) \u2014 istorijat se NE povlaci automatski, nalepi prethodnu analizu rucno"):((c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza"))
                 );})
               )
             ),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum rodjenja klijenta (za uparivanje)"),React.createElement(DateInput3,{value:ds.clientBirthDate,onChange:function(v){upDs(dsIdx,function(s){return Object.assign({},s,{clientBirthDate:v,clientId:null});});if(ds.clientName)searchClientsServer(ds.clientName,v);}})),
+            // Email klijenta: povlaci se iz baze kad se klijent izabere iz liste,
+            // ali radnica moze da ga doda ili ispravi - upisace se nazad u bazu.
+            React.createElement("div",{className:"fld"},
+              React.createElement("label",null,"Email klijenta (opciono)"),
+              React.createElement("input",{type:"email",inputMode:"email",autoCapitalize:"off",autoCorrect:"off",spellCheck:false,value:ds.clientEmail||"",onChange:function(e){var v=e.target.value.trim();upDs(dsIdx,function(s){return Object.assign({},s,{clientEmail:v});});},placeholder:"npr. ana@gmail.com"}),
+              ((ds.clientEmail||"").trim()&&!validEmail(ds.clientEmail))&&React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",marginTop:"3px"}},"Ovo ne li\u010di na email adresu \u2014 proveri.")
+            ),
             ds.clientId&&React.createElement(ClientHistoryBox,{hist:ds.hist,loading:ds.histLoading,onOpen:function(x){openAnalysis({id:x.id,preview:true,clientName:ds.clientName,date:x.date,types:[x.job_type]});}}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza"+(ds.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:ds.paste,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{paste:v});});},style:{minHeight:"110px"},placeholder:ds.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu klijenta..."})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:ds.pitanja,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{pitanja:v});});},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
@@ -4152,7 +4264,11 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:ds.ci>=getChunks(ds.an).length-1,onClick:function(){upDs(dsIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(ds.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(ds.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
+            ds.st==="done"&&ds.an&&React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(ds.clientEmail),onClick:function(){
+              var greska=posaljiMailom({email:ds.clientEmail,ime:ds.clientName,tekst:ds.an,tip:"downsell"});
+              toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V (na telefonu dr\u017ei pa Nalepi).");
+            }},"\uD83D\uDCE7 Po\u0161alji na email"),
+            ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
       })(),
@@ -4182,13 +4298,20 @@ export default function App(){
               React.createElement("label",null,"Ime klijenta"),
               React.createElement("input",{value:pq.clientName,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{clientName:v,clientId:null});});loadClients();searchClientsServer(v,pq.clientBirthDate);},placeholder:"Npr. Karolina"}),
               pqMatches.length>0&&React.createElement("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",marginTop:"2px",zIndex:10,maxHeight:"45vh",overflowY:"auto"}},matchesHint(pqMatches),
-                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null});});if(c.id)loadClientHistory("pq",pqIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
+                pqMatches.map(function(c){return React.createElement("div",{key:c.id,style:{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--bd)",fontSize:"12px"},onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{clientName:c.name,clientBirthDate:c.birth_date||"",clientId:c.id||null,clientEmail:c.email||s.clientEmail||""});});if(c.id)loadClientHistory("pq",pqIdx,c.id);else toast2("Ova osoba ima analize u Bazi ali nisu vezane - otvori Bazu, kopiraj prethodnu analizu i nalepi je ovde.");}},
                   React.createElement("div",{style:{fontWeight:600,color:"var(--gd2)"}},c.name),
                   React.createElement("div",{style:{fontSize:"10px",color:c.orphan?"#b87010":"var(--mt)"}},c.orphan?("\u26A0 nadjeno u Bazi ("+(c.total_count||0)+" analiza) \u2014 istorijat se NE povlaci automatski, nalepi prethodnu analizu rucno"):((c.birth_date?fmtDMYFromISO(c.birth_date):"bez datuma")+(c.birth_place?" \u00B7 "+c.birth_place:"")+" \u00B7 "+(c.total_count||0)+" analiza"))
                 );})
               )
             ),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Datum rodjenja klijenta (za uparivanje)"),React.createElement(DateInput3,{value:pq.clientBirthDate,onChange:function(v){upPq(pqIdx,function(s){return Object.assign({},s,{clientBirthDate:v,clientId:null});});if(pq.clientName)searchClientsServer(pq.clientName,v);}})),
+            // Email klijenta: povlaci se iz baze kad se klijent izabere iz liste,
+            // ali radnica moze da ga doda ili ispravi - upisace se nazad u bazu.
+            React.createElement("div",{className:"fld"},
+              React.createElement("label",null,"Email klijenta (opciono)"),
+              React.createElement("input",{type:"email",inputMode:"email",autoCapitalize:"off",autoCorrect:"off",spellCheck:false,value:pq.clientEmail||"",onChange:function(e){var v=e.target.value.trim();upPq(pqIdx,function(s){return Object.assign({},s,{clientEmail:v});});},placeholder:"npr. ana@gmail.com"}),
+              ((pq.clientEmail||"").trim()&&!validEmail(pq.clientEmail))&&React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",marginTop:"3px"}},"Ovo ne li\u010di na email adresu \u2014 proveri.")
+            ),
             pq.clientId&&React.createElement(ClientHistoryBox,{hist:pq.hist,loading:pq.histLoading,onOpen:function(x){openAnalysis({id:x.id,preview:true,clientName:pq.clientName,date:x.date,types:[x.job_type]});}}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"+(pq.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:pq.prev,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{prev:v});});},placeholder:pq.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pq.quest,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{quest:v});});},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
@@ -4209,7 +4332,11 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",disabled:pq.ci>=getChunks(pq.an).length-1,onClick:function(){upPq(pqIdx,function(s){return Object.assign({},s,{ci:Math.min(getChunks(pq.an).length-1,s.ci+1)});});}},">" ),
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pq.an);toast2("Sve kopirano!");}},"Sve")
             ),
-            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
+            pq.st==="done"&&pq.an&&React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(pq.clientEmail),onClick:function(){
+              var greska=posaljiMailom({email:pq.clientEmail,ime:pq.clientName,tekst:pq.an,tip:"pitanja"});
+              toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V (na telefonu dr\u017ei pa Nalepi).");
+            }},"\uD83D\uDCE7 Po\u0161alji na email"),
+            pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
       })(),
@@ -4220,7 +4347,8 @@ export default function App(){
         // Toggle: Aktivne / Korpa
         React.createElement("div",{style:{display:"flex",gap:"6px",marginBottom:"10px"}},
           React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},"📁 Aktivne ("+(totalAnalyses||analyses.length)+")"),
-          React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":""))
+          React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":"")),
+          user.role==="admin"&&React.createElement("button",{className:"btn bol bsm",style:{marginLeft:"auto"},disabled:csvBusy,onClick:preuzmiCsv,title:"Preuzmi CSV sa mejlovima i znakovima klijenata (za slanje ponuda)"},csvBusy?"⏳":"⬇ Mejlovi CSV")
         ),
         // KORPA view
         bazaView==="trash"&&(function(){
@@ -4287,7 +4415,7 @@ export default function App(){
             })
           );
         })(),
-        React.createElement("div",{className:"fld",style:{marginBottom:"6px"}},React.createElement("input",{value:bazaSearch,onChange:function(e){setBazaSearch(e.target.value);},placeholder:"Pretrazi po imenu, datumu, znaku...",className:"sel-input"})),
+        React.createElement("div",{className:"fld",style:{marginBottom:"6px"}},React.createElement("input",{value:bazaSearch,onChange:function(e){setBazaSearch(e.target.value);},placeholder:"Pretrazi po imenu ili email adresi...",className:"sel-input"})),
         React.createElement("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}},
           React.createElement("label",{style:{fontSize:"10px",color:"var(--mt)"}},"Datum:"),
           React.createElement("input",{type:"date",value:bazaDateFilter,onChange:function(e){setBazaDateFilter(e.target.value);},style:{background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:"6px",padding:"5px 8px",color:"var(--tx)",fontFamily:"'Jost',sans-serif",fontSize:"12px"}}),
@@ -4501,6 +4629,17 @@ export default function App(){
       return React.createElement("div",{className:"modal-bg",onClick:function(){setViewAn(null);setViewAnAll(null);}},
         React.createElement("div",{className:"modal",onClick:function(e){e.stopPropagation();}},
           React.createElement("div",{className:"modal-title"},(viewAn.clientName||"Analiza")+" \u00B7 "+viewAn.date),
+          // Email + znak klijenta iz dosijea: radnica odmah vidi da li ovaj covek
+          // ima mejl u bazi, bez vracanja na tab Analiza.
+          (function(){
+            var dos=(viewAnDos&&viewAnDos.clientName===viewAn.clientName)?viewAnDos.client:null;
+            if(!dos)return null;
+            var delovi=[];
+            if(dos.email)delovi.push("\uD83D\uDCE7 "+dos.email);
+            if(dos.znak)delovi.push(dos.znak+(dos.podznak?" / podznak "+dos.podznak:""));
+            if(delovi.length===0)return null;
+            return React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"-4px",marginBottom:"8px"}},delovi.join("  \u00B7  "));
+          })(),
           !stillLoading&&vch.length>1&&React.createElement(ChunkTracker,{ch:vch,ci:viewAnCi,setCi:setViewAnCi}),
           React.createElement("div",{className:"aout",style:{maxHeight:"50vh"}},cleanText+(stillLoading?"\n\n\u23F3 Ucitavam ceo tekst analize...":"")),
           !stillLoading&&vch.length>1&&React.createElement("div",{className:"abar",style:{marginTop:"10px"}},
@@ -4529,7 +4668,7 @@ export default function App(){
                 .then(function(r){return r.json();}).catch(function(){return null;})
                 .then(function(dos){
                   var has=dos&&dos.found&&dos.client;
-                  upSlot(fIdx,function(s){return Object.assign({},s,{client:Object.assign({},s.client,{ime:nm,datum:(has&&dos.client.datum)||s.client.datum||"",vreme:(has&&dos.client.vreme)||s.client.vreme||"",mesto:(has&&dos.client.mesto)||s.client.mesto||""})});});
+                  upSlot(fIdx,function(s){return Object.assign({},s,{client:Object.assign({},s.client,{ime:nm,datum:(has&&dos.client.datum)||s.client.datum||"",vreme:(has&&dos.client.vreme)||s.client.vreme||"",mesto:(has&&dos.client.mesto)||s.client.mesto||"",email:(has&&dos.client.email)||s.client.email||"",pol:(has&&dos.client.pol)||s.client.pol||""})});});
                   setViewAn(null);setViewAnAll(null);setTab("a"+(fIdx+1));
                   toast2(has?"📇 "+nm+" učitan(a) u Analizu "+(fIdx+1)+" sa podacima iz dosijea.":nm+" učitan(a) u Analizu "+(fIdx+1)+" — dopuni podatke.");
                 });
@@ -4557,7 +4696,18 @@ export default function App(){
                   toast2("Premesteno u korpu.");
                 }).catch(function(){toast2("Greska pri brisanju.");});
             }},"\uD83D\uDDD1 U korpu"),
-            React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);setViewAnAll(null);}},"Zatvori")
+            (function(){
+              var dos=(viewAnDos&&viewAnDos.clientName===viewAn.clientName)?viewAnDos.client:null;
+              var em=dos&&dos.email;
+              if(!em)return null;
+              var tip=/pitanja/i.test(viewAn.clientName||"")?"pitanja":/downsell/i.test(viewAn.clientName||"")?"downsell":"analiza";
+              return React.createElement("button",{className:"btn bpu bsm",onClick:function(){
+                if(stillLoading){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam ceo tekst analize.");return;}
+                var greska=posaljiMailom({email:em,ime:(viewAn.clientName||"").split(" - ")[0],tekst:cleanText,tip:tip});
+                toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V.");
+              }},"\uD83D\uDCE7 Po\u0161alji");
+            })(),
+            React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);setViewAnAll(null);setViewAnDos(null);}},"Zatvori")
           )
         )
       );

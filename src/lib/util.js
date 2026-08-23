@@ -472,3 +472,32 @@ export function repairTruncatedJson(s){
   }
   return null;
 }
+
+// ============================================================================
+// EMAIL KLIJENTA (za slanje analize i za kasnije personalizovane ponude)
+// ============================================================================
+
+// Namerno labava provera - ista kao cleanEmail na backendu. Svrha je da odbije
+// ono sto radnica ukuca u polje kad klijent nema mejl ("nema", "-", "ne zeli"),
+// a NE da sudi o egzoticnim ali validnim adresama. Vraca ociscenu adresu ili "".
+export function validEmail(v){
+  var e=String(v==null?"":v).trim().toLowerCase();
+  if(!e||e.length>254)return "";
+  return /^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/.test(e)?e:"";
+}
+
+// Klijenti cesto ostave mejl u samoj Messenger poruci. Regex je za ovo
+// pouzdaniji od AI parsera - adresa ima strog oblik, nema sta da se "protumaci".
+export function nadjiEmailUTekstu(t){
+  var m=String(t||"").match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  return m?validEmail(m[0]):"";
+}
+
+// Naslov mejla koji radnica salje klijentu.
+export function mailNaslov(tip,ime){
+  var ko=String(ime||"").trim();
+  var osnov=tip==="pitanja"?"Odgovori na tvoja pitanja"
+    :tip==="downsell"?"Tvoja astro prognoza"
+    :"Tvoja astro analiza";
+  return osnov+(ko?" - "+ko:"")+" | Astrolog Suzana";
+}
