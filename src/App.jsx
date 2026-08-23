@@ -611,35 +611,25 @@ function belgradeRawDate(d){var fmt=new Intl.DateTimeFormat("en-CA",{timeZone:"E
 // ============================================================================
 // SLANJE ANALIZE NA EMAIL
 // ============================================================================
-// Radnica klikne "Posalji na email": ceo tekst (analiza + potpis) ode u
-// clipboard, a Gmail se otvori sa vec popunjenim primaocem i naslovom. Radnica
-// samo nalepi (Ctrl+V / drzi pa "Nalepi"), doradi ako treba, i posalje.
+// Radnice rade sa telefona, pa slanje NE ide preko Gmail-a nego iz same
+// aplikacije: klik na "Posalji" otvori ekran sa popunjenim primaocem, naslovom
+// i celim tekstom u polju koje moze da se uredi; jos jedan klik i mejl je
+// poslat sa kontakt@astrologsuzana.com. Bez izlaska iz aplikacije i bez
+// lepljenja.
 //
-// Zasto se tekst NE stavlja u link: Gmail compose prima telo poruke kroz URL,
-// a analiza je 8.000-20.000 znakova. Takav URL Google odbija (414), pa bi
-// dugme radilo za kratke a tiho pucalo za prave analize. Clipboard nema
-// ogranicenje duzine i radi isto na telefonu i na racunaru.
+// Zasto ne Gmail: compose link prima telo poruke kroz URL, a analiza je
+// 8.000-20.000 znakova - takav URL Google odbija (414). Uz to, na Androidu
+// klik na mail.google.com otvara Gmail APLIKACIJU koja ne mora da poslusa
+// parametre iz linka, pa bi radnica cesto zavrsila u praznom sanducetu.
 var MAIL_OD="kontakt@astrologsuzana.com";
 var MAIL_SAJT="astrologsuzana.com";
 var MAIL_POTPIS="\n\n---\nSuzana\n"+MAIL_SAJT+"\n"+MAIL_OD;
 
-// Vraca "" kad je sve u redu, ili poruku za radnicu kad ne moze da se salje.
-function posaljiMailom(o){
-  var email=validEmail(o&&o.email);
-  var tekst=String(o&&o.tekst||"").trim();
-  if(!email)return "Upisi email klijenta pre slanja.";
-  if(!tekst)return "Nema teksta analize za slanje.";
-  // stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme
-  // da ode klijentu - isto pravilo kao kod Kopiraj dugmica.
-  var telo=fmtText(stripUpoz(tekst))+MAIL_POTPIS;
-  cpText(telo);
-  var url="https://mail.google.com/mail/?authuser="+encodeURIComponent(MAIL_OD)
-    +"&view=cm&fs=1&tf=1"
-    +"&to="+encodeURIComponent(email)
-    +"&su="+encodeURIComponent(mailNaslov(o.tip,o.ime));
-  var w=window.open(url,"_blank","noopener");
-  if(!w)return "Tekst je kopiran, ali browser je blokirao otvaranje Gmail-a. Dozvoli pop-up prozore za ovu stranicu.";
-  return "";
+// Telo mejla koje radnica dobija u polju za uredjivanje.
+// stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme da
+// ode klijentu - isto pravilo kao kod Kopiraj dugmica.
+function sastaviTeloMaila(tekst){
+  return fmtText(stripUpoz(String(tekst||"")))+MAIL_POTPIS;
 }
 
 // PlaceStatus - status row ispod Mesto/Zemlja polja: ✅ ok | ⏳ pending | dropdown za ambiguous | ❌ not_found | ⚠️ error
@@ -1523,7 +1513,7 @@ export default function App(){
     slots.forEach(function(s,idx){
       if(s&&s.status==="generating"&&s.jobId){
         resumeLoop(s.jobId,s.genStartedAt,
-          function(t){upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:t,jobId:null});});},
+          function(t){upSlot(idx,function(cur){return Object.assign({},cur,{status:"done",analysis:t,jobId:null,lastJobId:cur.jobId});});},
           // Greska: toast + idle sa ocuvanim podacima, ne lazna "gotova analiza"
           function(t){upSlot(idx,function(cur){return Object.assign({},cur,{status:"idle",analysis:"",jobId:null,genStartedAt:null});});toast2(t);},
           "A"+(idx+1));
@@ -1532,7 +1522,7 @@ export default function App(){
     dsSlots.forEach(function(s,idx){
       if(s&&s.st==="generating"&&s.jobId){
         resumeLoop(s.jobId,s.genStartedAt,
-          function(t){upDs(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null});});},
+          function(t){upDs(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null,lastJobId:cur.jobId});});},
           function(t){upDs(idx,function(cur){return Object.assign({},cur,{an:"",st:"idle",jobId:null,genStartedAt:null});});toast2(t);},
           "DS"+(idx+1));
       }
@@ -1540,7 +1530,7 @@ export default function App(){
     pqSlots.forEach(function(s,idx){
       if(s&&s.st==="generating"&&s.jobId){
         resumeLoop(s.jobId,s.genStartedAt,
-          function(t){upPq(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null});});},
+          function(t){upPq(idx,function(cur){return Object.assign({},cur,{an:t,st:"done",jobId:null,lastJobId:cur.jobId});});},
           function(t){upPq(idx,function(cur){return Object.assign({},cur,{an:"",st:"idle",jobId:null,genStartedAt:null});});toast2(t);},
           "Pq"+(idx+1));
       }
@@ -1588,6 +1578,8 @@ export default function App(){
   // da posalje analizu na mejl bez vracanja na tab Analiza.
   var [viewAnDos,setViewAnDos]=useState(null);
   var [csvBusy,setCsvBusy]=useState(false);
+  // Ekran za slanje mejla klijentu (null = zatvoren)
+  var [mail,setMail]=useState(null);
   // Deo-po-deo kopiranje u Baza modalu (Marko 4.7.: analiza zavrsi u Bazi ali se
   // u Messenger salje DEO PO DEO - radnica je iz Baze mogla da kopira samo celo).
   var [viewAnCi,setViewAnCi]=useState(0);
@@ -2894,7 +2886,7 @@ export default function App(){
               notifyOps("qa_skipped_downsell","Downsell moguce preskocena pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("DS Q&A check:",eQ&&eQ.message);}
-          upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null}):s;});
+          upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null,lastJobId:jobId}):s;});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
@@ -2972,7 +2964,7 @@ export default function App(){
               notifyOps("qa_skipped_pitanja","D.Pitanja moguce preskocena pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("PQ Q&A check:",eQ&&eQ.message);}
-          upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null}):s;});
+          upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null,lastJobId:jobId}):s;});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
@@ -3412,7 +3404,7 @@ export default function App(){
             // Prikazi u slotu SAMO ako slot jos ceka OVAJ posao (jobId match). Ako je
             // radnica u medjuvremenu pokrenula NOVU generaciju (slot.jobId=drugi) ili
             // ocistila slot (jobId null), ne diramo prikaz - analiza je svakako u Bazi.
-            upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{status:"done",analysis:finalText,jobId:null,qaWarn:qaWarnVal}):s;});
+            upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{status:"done",analysis:finalText,jobId:null,lastJobId:jobId,qaWarn:qaWarnVal}):s;});
           }
           // Save to analyses only if not already saved
           setAnalyses(function(prev){
@@ -3606,8 +3598,8 @@ export default function App(){
       var doneA=await fetchDoneJob(sA.jobId);
       if(doneA){
         var ftA=applyClosing(fmtText(doneA.serbian_text||""),"analiza",!!sA.hasPart);
-        upSlot(idx,function(s){return Object.assign({},s,{status:"done",analysis:ftA,jobId:null,genStartedAt:null});});
-        syncCancelToStorage("ab_slots",idx,{status:"done",analysis:ftA,jobId:null,genStartedAt:null});
+        upSlot(idx,function(s){return Object.assign({},s,{status:"done",analysis:ftA,jobId:null,lastJobId:sA.jobId,genStartedAt:null});});
+        syncCancelToStorage("ab_slots",idx,{status:"done",analysis:ftA,jobId:null,lastJobId:sA.jobId,genStartedAt:null});
         var jbsDA=safeActiveJobs();delete jbsDA["a"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbsDA));
         toast2("Analiza je gotova — prikazana je ispod.");
         return;
@@ -3625,8 +3617,8 @@ export default function App(){
       var doneD=await fetchDoneJob(sD.jobId);
       if(doneD){
         var ftD=fmtText(doneD.serbian_text||"");
-        upDs(idx,function(s){return Object.assign({},s,{an:ftD,st:"done",jobId:null,genStartedAt:null});});
-        syncCancelToStorage("ab_dsSlots",idx,{an:ftD,st:"done",jobId:null,genStartedAt:null});
+        upDs(idx,function(s){return Object.assign({},s,{an:ftD,st:"done",jobId:null,lastJobId:sD.jobId,genStartedAt:null});});
+        syncCancelToStorage("ab_dsSlots",idx,{an:ftD,st:"done",jobId:null,lastJobId:sD.jobId,genStartedAt:null});
         var jbsDD=safeActiveJobs();delete jbsDD["ds"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbsDD));
         toast2("Downsell je gotov — prikazan je ispod.");
         return;
@@ -3644,8 +3636,8 @@ export default function App(){
       var doneP=await fetchDoneJob(sP.jobId);
       if(doneP){
         var ftP=applyClosing(fmtText(doneP.serbian_text||""),"pitanja");
-        upPq(idx,function(s){return Object.assign({},s,{an:ftP,st:"done",jobId:null,genStartedAt:null});});
-        syncCancelToStorage("ab_pqSlots",idx,{an:ftP,st:"done",jobId:null,genStartedAt:null});
+        upPq(idx,function(s){return Object.assign({},s,{an:ftP,st:"done",jobId:null,lastJobId:sP.jobId,genStartedAt:null});});
+        syncCancelToStorage("ab_pqSlots",idx,{an:ftP,st:"done",jobId:null,lastJobId:sP.jobId,genStartedAt:null});
         var jbsDP=safeActiveJobs();delete jbsDP["pq"+(idx+1)];localStorage.setItem("activeJobs",JSON.stringify(jbsDP));
         toast2("Odgovori su gotovi — prikazani su ispod.");
         return;
@@ -3670,6 +3662,49 @@ export default function App(){
   }
 
   function doCopy(text,label){cpText(text);toast2(label+" kopiran!");}
+
+  // SLANJE ANALIZE KLIJENTU ---------------------------------------------------
+  // Otvara ekran sa popunjenim primaocem, naslovom i celim tekstom. Radnica
+  // uredi sta hoce i klikne Posalji - mejl ide sa kontakt@astrologsuzana.com.
+  function otvoriMail(o){
+    var em=validEmail(o&&o.email);
+    if(!em){toast2("Upi\u0161i email klijenta pre slanja.");return;}
+    var tekst=String(o&&o.tekst||"").trim();
+    if(!tekst){toast2("Nema teksta analize za slanje.");return;}
+    setMail({
+      to:em,
+      subject:mailNaslov(o.tip,o.ime),
+      body:sastaviTeloMaila(tekst),
+      jobId:(o&&o.jobId)||null,
+      sending:false
+    });
+  }
+  function upMail(patch){setMail(function(m){return m?Object.assign({},m,patch):m;});}
+  async function posaljiMail(){
+    if(!mail||mail.sending)return;
+    var to=validEmail(mail.to);
+    if(!to){toast2("Email adresa klijenta nije ispravna.");return;}
+    if(!String(mail.subject||"").trim()){toast2("Naslov ne sme biti prazan.");return;}
+    if(!String(mail.body||"").trim()){toast2("Tekst mejla ne sme biti prazan.");return;}
+    upMail({sending:true});
+    try{
+      // 60s: Render free tier ume da spava, a mejl sa 20k znakova nije trenutan
+      var r=await fetchSafe(API+"/api/email/send-analysis",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-user-id":user.id||"","x-user-role":user.role||""},
+        body:JSON.stringify({to:to,subject:mail.subject,text:mail.body,job_id:mail.jobId})
+      },60000);
+      var d=null;try{d=await r.json();}catch(e){}
+      if(!r.ok){toast2((d&&d.error)||"Mejl nije poslat. Probaj ponovo.");upMail({sending:false});return;}
+      setMail(null);
+      toast2("\u2705 Mejl poslat na "+to+".");
+      // Baza pamti da je poslato - osvezi da radnica odmah vidi oznaku
+      if(tab==="baza")loadBaza(true);
+    }catch(e){
+      toast2("Gre\u0161ka pri slanju: "+e.message);
+      upMail({sending:false});
+    }
+  }
 
   // IZVOZ MEJLOVA (samo admin): Marko ovo ubacuje u Resend/Mailchimp kad salje
   // ponudu 3-12 meseci posle analize. Ide preko fetch-a a ne obicnog linka jer
@@ -3997,8 +4032,7 @@ export default function App(){
         // tekst sa potpisom i otvara Gmail sa popunjenim primaocem i naslovom.
         s.status==="done"&&s.analysis&&React.createElement(React.Fragment,null,
           React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(s.client.email),onClick:function(){
-            var greska=posaljiMailom({email:s.client.email,ime:s.client.ime,tekst:s.analysis,tip:"analiza"});
-            toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V (na telefonu dr\u017ei pa Nalepi).");
+            otvoriMail({email:s.client.email,ime:s.client.ime,tekst:s.analysis,tip:"analiza",jobId:s.lastJobId||null});
           }},"\uD83D\uDCE7 Po\u0161alji na email"),
           !validEmail(s.client.email)&&React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"4px",textAlign:"center"}},"Upi\u0161i email klijenta gore da bi ovo dugme radilo.")
         ),
@@ -4188,7 +4222,7 @@ export default function App(){
           "4. Šalji DEO PO DEO dugmićima Kopiraj 1/N. Nikad ne šalji ceo tekst odjednom u Messenger.\n\n"+
           "EMAIL KLIJENTA\n"+
           "Polje Email klijenta je opciono, ali popuni ga kad god klijent ostavi mejl — ako ga je napisao u poruci, sam se prepozna kad klikneš Očitaj.\n"+
-          "Kad je analiza gotova, dugme 📧 Pošalji na email kopira ceo tekst i otvori Gmail sa već popunjenim primaocem i naslovom — pritisni Ctrl+V (na telefonu drži pa Nalepi), doradi ako treba i pošalji.\n"+
+          "Kad je analiza gotova, dugme 📧 Pošalji na email otvara mejl u samoj aplikaciji — primalac, naslov i ceo tekst su već popunjeni. Doradi tekst ako treba i klikni Pošalji; mejl ode sa kontakt@astrologsuzana.com i odgovor klijenta stiže na tu adresu.\n"+
           "Uz mejl se čuva i natalna karta klijenta (znak, podznak, Mesec), pa Marko kasnije može da šalje personalizovane ponude po znaku.\n\n"+
           "RED ČEKANJA\nUjutru nalepi poruke više klijenata u Red čekanja (+ Dodaj u red). Kad je slot slobodan, klikni ▶ Sledeći iz reda — sam se očita.\n\n"+
           "BAZA\nSve završene analize su u Bazi (i kad slot pukne — analiza JE tamo). Otvori analizu → kopiraj deo-po-deo (pamti dokle si stigla), 📧 Pošalji na mejl (ako je sačuvan) ili 📥 U slot za novu analizu istog klijenta. U polju za pretragu možeš da kucaš i email adresu.\n\n"+
@@ -4261,8 +4295,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(ds.an);toast2("Sve kopirano!");}},"Sve")
             ),
             ds.st==="done"&&ds.an&&React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(ds.clientEmail),onClick:function(){
-              var greska=posaljiMailom({email:ds.clientEmail,ime:ds.clientName,tekst:ds.an,tip:"downsell"});
-              toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V (na telefonu dr\u017ei pa Nalepi).");
+              otvoriMail({email:ds.clientEmail,ime:ds.clientName,tekst:ds.an,tip:"downsell",jobId:ds.lastJobId||null});
             }},"\uD83D\uDCE7 Po\u0161alji na email"),
             ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
@@ -4329,8 +4362,7 @@ export default function App(){
               React.createElement("button",{className:"btn bol bsm",onClick:function(){cpText(pq.an);toast2("Sve kopirano!");}},"Sve")
             ),
             pq.st==="done"&&pq.an&&React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(pq.clientEmail),onClick:function(){
-              var greska=posaljiMailom({email:pq.clientEmail,ime:pq.clientName,tekst:pq.an,tip:"pitanja"});
-              toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V (na telefonu dr\u017ei pa Nalepi).");
+              otvoriMail({email:pq.clientEmail,ime:pq.clientName,tekst:pq.an,tip:"pitanja",jobId:pq.lastJobId||null});
             }},"\uD83D\uDCE7 Po\u0161alji na email"),
             pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
@@ -4606,6 +4638,35 @@ export default function App(){
       )
     ),
 
+    // MODAL ZA SLANJE MEJLA
+    // Radnice rade sa telefona - ceo mejl se pise i salje ovde, bez izlaska iz
+    // aplikacije. Zato je polje za tekst veliko i tekst je vec unet.
+    mail&&React.createElement("div",{className:"modal-bg",onClick:function(){if(!mail.sending)setMail(null);}},
+      React.createElement("div",{className:"modal",onClick:function(e){e.stopPropagation();}},
+        React.createElement("div",{className:"modal-title"},"\uD83D\uDCE7 Po\u0161alji analizu klijentu"),
+        React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginTop:"-8px",marginBottom:"10px"}},"\u0160alje se sa ",MAIL_OD," \u2014 odgovor klijenta sti\u017ee na tu adresu."),
+        React.createElement("div",{className:"fld"},
+          React.createElement("label",null,"Za (email klijenta)"),
+          React.createElement("input",{type:"email",inputMode:"email",autoCapitalize:"off",autoCorrect:"off",spellCheck:false,value:mail.to,disabled:mail.sending,onChange:function(e){upMail({to:e.target.value.trim()});}}),
+          !validEmail(mail.to)&&React.createElement("div",{style:{fontSize:"11px",color:"var(--red)",marginTop:"3px"}},"Ova adresa ne li\u010di na email \u2014 proveri.")
+        ),
+        React.createElement("div",{className:"fld"},
+          React.createElement("label",null,"Naslov"),
+          React.createElement("input",{value:mail.subject,disabled:mail.sending,onChange:function(e){upMail({subject:e.target.value});}})
+        ),
+        React.createElement("div",{className:"fld"},
+          React.createElement("label",null,"Tekst mejla \u2014 mo\u017ee\u0161 da menja\u0161 pre slanja"),
+          React.createElement("textarea",{value:mail.body,disabled:mail.sending,onChange:function(e){upMail({body:e.target.value});},style:{minHeight:"38vh",lineHeight:1.7,fontSize:"13px"}}),
+          React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"3px"}},String(mail.body||"").length+" znakova")
+        ),
+        React.createElement("div",{className:"abar",style:{marginTop:"6px"}},
+          React.createElement("button",{className:"btn bgd",style:{flex:1},disabled:mail.sending||!validEmail(mail.to),onClick:posaljiMail},
+            mail.sending?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," \u0160aljem..."):"\u2709 Po\u0161alji"),
+          React.createElement("button",{className:"btn bol bsm",disabled:mail.sending,onClick:function(){setMail(null);}},"Otka\u017ei")
+        )
+      )
+    ),
+
     // MODAL
     viewAn&&(function(){
       var stillLoading=!!viewAn.preview; // lista nosi samo preview - pun tekst se ucitava u openAnalysis
@@ -4694,8 +4755,7 @@ export default function App(){
               var tip=/pitanja/i.test(viewAn.clientName||"")?"pitanja":/downsell/i.test(viewAn.clientName||"")?"downsell":"analiza";
               return React.createElement("button",{className:"btn bpu bsm",onClick:function(){
                 if(stillLoading){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam ceo tekst analize.");return;}
-                var greska=posaljiMailom({email:em,ime:(viewAn.clientName||"").split(" - ")[0],tekst:cleanText,tip:tip});
-                toast2(greska||"Tekst kopiran \u2014 u Gmail-u pritisni Ctrl+V.");
+                otvoriMail({email:em,ime:(viewAn.clientName||"").split(" - ")[0],tekst:cleanText,tip:tip,jobId:viewAn.id||null});
               }},"\uD83D\uDCE7 Po\u0161alji");
             })(),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);setViewAnAll(null);setViewAnDos(null);}},"Zatvori")
