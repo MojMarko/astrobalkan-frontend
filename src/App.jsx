@@ -1578,6 +1578,9 @@ export default function App(){
   // da posalje analizu na mejl bez vracanja na tab Analiza.
   var [viewAnDos,setViewAnDos]=useState(null);
   var [csvBusy,setCsvBusy]=useState(false);
+  // Baza mejlova u admin panelu (null = jos nije ucitana)
+  var [adminEmails,setAdminEmails]=useState(null);
+  var [adminEmailsErr,setAdminEmailsErr]=useState("");
   // Ekran za slanje mejla klijentu (null = zatvoren)
   var [mail,setMail]=useState(null);
   // Deo-po-deo kopiranje u Baza modalu (Marko 4.7.: analiza zavrsi u Bazi ali se
@@ -1733,6 +1736,7 @@ export default function App(){
 
   useEffect(function(){
     if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
+    if(tab==="admin"&&user&&user.role==="admin")loadAdminEmails();
     // force=true (Jelena 23.7.): radnica zavrsi analizu pa ODMAH otvori Downsell/Pitanja -
     // 30s kes je jos drzao staru listu bez novog klijenta ("ne pronadje ga u bazi").
     if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients(true);
@@ -1867,6 +1871,15 @@ export default function App(){
   function doLogout(){setUser(null);stoSet("session",null);}
 
   // ADMIN
+  async function loadAdminEmails(){
+    try{
+      setAdminEmailsErr("");
+      var r=await fetchSafe(API+"/api/admin/emails",{headers:{"x-user-id":user.id||"","x-user-role":user.role||""}},30000);
+      var d=await r.json();
+      if(!r.ok){setAdminEmails([]);setAdminEmailsErr(d&&d.error||"Greska pri ucitavanju.");return;}
+      setAdminEmails(d.emails||[]);
+    }catch(e){setAdminEmails([]);setAdminEmailsErr("Server nedostupan - probaj ponovo za minut.");}
+  }
   async function loadAdminUsers(){
     try{
       var r=await fetchSafe(API+"/api/admin/users",{headers:{"x-user-id":user.id}});
@@ -4529,16 +4542,39 @@ export default function App(){
           React.createElement("div",{className:"ct"},"Dodaj Novu Korisnicu"),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Ime"),React.createElement("input",{value:nuData.name,onChange:function(e){setNuData(function(p){return Object.assign({},p,{name:e.target.value});});},placeholder:"Ime i prezime"})),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Email"),React.createElement("input",{value:nuData.email,onChange:function(e){setNuData(function(p){return Object.assign({},p,{email:e.target.value});});},placeholder:"email@example.com"})),
-          React.createElement("div",{className:"r2"},
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Lozinka"),React.createElement("input",{type:"password",value:nuData.pw,onChange:function(e){setNuData(function(p){return Object.assign({},p,{pw:e.target.value});});}})),
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Regija"),
-              React.createElement("select",{value:nuData.country,onChange:function(e){setNuData(function(p){return Object.assign({},p,{country:e.target.value});});},className:"sel-input"},
-                React.createElement("option",{value:"sr"},"\uD83C\uDDF7\uD83C\uDDF8 Srbija"),
-                React.createElement("option",{value:"hr"},"\uD83C\uDDED\uD83C\uDDF7 Hrvatska")
-              )
+          // Regija je fiksno Srbija (kao i u ostatku aplikacije) - select je uklonjen,
+          // nuData.country ostaje "sr" iz pocetnog stanja.
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Lozinka"),React.createElement("input",{type:"password",value:nuData.pw,onChange:function(e){setNuData(function(p){return Object.assign({},p,{pw:e.target.value});});}})),
+          React.createElement("button",{className:"btn bgd bfull",onClick:addAdminUser},"\u002B Dodaj")
+        ),
+        // BAZA MEJLOVA: svi klijenti koji su ostavili email - za Markove kasnije
+        // ponude. Podaci zive u Supabase (tabela clients, kolona email); ovde je
+        // samo pregled + CSV preuzimanje za ubacivanje u Sheets/Resend/Mailchimp.
+        React.createElement("div",{className:"card card-hi"},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"9px"}},
+            React.createElement("div",{className:"ct",style:{marginBottom:0}},"\uD83D\uDCE7 Baza mejlova"+(adminEmails?" ("+adminEmails.length+")":"")),
+            React.createElement("div",{style:{display:"flex",gap:"6px"}},
+              React.createElement("button",{className:"btn bol bsm",onClick:loadAdminEmails},"\u21BB"),
+              React.createElement("button",{className:"btn bgd bsm",disabled:csvBusy,onClick:preuzmiCsv},csvBusy?"\u23F3":"\u2B07 CSV")
             )
           ),
-          React.createElement("button",{className:"btn bgd bfull",onClick:addAdminUser},"\u002B Dodaj")
+          adminEmails===null&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)"}},"\u23F3 U\u010ditavam..."),
+          adminEmailsErr&&React.createElement("div",{style:{fontSize:"11px",color:"var(--red)"}},adminEmailsErr),
+          adminEmails&&adminEmails.length===0&&!adminEmailsErr&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)"}},"Jo\u0161 nema sa\u010duvanih mejlova. Kad radnica upi\u0161e email klijenta pre analize, pojavi\u0107e se ovde."),
+          adminEmails&&adminEmails.length>0&&React.createElement("div",{style:{maxHeight:"40vh",overflowY:"auto"}},
+            adminEmails.map(function(c){
+              return React.createElement("div",{key:c.id,style:{padding:"7px 2px",borderBottom:"1px solid var(--bd)"}},
+                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",gap:"8px"}},
+                  React.createElement("span",{style:{fontSize:"12.5px",fontWeight:500}},c.name||"?"),
+                  React.createElement("span",{style:{fontSize:"10px",color:"var(--mt)"}},(c.sun_sign||"")+(c.asc_sign?" / "+c.asc_sign:""))
+                ),
+                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",gap:"8px",marginTop:"1px"}},
+                  React.createElement("span",{style:{fontSize:"11px",color:"var(--gd2)"}},c.email),
+                  React.createElement("button",{className:"btn bol bsm",style:{padding:"1px 7px",fontSize:"10px"},onClick:function(){cpText(c.email);toast2("Email kopiran!");}},"\uD83D\uDCCB")
+                )
+              );
+            })
+          )
         ),
         React.createElement("div",{className:"card"},
           React.createElement("div",{className:"ct"},"Korisnici ("+adminUsers.length+")"),
