@@ -3697,6 +3697,34 @@ export default function App(){
     });
   }
   function upMail(patch){setMail(function(m){return m?Object.assign({},m,patch):m;});}
+  // PRACENJE ISPORUKE (Marko 24.8.): klijenti cesto pogresno prekucaju svoj
+  // mejl, a Resend ne salje bounce poruku u sanduce kao Gmail - pa radnica ne
+  // zna da li je mejl uopste stigao. Zato softver posle slanja par puta pita
+  // backend (koji pita Resend) i glasno javi "isporuceno" ili "adresa ne
+  // postoji". Provere idu na 8s/25s/60s/120s - tvrdi bounce stigne za par
+  // sekundi do minut, duze od toga znaci da je verovatno sve u redu.
+  function pratiIsporuku(msgId,to,jobId){
+    var koraci=[8000,25000,60000,120000];
+    var i=0;
+    function proveri(){
+      fetchSafe(API+"/api/email/status?id="+encodeURIComponent(msgId)+(jobId?"&job_id="+encodeURIComponent(jobId):""),
+        {headers:{"x-user-id":user.id||"","x-user-role":user.role||""}},15000)
+        .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+        .then(function(res){
+          var d=res.d||{};
+          if(res.ok&&d.kraj){
+            if(d.ok)toast2("\u2705 "+to+": "+d.poruka);
+            else{toast2("\u274C "+to+": "+d.poruka);try{notifyDone&&notifyDone("Mejl za "+to+" NIJE isporu\u010den \u2014 proveri adresu!","Mejl nije isporu\u010den.",null);}catch(e){}}
+            return;
+          }
+          i++;
+          if(i<koraci.length)setTimeout(proveri,koraci[i]);
+          else toast2("\u2139 "+to+": isporuka jo\u0161 nije potvr\u0111ena \u2014 najverovatnije je sve u redu, ali proveri da li je klijent dobio.");
+        })
+        .catch(function(){i++;if(i<koraci.length)setTimeout(proveri,koraci[i]);});
+    }
+    setTimeout(proveri,koraci[0]);
+  }
   async function posaljiMail(){
     if(!mail||mail.sending)return;
     var to=validEmail(mail.to);
@@ -3713,8 +3741,10 @@ export default function App(){
       },60000);
       var d=null;try{d=await r.json();}catch(e){}
       if(!r.ok){toast2((d&&d.error)||"Mejl nije poslat. Probaj ponovo.");upMail({sending:false});return;}
+      var mailJobId=mail.jobId;
       setMail(null);
-      toast2("\u2705 Mejl poslat na "+to+".");
+      toast2("\u2705 Mejl poslat na "+to+". Proveravam isporuku...");
+      if(d&&d.id)pratiIsporuku(d.id,to,mailJobId);
       // Baza pamti da je poslato - osvezi da radnica odmah vidi oznaku
       if(tab==="baza")loadBaza(true);
     }catch(e){
