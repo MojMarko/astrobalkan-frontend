@@ -2805,7 +2805,11 @@ export default function App(){
         // Email + natalni snimak se cuvaju uz klijenta da bi kasnija ponuda
         // (za 3-12 meseci) mogla da bude personalizovana po znaku i podznaku.
         client_email:validEmail(sl.client.email)||null,
-        client_natal:sl.ch?{sunSign:sl.ch.sunSign,moonSign:sl.ch.moonSign,ascSign:sl.ch.ascSign,ascDeg:sl.ch.ascDeg,planets:sl.ch.planets,houses:sl.ch.houses,source:sl.ch.source}:null};
+        client_natal:sl.ch?{sunSign:sl.ch.sunSign,moonSign:sl.ch.moonSign,ascSign:sl.ch.ascSign,ascDeg:sl.ch.ascDeg,planets:sl.ch.planets,houses:sl.ch.houses,source:sl.ch.source}:null,
+        // Partner (za buduce ponude uporednog horoskopa) i recenica o tome sta
+        // klijenta zanima - iz AI parsera poruke, cuva se uz klijenta u bazi.
+        client_partner:(sl.hasPart&&(sl.partner.ime||sl.partner.datum))?{ime:sl.partner.ime||"",datum:sl.partner.datum||"",vreme:sl.partner.vreme||"",mesto:sl.partner.mesto||""}:null,
+        client_zelja:(sl.client.pitanja||"").trim().slice(0,1000)||null};
       // Submit job to backend for background processing.
       // onRetry: ako server spava (Render free tier), prvi attempts cesto fail, sledeci uspe.
       // Tokom backoff-a obavestavamo radnicu da nije pukla, samo se server budi.
@@ -3162,7 +3166,7 @@ export default function App(){
         usrContent+=transitCalendarBlock(dsNatal,todayStr);
         usrContent+=downsellWindowsBlock(dsNatal);
       }catch(eCal2){console.warn("ds transit calendar:",eCal2&&eCal2.message);}
-      var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null,client_email:validEmail(ds.clientEmail)||null};
+      var dsPayload={system_prompt:sys,user_prompt:usrContent,client_name:dsName,job_type:"downsell",user_id:user&&user.id||"",birth_date:ds.clientBirthDate||null,client_id:ds.clientId||null,client_email:validEmail(ds.clientEmail)||null,client_zelja:(ds.pitanja||"").trim().slice(0,1000)||null};
       var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dsPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
@@ -3236,7 +3240,7 @@ export default function App(){
         var pqNatal=pq.clientBirthDate?chartToNatalDegs(calcChart(pq.clientBirthDate,"",44.8176,20.4633,"Europe/Belgrade")):null;
         pqUsr+=transitCalendarBlock(pqNatal,todayStr);
       }catch(eCal3){console.warn("pq transit calendar:",eCal3&&eCal3.message);}
-      var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null,client_email:validEmail(pq.clientEmail)||null};
+      var pqPayload={system_prompt:sys,user_prompt:pqUsr,client_name:pqName,job_type:"pitanja",user_id:user&&user.id||"",birth_date:pq.clientBirthDate||null,client_id:pq.clientId||null,client_email:validEmail(pq.clientEmail)||null,client_zelja:(pq.quest||"").trim().slice(0,1000)||null};
       var resp=await fetchWithRetry(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pqPayload)},{attempts:4,onRetry:function(n,total,ms){toast2("Server se budi (pokušaj "+n+"/"+total+", čekaj ~"+Math.round(ms/1000)+"s)...");}});
       var jobData=await resp.json();
       if(!jobData.id)throw new Error(jobData.error||"Failed");
@@ -4571,7 +4575,9 @@ export default function App(){
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",gap:"8px",marginTop:"1px"}},
                   React.createElement("span",{style:{fontSize:"11px",color:"var(--gd2)"}},c.email),
                   React.createElement("button",{className:"btn bol bsm",style:{padding:"1px 7px",fontSize:"10px"},onClick:function(){cpText(c.email);toast2("Email kopiran!");}},"\uD83D\uDCCB")
-                )
+                ),
+                c.partner_ime&&React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginTop:"1px"}},"\uD83D\uDC9E Partner: "+c.partner_ime+(c.partner_datum?" ("+fmtDMYFromISO(c.partner_datum)+")":"")),
+                c.zelja&&React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginTop:"1px",fontStyle:"italic",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}},"\u201E"+c.zelja+"\u201C")
               );
             })
           )
