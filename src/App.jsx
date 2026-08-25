@@ -3724,7 +3724,7 @@ export default function App(){
   // postoji". Provere idu na 8s/25s/60s/120s - tvrdi bounce stigne za par
   // sekundi do minut, duze od toga znaci da je verovatno sve u redu.
   function pratiIsporuku(msgId,to,jobId){
-    var koraci=[8000,25000,60000,120000];
+    var koraci=[8000,25000,60000,120000,300000,600000];
     var i=0;
     function proveri(){
       fetchSafe(API+"/api/email/status?id="+encodeURIComponent(msgId)+(jobId?"&job_id="+encodeURIComponent(jobId):""),
@@ -3742,7 +3742,11 @@ export default function App(){
           }
           i++;
           if(i<koraci.length)setTimeout(proveri,koraci[i]);
-          else toast2("\u2139 "+to+": isporuka jo\u0161 nije potvr\u0111ena \u2014 najverovatnije je sve u redu, ali proveri da li je klijent dobio.");
+          // Bez potvrde ni posle 10 min: mejl JE poslat - serveri (narocito
+          // Hotmail/Outlook) umeju da odugovlace prijem sa nove adrese, pa
+          // potvrda kasni. Poruka mora da smiruje, ne da plasi: radnice su
+          // "jos nije potvrdjena" citale kao "NIJE isporucena" (Marko 25.8).
+          else toast2("\u2709 "+to+": mejl je poslat i najverovatnije je stigao \u2014 samo potvrda isporuke kasni (neki serveri odugovla\u010de prijem sa nove adrese). NE \u0161alji ponovo; ako se klijent javi da nema ni\u0161ta, podseti ga na Spam folder.");
         })
         .catch(function(){i++;if(i<koraci.length)setTimeout(proveri,koraci[i]);});
     }
