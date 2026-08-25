@@ -531,3 +531,30 @@ export function ocistiZaMejl(t){
   s=delovi.join("\n\n");
   return s.replace(/\n{3,}/g,"\n\n").trim();
 }
+
+// PONUDA "12 MESECI" NA KRAJU MEJLA SA ANALIZOM (Markov tekst, odobren 25.8;
+// "preko Messengera" zamenjeno sa "preko mejla" jer tekst ide u mejl).
+// Ubacuje se SAMO kod obicne analize - ne kod downsell-a (to VEC JESTE taj
+// proizvod) ni kod dodatnih pitanja. Ide PRE zavrsne zahvalnice ako je ima,
+// da mejl tece prirodno: analiza -> ponuda -> hvala -> potpis.
+export var PONUDA_12M="Moram jo\u0161 da Vam ka\u017eem, po\u0161to ste ve\u0107 poru\u010dili analizu kod mene i imam va\u0161u natalnu kartu pa mogu sve da vidim, postoji jo\u0161 jedna stvar koju ve\u0107ina klijenata uzme uz svoju godi\u0161nju analizu, a to su ta\u010dni periodi u narednih 12 meseci kada Vam se de\u0161avaju klju\u010dne promene i da li \u0107e se realizovati ono \u0161to ste naumili.\n\n"
+ +"Dobijate precizno izdvojene periode kada je najbolje da ne\u0161to pokrenete, kada da sa\u010dekate, kada da iskoristite svoju energiju na maksimum i kada je va\u017eno da izbegnete pogre\u0161ne poteze, konflikte ili lo\u0161e odluke. Tako\u0111e, kroz tranzite da li \u0107e se realizovati ne\u0161to \u0161to ste naumili.\n\n"
+ +"Mogu Vam izdvojiti najva\u017enije datume i periode za narednih 12 meseci, uz konkretna uputstva \u0161ta da radite u tim momentima, kako biste sve \u0161to dolazi iskoristili na najbolji na\u010din. Uz to dobijate i pravo da postavite 5 dodatnih pitanja.\n\n"
+ +"Cena ovog dodatka je 1.000 dinara sa popustom, jer ste ve\u0107 poru\u010dili analizu kod mene, a sve Vam \u0161aljem ovde u pisanom obliku preko mejla, tako da uvek mo\u017eete da sa\u010duvate i pro\u010ditate kada Vam zatreba.\n\n"
+ +"Javite mi kada da vam po\u0161aljem.";
+
+var HVALA_RED="Hvala ti puno na poverenju i \u017eelim ti \u017eivot ispunjen mirom, rado\u0161\u0107u i sre\u0107om.";
+
+export function ubaciPonudu12m(t){
+  var s=String(t==null?"":t).trim();
+  if(!s)return s;
+  var delovi=s.split(/\n[ \t]*\n/);
+  var i=delovi.length-1;
+  // Analiza se obicno vec zavrsava zahvalnicom ("Hvala ti puno na poverenju...")
+  // - ponuda ide PRE nje. Ako je nema, dodajemo ponudu pa Markovu zahvalnicu.
+  if(i>=0&&/hvala/i.test(delovi[i])&&/poverenju/i.test(delovi[i])){
+    delovi.splice(i,0,PONUDA_12M);
+    return delovi.join("\n\n");
+  }
+  return s+"\n\n"+PONUDA_12M+"\n\n"+HVALA_RED;
+}

@@ -113,3 +113,34 @@ describe('ocistiZaMejl - i "E-mail: kontakt@..." red se skida (dupli potpis)', (
     expect(out).toContain('Hvala.');
   });
 });
+
+import { ubaciPonudu12m, PONUDA_12M } from '../src/lib/util.js';
+
+describe('ubaciPonudu12m - ponuda "12 meseci" na kraju analize u mejlu', () => {
+  it('ponuda ide PRE zavrsne zahvalnice kad je analiza ima', () => {
+    const t = 'Glavni tekst analize.\n\nHvala ti puno na poverenju i želim ti odnos ispunjen ljubavlju, razumevanjem i radošću.';
+    const out = ubaciPonudu12m(t);
+    const iPonuda = out.indexOf('Moram još da Vam kažem');
+    const iHvala = out.indexOf('Hvala ti puno na poverenju');
+    expect(iPonuda).toBeGreaterThan(-1);
+    expect(iHvala).toBeGreaterThan(iPonuda);
+    expect(out.startsWith('Glavni tekst analize.')).toBe(true);
+  });
+
+  it('kad analiza nema zahvalnicu, dodaje ponudu pa Markovu zahvalnicu', () => {
+    const out = ubaciPonudu12m('Samo tekst analize bez zavrsnice.');
+    expect(out).toContain('Moram još da Vam kažem');
+    expect(out.trim().endsWith('Hvala ti puno na poverenju i želim ti život ispunjen mirom, radošću i srećom.')).toBe(true);
+  });
+
+  it('ponuda kaze "preko mejla", 1.000 dinara i 5 pitanja', () => {
+    expect(PONUDA_12M).toContain('preko mejla');
+    expect(PONUDA_12M).not.toContain('Messenger');
+    expect(PONUDA_12M).toContain('1.000 dinara');
+    expect(PONUDA_12M).toContain('5 dodatnih pitanja');
+  });
+
+  it('prazan tekst ostaje prazan (ne salje se ponuda bez analize)', () => {
+    expect(ubaciPonudu12m('')).toBe('');
+  });
+});

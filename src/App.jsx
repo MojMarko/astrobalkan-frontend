@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -626,7 +626,8 @@ function belgradeRawDate(d){var fmt=new Intl.DateTimeFormat("en-CA",{timeZone:"E
 // parametre iz linka, pa bi radnica cesto zavrsila u praznom sanducetu.
 var MAIL_OD="kontakt@astrologsuzana.com";
 var MAIL_SAJT="astrologsuzana.com";
-var MAIL_POTPIS="\n\n---\nSuzana\n"+MAIL_SAJT+"\n"+MAIL_OD;
+// Potpis mejla (Marko 25.8): bez "---" linije i bez sajta - samo ime i adresa.
+var MAIL_POTPIS="\n\nSuzana\n"+MAIL_OD;
 
 // PORUKA ZA MESSENGER POSLE SLANJA MEJLA (Marko 25.8, njegov tacan tekst):
 // svez domen cesto zavrsava u Spam-u, pa radnica klijentu odmah posalje
@@ -642,8 +643,12 @@ var SPAM_PORUKA="Samo da javim va\u0161a analiza je upravo poslata na va\u0161u 
 // Telo mejla koje radnica dobija u polju za uredjivanje.
 // stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme da
 // ode klijentu - isto pravilo kao kod Kopiraj dugmica.
-function sastaviTeloMaila(tekst){
-  return ocistiZaMejl(fmtText(stripUpoz(String(tekst||""))))+MAIL_POTPIS;
+function sastaviTeloMaila(tekst,tip){
+  var telo=ocistiZaMejl(fmtText(stripUpoz(String(tekst||""))));
+  // Ponuda "12 meseci" ide SAMO uz obicnu analizu - downsell VEC JESTE taj
+  // proizvod, a dodatna pitanja su vec dodatak.
+  if(tip==="analiza")telo=ubaciPonudu12m(telo);
+  return telo+MAIL_POTPIS;
 }
 
 // PlaceStatus - status row ispod Mesto/Zemlja polja: ✅ ok | ⏳ pending | dropdown za ambiguous | ❌ not_found | ⚠️ error
@@ -3706,7 +3711,7 @@ export default function App(){
     setMail({
       to:em,
       subject:mailNaslov(o.tip,o.ime),
-      body:sastaviTeloMaila(tekst),
+      body:sastaviTeloMaila(tekst,o&&o.tip),
       jobId:(o&&o.jobId)||null,
       sending:false
     });
