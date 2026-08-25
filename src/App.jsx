@@ -628,6 +628,17 @@ var MAIL_OD="kontakt@astrologsuzana.com";
 var MAIL_SAJT="astrologsuzana.com";
 var MAIL_POTPIS="\n\n---\nSuzana\n"+MAIL_SAJT+"\n"+MAIL_OD;
 
+// PORUKA ZA MESSENGER POSLE SLANJA MEJLA (Marko 25.8, njegov tacan tekst):
+// svez domen cesto zavrsava u Spam-u, pa radnica klijentu odmah posalje
+// uputstvo gde da nadje analizu. Jedan klik = poruka u clipboardu.
+var SPAM_PORUKA="Samo da javim va\u0161a analiza je upravo poslata na va\u0161u email adresu.\n\n"
+ +"Ako je ne vidite me\u0111u porukama, pogledajte folder \"Ne\u017eeljena po\u0161ta (Spam)\", poruke sa novih adresa ponekad zavr\u0161e tamo. Ako koristite Gmail, proverite i karticu Promocije.\n\n"
+ +"Ako ne znate kako da na\u0111ete Spam na telefonu evo obja\u0161njenja?\n\n"
+ +"Otvorite Gmail aplikaciju, onda dodirnite tri crtice (\u2630) u gornjem levom uglu i izaberite \"Ne\u017eeljena po\u0161ta / Spam\".\n\n"
+ +"Kada prona\u0111ete poruku, kliknite \u201ENije spam\u201C i tako \u0107e vam sve slede\u0107e poruke stizati direktno u sandu\u010de.\n\n"
+ +"Poslato je sa adrese kontakt@astrologsuzana.com\n\n"
+ +"Slobodno odgovorite na taj mejl ako imate dodatnih pitanja. \u2764\uFE0F";
+
 // Telo mejla koje radnica dobija u polju za uredjivanje.
 // stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme da
 // ode klijentu - isto pravilo kao kod Kopiraj dugmica.
@@ -3682,6 +3693,7 @@ export default function App(){
   }
 
   function doCopy(text,label){cpText(text);toast2(label+" kopiran!");}
+  function kopirajSpamPoruku(){cpText(SPAM_PORUKA);toast2("Poruka kopirana \u2014 nalepi je klijentu u Messenger.");}
 
   // SLANJE ANALIZE KLIJENTU ---------------------------------------------------
   // Otvara ekran sa popunjenim primaocem, naslovom i celim tekstom. Radnica
@@ -3749,7 +3761,7 @@ export default function App(){
       if(!r.ok){toast2((d&&d.error)||"Mejl nije poslat. Probaj ponovo.");upMail({sending:false});return;}
       var mailJobId=mail.jobId;
       setMail(null);
-      toast2("\u2705 Mejl poslat na "+to+". Proveravam isporuku...");
+      toast2("\u2705 Mejl poslat na "+to+". Klikni \u201EPoruka za Messenger\u201C da klijentu javi\u0161 da proveri Spam.");
       if(d&&d.id)pratiIsporuku(d.id,to,mailJobId);
       // Baza pamti da je poslato - osvezi da radnica odmah vidi oznaku
       if(tab==="baza")loadBaza(true);
@@ -4087,7 +4099,9 @@ export default function App(){
           React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(s.client.email),onClick:function(){
             otvoriMail({email:s.client.email,ime:s.client.ime,tekst:s.analysis,tip:"analiza",jobId:s.lastJobId||null});
           }},"\uD83D\uDCE7 Po\u0161alji na email"),
-          !validEmail(s.client.email)&&React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"4px",textAlign:"center"}},"Upi\u0161i email klijenta gore da bi ovo dugme radilo.")
+          !validEmail(s.client.email)&&React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"4px",textAlign:"center"}},"Upi\u0161i email klijenta gore da bi ovo dugme radilo."),
+          // Posle slanja: gotova poruka za Messenger da klijent pogleda Spam
+          validEmail(s.client.email)&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"6px"},onClick:kopirajSpamPoruku},"\uD83D\uDCCB Poruka za Messenger: proveri Spam")
         ),
         // NOVA ANALIZA dugme
         s.status==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"12px"},onClick:function(){upSlot(idx,function(){return emptySlot();});}},"\u21BB Nova analiza")
@@ -4350,6 +4364,7 @@ export default function App(){
             ds.st==="done"&&ds.an&&React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(ds.clientEmail),onClick:function(){
               otvoriMail({email:ds.clientEmail,ime:ds.clientName,tekst:ds.an,tip:"downsell",jobId:ds.lastJobId||null});
             }},"\uD83D\uDCE7 Po\u0161alji na email"),
+            ds.st==="done"&&ds.an&&validEmail(ds.clientEmail)&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"6px"},onClick:kopirajSpamPoruku},"\uD83D\uDCCB Poruka za Messenger: proveri Spam"),
             ds.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upDs(dsIdx,function(){return{paste:"",pitanja:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
@@ -4417,6 +4432,7 @@ export default function App(){
             pq.st==="done"&&pq.an&&React.createElement("button",{className:"btn bpu bfull",style:{marginTop:"10px"},disabled:!validEmail(pq.clientEmail),onClick:function(){
               otvoriMail({email:pq.clientEmail,ime:pq.clientName,tekst:pq.an,tip:"pitanja",jobId:pq.lastJobId||null});
             }},"\uD83D\uDCE7 Po\u0161alji na email"),
+            pq.st==="done"&&pq.an&&validEmail(pq.clientEmail)&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"6px"},onClick:kopirajSpamPoruku},"\uD83D\uDCCB Poruka za Messenger: proveri Spam"),
             pq.st==="done"&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"10px"},onClick:function(){upPq(pqIdx,function(){return{prev:"",quest:"",clientName:"",clientBirthDate:"",clientId:null,clientEmail:"",an:"",st:"idle",ci:0,jobId:null};});}},"\u21BB Nova analiza")
           )
         );
@@ -4836,6 +4852,7 @@ export default function App(){
                 otvoriMail({email:em,ime:(viewAn.clientName||"").split(" - ")[0],tekst:cleanText,tip:tip,jobId:viewAn.id||null});
               }},"\uD83D\uDCE7 Po\u0161alji");
             })(),
+            React.createElement("button",{className:"btn bol bsm",title:"Kopira poruku za Messenger: analiza je na mejlu, proveri Spam",onClick:kopirajSpamPoruku},"\uD83D\uDCCB Spam poruka"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);setViewAnAll(null);setViewAnDos(null);}},"Zatvori")
           )
         )
