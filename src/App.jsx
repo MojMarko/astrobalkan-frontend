@@ -598,7 +598,10 @@ function getAnalizaChunks(text,country){
   ch.push(PROMO_DOWNSELL_SR);
   return ch;
 }
-function cpText(t){var el=document.createElement("textarea");el.value=t;el.style.cssText="position:fixed;left:-9999px;top:0;opacity:0;";document.body.appendChild(el);el.focus();el.select();el.setSelectionRange(0,99999);document.execCommand("copy");document.body.removeChild(el);}
+// cpText menja staru gmail adresu u biznis adresu U SVAKOJ KOPIJI - time i
+// stare analize iz Baze (generisane pre prelaska na kontakt@) idu klijentu
+// sa ispravnom adresom. Nove analize je vec nose iz backend sanitize-a.
+function cpText(t){t=String(t==null?"":t).replace(/astrologsuzana@gmail\.com/gi,"kontakt@astrologsuzana.com");var el=document.createElement("textarea");el.value=t;el.style.cssText="position:fixed;left:-9999px;top:0;opacity:0;";document.body.appendChild(el);el.focus();el.select();el.setSelectionRange(0,99999);document.execCommand("copy");document.body.removeChild(el);}
 // fmtDMY: returns a date as DD.MM.YYYY (zero-padded, Europe/Belgrade timezone). Standard format across UI.
 function fmtDMY(d){var p=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Belgrade",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);var dd="",mm="",yy="";for(var i=0;i<p.length;i++){if(p[i].type==="day")dd=p[i].value;else if(p[i].type==="month")mm=p[i].value;else if(p[i].type==="year")yy=p[i].value;}return dd+"."+mm+"."+yy;}
 // fmtDMYFromISO: takes a YYYY-MM-DD string from DB and returns DD.MM.YYYY. Returns input as-is if not ISO.

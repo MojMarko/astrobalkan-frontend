@@ -514,7 +514,7 @@ export function mailNaslov(tip,ime){
 export function ocistiZaMejl(t){
   var s=String(t==null?"":t);
   // stari potpis: ceo red "E-mail: astrologsuzana@gmail.com..."
-  s=s.replace(/^[ \t]*E-?mail:\s*astrologsuzana@gmail\.com[^\n]*$\n?/gmi,"");
+  s=s.replace(/^[ \t]*E-?mail:\s*(astrologsuzana@gmail\.com|kontakt@astrologsuzana\.com)[^\n]*$\n?/gmi,"");
   // pomen stare adrese usred recenice -> zameni novom umesto da secemo recenicu
   s=s.replace(/astrologsuzana@gmail\.com/gi,"kontakt@astrologsuzana.com");
   // samostalan red "Astrolog Suzana" + eventualno srce/emoji (nas potpis vec

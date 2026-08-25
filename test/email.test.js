@@ -105,3 +105,11 @@ describe('ocistiZaMejl - ostaci iz Messenger vremena ne idu u mejl', () => {
     expect(ocistiZaMejl(t)).toBe('Prvi deo.\n\nDrugi deo.');
   });
 });
+
+describe('ocistiZaMejl - i "E-mail: kontakt@..." red se skida (dupli potpis)', () => {
+  it('red sa novom adresom ne ostaje u mejlu (footer je vec nosi)', () => {
+    const out = ocistiZaMejl('Hvala.\n\nE-mail: kontakt@astrologsuzana.com');
+    expect(out).not.toContain('E-mail:');
+    expect(out).toContain('Hvala.');
+  });
+});
