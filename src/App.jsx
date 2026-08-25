@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, validEmail, nadjiEmailUTekstu, mailNaslov } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -629,7 +629,7 @@ var MAIL_POTPIS="\n\n---\nSuzana\n"+MAIL_SAJT+"\n"+MAIL_OD;
 // stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme da
 // ode klijentu - isto pravilo kao kod Kopiraj dugmica.
 function sastaviTeloMaila(tekst){
-  return fmtText(stripUpoz(String(tekst||"")))+MAIL_POTPIS;
+  return ocistiZaMejl(fmtText(stripUpoz(String(tekst||""))))+MAIL_POTPIS;
 }
 
 // PlaceStatus - status row ispod Mesto/Zemlja polja: ✅ ok | ⏳ pending | dropdown za ambiguous | ❌ not_found | ⚠️ error

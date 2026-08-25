@@ -501,3 +501,33 @@ export function mailNaslov(tip,ime){
     :"Tvoja astro analiza";
   return osnov+(ko?" - "+ko:"")+" | Astrolog Suzana";
 }
+
+// Ciscenje teksta analize PRE slanja mejlom. AI u analizu upisuje ostatke iz
+// Messenger vremena koji u mejlu nemaju smisla ili su pogresni:
+// 1. "Savetujem ti da analizu sacuvas u beleske ako se izbrise" - imalo smisla
+//    kad je analiza zivela samo u Messenger cetu; mejl JE trajna kopija.
+// 2. Stari potpis "E-mail: astrologsuzana@gmail.com / Astrolog Suzana <srce>" -
+//    biznis adresa je sada kontakt@astrologsuzana.com i dodaje se nas potpis,
+//    pa je stari i pogresan i dupli.
+// VAZNO: primenjuje se SAMO na mejl. Kopiraj dugmici za Messenger ne diraju
+// tekst - tamo savet o cuvanju i dalje ima smisla.
+export function ocistiZaMejl(t){
+  var s=String(t==null?"":t);
+  // stari potpis: ceo red "E-mail: astrologsuzana@gmail.com..."
+  s=s.replace(/^[ \t]*E-?mail:\s*astrologsuzana@gmail\.com[^\n]*$\n?/gmi,"");
+  // pomen stare adrese usred recenice -> zameni novom umesto da secemo recenicu
+  s=s.replace(/astrologsuzana@gmail\.com/gi,"kontakt@astrologsuzana.com");
+  // samostalan red "Astrolog Suzana" + eventualno srce/emoji (nas potpis vec
+  // sadrzi Suzanu, ovo bi bio dupli potpis)
+  s=s.replace(/^[ \t]*Astrolog Suzana[^\w\n]*$\n?/gmi,"");
+  // pasus koji savetuje cuvanje analize u beleske / za slucaj brisanja
+  var delovi=s.split(/\n[ \t]*\n/);
+  delovi=delovi.filter(function(pas){
+    var l=pas.toLowerCase();
+    var cuvanje=/sa[c\u010d]uva/.test(l);
+    var razlog=/bele[s\u0161]ke|bele[z\u017e]nic|izbri[s\u0161]|obri[s\u0161]|nestane/.test(l);
+    return !(cuvanje&&razlog);
+  });
+  s=delovi.join("\n\n");
+  return s.replace(/\n{3,}/g,"\n\n").trim();
+}

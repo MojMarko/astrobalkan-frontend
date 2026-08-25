@@ -69,3 +69,39 @@ describe('mailNaslov - naslov mejla po tipu posla', () => {
     expect(mailNaslov('analiza', '   ')).toBe('Tvoja astro analiza | Astrolog Suzana');
   });
 });
+
+import { ocistiZaMejl } from '../src/lib/util.js';
+
+describe('ocistiZaMejl - ostaci iz Messenger vremena ne idu u mejl', () => {
+  it('skida pasus "sacuvaj analizu u beleske"', () => {
+    const t = 'Kraj analize ovde.\n\nSavetujem ti jos da ovu analizu sačuvaš negde u beleške ako se slučajno izbriše ovde, da imaš negde drugo sačuvano.\n\nHvala ti puno na poverenju.';
+    const out = ocistiZaMejl(t);
+    expect(out).not.toContain('beleške');
+    expect(out).toContain('Kraj analize ovde.');
+    expect(out).toContain('Hvala ti puno na poverenju.');
+  });
+
+  it('skida stari potpis (E-mail: astrologsuzana@gmail.com + Astrolog Suzana sa srcem)', () => {
+    const t = 'Hvala na poverenju.\n\nE-mail: astrologsuzana@gmail.com\nAstrolog Suzana \u{1F497}';
+    const out = ocistiZaMejl(t);
+    expect(out).not.toContain('astrologsuzana@gmail.com');
+    expect(out).not.toContain('Astrolog Suzana');
+    expect(out).toContain('Hvala na poverenju.');
+  });
+
+  it('staru adresu usred recenice zamenjuje novom (ne sece recenicu)', () => {
+    const out = ocistiZaMejl('Pisite nam na astrologsuzana@gmail.com za sve.');
+    expect(out).toContain('kontakt@astrologsuzana.com');
+    expect(out).not.toContain('astrologsuzana@gmail.com');
+  });
+
+  it('obican tekst analize prolazi netaknut', () => {
+    const t = 'Ana, tvoja karta pokazuje Mesec u Raku.\n\nSačuvaj snagu za mart - tada stiže prilika.\n\nSve najbolje.';
+    expect(ocistiZaMejl(t)).toBe(t);
+  });
+
+  it('ne ostavlja duple prazne redove posle ciscenja', () => {
+    const t = 'Prvi deo.\n\nSavetujem da analizu sačuvaš u beleške ako se izbriše.\n\nDrugi deo.';
+    expect(ocistiZaMejl(t)).toBe('Prvi deo.\n\nDrugi deo.');
+  });
+});
