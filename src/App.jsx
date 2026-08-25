@@ -3716,7 +3716,10 @@ export default function App(){
         .then(function(res){
           var d=res.d||{};
           if(res.ok&&d.kraj){
-            if(d.ok)toast2("\u2705 "+to+": "+d.poruka);
+            // "delivered" znaci da je server klijenta PRIMIO mejl - ali svez domen
+            // cesto zavrsi u Spam/Promocije folderu dok ne stekne reputaciju.
+            // Radnica odmah dobija i uputstvo sta da kaze klijentu koji "nije dobio".
+            if(d.ok)toast2("\u2705 "+to+": "+d.poruka+" Ako klijent ka\u017ee da ne vidi mejl \u2014 neka pogleda Spam/Ne\u017eeljenu po\u0161tu (na Gmail-u i Promocije) i klikne \u201ENije spam\u201C.");
             else{toast2("\u274C "+to+": "+d.poruka);try{notifyDone&&notifyDone("Mejl za "+to+" NIJE isporu\u010den \u2014 proveri adresu!","Mejl nije isporu\u010den.",null);}catch(e){}}
             return;
           }
