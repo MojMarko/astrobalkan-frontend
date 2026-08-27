@@ -4626,12 +4626,28 @@ export default function App(){
           adminEmails===null&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)"}},"\u23F3 U\u010ditavam..."),
           adminEmailsErr&&React.createElement("div",{style:{fontSize:"11px",color:"var(--red)"}},adminEmailsErr),
           adminEmails&&adminEmails.length===0&&!adminEmailsErr&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)"}},"Jo\u0161 nema sa\u010duvanih mejlova. Kad radnica upi\u0161e email klijenta pre analize, pojavi\u0107e se ovde."),
+          // BROJAC PO DANIMA (Marko 26.8): koliko je mejlova uneto svakog dana -
+          // grupise se po datumu unosa (email_updated_at), najnoviji dan prvi.
+          adminEmails&&adminEmails.length>0&&(function(){
+            var poDanu={},redosled=[];
+            adminEmails.forEach(function(c){
+              var d=c.email_updated_at?fmtDMY(new Date(c.email_updated_at)):"ranije";
+              if(!(d in poDanu)){poDanu[d]=0;redosled.push(d);}
+              poDanu[d]++;
+            });
+            return React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:"5px",marginBottom:"8px"}},
+              redosled.slice(0,8).map(function(d){
+                return React.createElement("span",{key:d,style:{fontSize:"10.5px",padding:"2px 8px",borderRadius:"10px",background:"rgba(201,168,76,.12)",border:"1px solid rgba(201,168,76,.3)",color:"var(--gd2)"}},d+" \u2014 "+poDanu[d]);
+              }),
+              redosled.length>8&&React.createElement("span",{style:{fontSize:"10.5px",color:"var(--mt)",alignSelf:"center"}},"+"+(redosled.length-8)+" dana")
+            );
+          })(),
           adminEmails&&adminEmails.length>0&&React.createElement("div",{style:{maxHeight:"40vh",overflowY:"auto"}},
             adminEmails.map(function(c){
               return React.createElement("div",{key:c.id,style:{padding:"7px 2px",borderBottom:"1px solid var(--bd)"}},
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",gap:"8px"}},
                   React.createElement("span",{style:{fontSize:"12.5px",fontWeight:500}},c.name||"?"),
-                  React.createElement("span",{style:{fontSize:"10px",color:"var(--mt)"}},(c.sun_sign||"")+(c.asc_sign?" / "+c.asc_sign:""))
+                  React.createElement("span",{style:{fontSize:"10px",color:"var(--mt)",textAlign:"right"}},(c.sun_sign||"")+(c.asc_sign?" / "+c.asc_sign:"")+(c.email_updated_at?"  \u00B7  "+fmtDMY(new Date(c.email_updated_at)):""))
                 ),
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",gap:"8px",marginTop:"1px"}},
                   React.createElement("span",{style:{fontSize:"11px",color:"var(--gd2)"}},c.email),
