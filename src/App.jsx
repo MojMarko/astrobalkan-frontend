@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, dropInventedPersons, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -1148,6 +1148,17 @@ async function parsePersonsFromPitanjaUncached(text){
     // Vrati pravo ime kad je parser umesto imena vratio rec za odnos ("Sin" umesto
     // "Duško") - inace su dve cerke u promptu bile identicno oznacene (Marko 12.8.).
     arr=recoverNamesFromText(text,arr);
+    // IZMISLJENA OSOBA (Marko 1.9: "prica o nekoj deci a klijent nema decu niti je
+    // ostavio datume"). Slucaj Dragana 01.09: radnica nalepila "Ja rodjena u 21.i20"
+    // (to je VREME 21:20), a parser napravio osobu rodjenu 21.01.1921 - i analiza je
+    // taj izmisljeni znak (Vodolija) pripisala klijentkinjinoj cerki.
+    // Datum koji se NE POJAVLJUJE u tekstu radnice ne sme da udje u analizu.
+    var _dip=dropInventedPersons(text,arr);
+    if(_dip.izbacene.length>0){
+      console.warn("parsePersonsFromPitanja: izbacena osoba sa datumom kog nema u tekstu:",_dip.izbacene.map(function(x){return (x.ime||x.odnos||"osoba")+" "+x.datum;}).join(", "));
+      notifyOps("izmisljen_datum","Parser je vratio osobu ciji datum ne postoji u tekstu radnice - izbacena je iz analize.",{izbacene:_dip.izbacene.map(function(x){return {ime:x.ime,odnos:x.odnos,datum:x.datum};}),textSnippet:String(text).slice(0,250)});
+    }
+    arr=_dip.osobe;
     // Godina mora biti 1900..danas i datum ne sme biti u buducnosti — "od 5.6.2027"
     // (period iz pitanja) ili halucinirana 1878 nisu datumi rodjenja.
     var maxPY=new Date().getFullYear();

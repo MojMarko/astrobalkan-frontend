@@ -84,7 +84,7 @@ export function resolveTypoYear(raw, year, matchEnd){
   return {year:m[1],end:matchEnd+m[0].length};
 }
 
-// ==================== VRACANJE IMENA IZ TEKSTA ====================
+// ==================== VRACANJE IMENA IZ TEKSTA =============
 // Marko 12.8.: ista pitanja, dva pokretanja - u jednom je parser vratio ime "Duško",
 // u drugom "Sin" (rec za odnos umesto imena). Zaglavlje je onda pisalo
 // "Ćerka (Ćerka): rođena 5.12.2000" DVA puta, a AI je morao da pogadja koja je koja.
@@ -557,4 +557,42 @@ export function ubaciPonudu12m(t){
     return delovi.join("\n\n");
   }
   return s+"\n\n"+PONUDA_12M+"\n\n"+HVALA_RED;
+}
+// ==================== DATUM MORA POSTOJATI U TEKSTU ====================
+// Marko 1.9: "prica o nekoj deci a taj klijent uopste nema decu niti je ostavio datume".
+// Nadjeno u bazi (Dragana, 01.09. 13:24): radnica je nalepila poruku klijentkinje
+//   "...Ja rodjena u 21.i20 u Sremskoj Mitrovici"
+// gde je "21.i20" VREME rodjenja (21:20). AI-parser je od toga napravio DATUM
+// 21.01.1921 i osobu koja ne postoji, a analiza je taj izmisljeni znak (Vodolija)
+// pripisala klijentkinjinoj cerki. Pravi datum cerke (31.01.1986) nije ni prepoznat.
+//
+// Pravilo: datum osobe MORA da se pojavljuje u tekstu koji je radnica upisala.
+// Ako ga nema - osoba je izmisljena i izbacuje se. Ovo je deterministicko i ne
+// zavisi od toga koliko je AI-parser tog trenutka pouzdan.
+export function dateAppearsInText(rawText, iso){
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));
+  if(!m)return false;
+  var raw=String(rawText||"");
+  if(raw.indexOf(iso)>=0)return true;                    // vec u ISO obliku
+  var g=m[1], mm=parseInt(m[2],10), d=parseInt(m[3],10);
+  var d2=("0"+d).slice(-2), m2=("0"+mm).slice(-2), g2=g.slice(2);
+  var dani=[String(d),d2], meseci=[String(mm),m2], godine=[g,g2];
+  var sep="[.,/\\-\\s]{1,3}";
+  for(var i=0;i<dani.length;i++)for(var j=0;j<meseci.length;j++)for(var k=0;k<godine.length;k++){
+    var re=new RegExp("(^|[^0-9])"+dani[i]+sep+meseci[j]+sep+godine[k]+"([^0-9]|$)");
+    if(re.test(raw))return true;
+  }
+  return false;
+}
+// Izbaci osobe cijeg datuma nema u tekstu. Vraca {osobe, izbacene}.
+export function dropInventedPersons(rawText, persons){
+  var arr=Array.isArray(persons)?persons:[];
+  var raw=String(rawText||"");
+  if(!raw.trim())return {osobe:arr, izbacene:[]};
+  var ok=[], out=[];
+  arr.forEach(function(p){
+    if(p&&p.datum&&!dateAppearsInText(raw,p.datum))out.push(p);
+    else ok.push(p);
+  });
+  return {osobe:ok, izbacene:out};
 }
