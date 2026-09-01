@@ -577,3 +577,40 @@ describe('recoverNamesFromText - vraca ime kad parser vrati rec za odnos', () =>
     expect(personLabels(rec)).toEqual(['Ana (cerka)', 'Marija (cerka)']);
   });
 });
+
+// Marko 1.9: "prica o nekoj deci a taj klijent uopste nema decu niti je ostavio datume".
+// Slucaj iz baze (Dragana, 01.09. 13:24): radnica je nalepila poruku klijentkinje
+// "...Ja rodjena u 21.i20 u Sremskoj Mitrovici" - "21.i20" je VREME rodjenja (21:20),
+// a parser je od toga napravio osobu rodjenu 21.01.1921. Analiza je taj izmisljeni znak
+// (Vodolija) pripisala klijentkinjinoj cerki. Pravi datum cerke nije ni prepoznat.
+import { dateAppearsInText, dropInventedPersons } from '../src/lib/util.js';
+
+describe('dropInventedPersons - datum mora postojati u tekstu radnice', () => {
+  const stvarniTekst = 'Ja rodjena u 21.i20 u Sremskoj Mitrovici\na njegov datum ne znam. Blizanac je\nNesto o zdravlju cerke\n31.01.1986. u 8 i 45h';
+
+  it('izbacuje osobu ciji datum ne postoji u tekstu (pravi slucaj)', () => {
+    const r = dropInventedPersons(stvarniTekst, [{ ime: '', odnos: '', datum: '1921-01-21' }]);
+    expect(r.osobe.length).toBe(0);
+    expect(r.izbacene.length).toBe(1);
+  });
+  it('zadrzava osobu ciji datum JESTE u tekstu', () => {
+    const r = dropInventedPersons(stvarniTekst, [{ ime: '', odnos: 'cerka', datum: '1986-01-31' }]);
+    expect(r.osobe.length).toBe(1);
+    expect(r.izbacene.length).toBe(0);
+  });
+  it('prihvata razne zapise datuma', () => {
+    expect(dateAppearsInText('cerka 5.7.2018 Beograd', '2018-07-05')).toBe(true);
+    expect(dateAppearsInText('cerka 05.07.2018', '2018-07-05')).toBe(true);
+    expect(dateAppearsInText('cerka 5/7/2018', '2018-07-05')).toBe(true);
+    expect(dateAppearsInText('cerka 5-7-18', '2018-07-05')).toBe(true);
+    expect(dateAppearsInText('rodjena 2018-07-05', '2018-07-05')).toBe(true);
+  });
+  it('ne prihvata datum koji nije u tekstu', () => {
+    expect(dateAppearsInText('cerka 5.7.2018', '2019-07-05')).toBe(false);
+    expect(dateAppearsInText('u 21.i20 u Sremskoj Mitrovici', '1921-01-21')).toBe(false);
+  });
+  it('kad nema teksta ne dira nista (ne moze da proveri)', () => {
+    const osobe = [{ ime: 'Ana', odnos: 'cerka', datum: '1990-01-01' }];
+    expect(dropInventedPersons('', osobe).osobe.length).toBe(1);
+  });
+});
