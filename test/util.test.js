@@ -614,3 +614,37 @@ describe('dropInventedPersons - datum mora postojati u tekstu radnice', () => {
     expect(dropInventedPersons('', osobe).osobe.length).toBe(1);
   });
 });
+
+// Suzana 4.9: "Ne upiše partnera. Unosim ručno." Klijentkinja je napisala:
+//   4.2.1988 on / u 05:30casova / 1.da li cu popraviti odnos sa starijim sinom?
+// Postojeca mreza namerno preskace "on"/"ona" (preceste reci), pa je partner ostao u
+// pitanjima. Uzak obrazac DATUM + samostalno "on"/"ona" u ISTOM redu je pouzdan.
+import { nadjiPartneraPoZamenici } from '../src/lib/util.js';
+
+describe('nadjiPartneraPoZamenici - partner oznacen samo zamenicom', () => {
+  it('prepoznaje pravi slucaj iz prijave (datum + "on", vreme u sledecem redu)', () => {
+    const t = '4.2.1988 on\nu 05:30casova\n1.da li cu popraviti odnos sa starijim sinom?';
+    expect(nadjiPartneraPoZamenici(t, '1988-12-14')).toEqual({ datum: '1988-02-04', vreme: '05:30' });
+  });
+  it('prepoznaje i obrnut redosled ("On ,30.12.1979")', () => {
+    expect(nadjiPartneraPoZamenici('On ,30.12.1979', '1985-01-01').datum).toBe('1979-12-30');
+  });
+  it('NE uzima dete kad je rodbina u istom redu', () => {
+    expect(nadjiPartneraPoZamenici('moj sin 4.2.1988, on je problematican', '1960-01-01')).toBe(null);
+  });
+  it('NE uzima kad je rodbina u susednom redu', () => {
+    expect(nadjiPartneraPoZamenici('cerka mi je bolesna\n4.2.1988 ona', '1960-01-01')).toBe(null);
+  });
+  it('ne reaguje na obicnu recenicu sa "on"', () => {
+    expect(nadjiPartneraPoZamenici('on voli da putuje\nrodjena sam 5.5.1990', '1990-05-05')).toBe(null);
+  });
+  it('preskace datum samog klijenta', () => {
+    expect(nadjiPartneraPoZamenici('14.12.1988 on', '1988-12-14')).toBe(null);
+  });
+  it('kad ima VISE kandidata radije ne dira nista', () => {
+    expect(nadjiPartneraPoZamenici('4.2.1988 on\n5.3.1990 ona', '1985-01-01')).toBe(null);
+  });
+  it('odbija nemoguce godine', () => {
+    expect(nadjiPartneraPoZamenici('4.2.1821 on', '1985-01-01')).toBe(null);
+  });
+});
