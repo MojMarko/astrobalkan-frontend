@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, dropInventedPersons, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, dropInventedPersons, nadjiPartneraPoZamenici, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -2110,6 +2110,23 @@ export default function App(){
               p.partner=Object.assign({ime:"",vreme:"",mesto:"",zemlja:""}, p.partner||{}, {datum:partnerDatumPit});
               toast2("✓ Partner automatski dodat iz pitanja (datum "+pdd2+"."+pmm2+"."+pyr2+")");
             }
+          }
+        }
+        // ZAMENICA "ON"/"ONA" UZ DATUM (Suzana 4.9: "Ne upise partnera. Unosim rucno").
+        // Klijentkinja je napisala "4.2.1988 on / u 05:30casova". Gornja mreza namerno
+        // preskace "on"/"ona" jer su preceste reci - ali DATUM + samostalno "on"/"ona"
+        // U ISTOM REDU je uzak i pouzdan obrazac, i tako klijenti stvarno pisu partnera.
+        // Provera odbija slucaj kad je u istom ili susednom redu rodbina (sin, cerka...).
+        if((!p.partner||!p.partner.datum)){
+          var izvorZaZamenicu=[p.pitanja||"", s.paste||""].join("\n");
+          var pz=nadjiPartneraPoZamenici(izvorZaZamenicu, p.klijent&&p.klijent.datum);
+          if(pz){
+            p.imaPartnera=true;
+            p.partner=Object.assign({ime:"",vreme:"",mesto:"",zemlja:""}, p.partner||{}, {datum:pz.datum});
+            if(!p.partner.vreme&&pz.vreme)p.partner.vreme=pz.vreme;
+            var pzD=pz.datum.split("-");
+            toast2("✓ Partner automatski dodat (datum "+pzD[2]+"."+pzD[1]+"."+pzD[0]+(pz.vreme?", "+pz.vreme:"")+") - proveri");
+            notifyOps("partner_iz_zamenice","Partner prepoznat po zamenici on/ona uz datum - parser ga je propustio.",{datum:pz.datum,vreme:pz.vreme,snippet:String(izvorZaZamenicu).slice(0,200)});
           }
         }
         // Detektuj vreme u sirovom paste-u ali parser nije izvukao

@@ -596,3 +596,63 @@ export function dropInventedPersons(rawText, persons){
   });
   return {osobe:ok, izbacene:out};
 }
+
+// ==================== PARTNER OZNAČEN SAMO SA "ON"/"ONA" ====================
+// Suzana 4.9: "Ne upiše partnera. Unosim ručno." Klijentkinja je napisala:
+//   4.2.1988 on
+//   u 05:30casova
+//   1.da li cu popraviti odnos sa starijim sinom?
+// AI-parser je partnera ostavio u pitanjima, a postojeca mreza ga nije pokupila jer
+// izricito preskace zamenice "on"/"ona" (preceste su - "on voli", "ona je rekla").
+// Ali obrazac DATUM + samostalno "on"/"ona" U ISTOM REDU je vrlo specifican i tako
+// klijenti stvarno pisu partnera. Zato gledamo samo taj uzak slucaj.
+var PZ_FAM = /(^|[^a-zčćžšđ])(sin|sina|sinu|sine|sinom|[ćc]erk|k[ćc]i|brat|sestr|tat[aeu]|otac|oca|ocu|mam[aeu]|majk|bab[aeu]|ded[aeu]|dete|deca|dec[uoi]|unuk|tetk|stric|ujak|prijatelj|koleg)/i;
+var PZ_ZAMENICA = /(^|[^a-zčćžšđA-ZČĆŽŠĐ])(on|ona)(?![a-zčćžšđA-ZČĆŽŠĐ])/gi;
+var PZ_DATUM = /(^|[^\d])(\d{1,2})[.\/\-\s](\d{1,2})[.\/\-\s](\d{2,4})(?!\d)/;
+function pzIso(d, m, g){
+  var gg = g.length === 2 ? (parseInt(g, 10) <= 30 ? "20" + g : "19" + g) : g;
+  return gg + "-" + ("0" + m).slice(-2) + "-" + ("0" + d).slice(-2);
+}
+function pzVreme(red){
+  var m = /(^|[^\d])(\d{1,2})[:.\s]?(\d{2})\s*(?:h|sati|casova|časova)?(?![\d])/.exec(String(red || ""));
+  if (!m) return "";
+  var sat = parseInt(m[2], 10), min = parseInt(m[3], 10);
+  if (sat > 23 || min > 59) return "";
+  return ("0" + sat).slice(-2) + ":" + ("0" + min).slice(-2);
+}
+// Vraca {datum, vreme} ako je partner nedvosmisleno oznacen zamenicom uz datum,
+// inace null. Namerno vraca null kad ima VISE kandidata - bolje nista nego pogresno.
+export function nadjiPartneraPoZamenici(tekst, klijentDatum){
+  var linije = String(tekst || "").split(/\n/);
+  var kandidati = [];
+  for (var i = 0; i < linije.length; i++){
+    var red = linije[i];
+    var dm = PZ_DATUM.exec(red);
+    if (!dm) continue;
+    // Zamenica mora biti BLIZU datuma (do 25 znakova) - tako klijenti pisu partnera
+    // ("4.2.1988 on", "On ,30.12.1979"). Time se izbegava recenica u kojoj se "on"
+    // pojavljuje slucajno, daleko od datuma.
+    var dPos = dm.index + dm[1].length;
+    var blizu = false, zm;
+    PZ_ZAMENICA.lastIndex = 0;
+    while ((zm = PZ_ZAMENICA.exec(red))) {
+      var zPos = zm.index + zm[1].length;
+      if (Math.abs(zPos - dPos) <= 25) { blizu = true; break; }
+    }
+    if (!blizu) continue;
+    // Rodbina u istom ili susednom redu - to nije partner (npr. "moj sin 4.2.1988, on...")
+    if (PZ_FAM.test(red)) continue;
+    if (i > 0 && PZ_FAM.test(linije[i - 1])) continue;
+    if (i + 1 < linije.length && PZ_FAM.test(linije[i + 1])) continue;
+    var iso = pzIso(dm[2], dm[3], dm[4]);
+    if (klijentDatum && iso === klijentDatum) continue;   // to je sam klijent
+    var g = parseInt(iso.slice(0, 4), 10);
+    if (g < 1900 || g > new Date().getFullYear()) continue;
+    // Vreme: iz istog reda, a ako ga tu nema - iz sledeceg reda koji NEMA svoj datum
+    var vreme = pzVreme(red.replace(dm[0], " "));
+    if (!vreme && i + 1 < linije.length && !PZ_DATUM.test(linije[i + 1])) vreme = pzVreme(linije[i + 1]);
+    kandidati.push({ datum: iso, vreme: vreme || "" });
+  }
+  if (kandidati.length !== 1) return null;
+  return kandidati[0];
+}
