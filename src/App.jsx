@@ -3576,6 +3576,58 @@ export default function App(){
     };
   },[]);
 
+  // Refovi na najsvezije stanje slotova - strazar ispod mora da radi na FIKSNOM
+  // intervalu. Da zavisi od [slots], svaka promena progres-teksta (na 3 sekunde)
+  // bi mu resetovala tajmer i nikad ne bi stigao da okine.
+  var slotsRef=useRef(slots), dsSlotsRef=useRef(dsSlots), pqSlotsRef=useRef(pqSlots);
+  useEffect(function(){slotsRef.current=slots;},[slots]);
+  useEffect(function(){dsSlotsRef.current=dsSlots;},[dsSlots]);
+  useEffect(function(){pqSlotsRef.current=pqSlots;},[pqSlots]);
+
+  // STRAZAR NAD GOTOVIM POSLOVIMA (Suzana 4.9: "Radi po pola sata i ne uradi, zatim
+  // opet radi pola sata"). U bazi su tog jutra SVE analize bile gotove za 4-6 minuta -
+  // dakle posao je zavrsen, a radnica je gledala prazan spinner. Znaci poller je tiho
+  // zamro (telefon uspava tajmere, prekinuta veza, throttling u pozadini), a povratak
+  // u aplikaciju ga ne ozivi ako je aplikacija sve vreme bila otvorena.
+  // Ovaj strazar je NEZAVISAN od pollera: svakih 45 sekundi pita bazu da li je posao
+  // gotov i, ako jeste, odmah prikaze analizu. Jedan lagan zahtev po aktivnom poslu.
+  useEffect(function(){
+    var iv=setInterval(async function(){
+      try{
+        var kandidati=[];
+        (slotsRef.current||[]).forEach(function(sl,i){ if(sl&&sl.status==="generating"&&sl.jobId) kandidati.push({vrsta:"a",idx:i,jobId:sl.jobId,startedAt:sl.genStartedAt}); });
+        (dsSlotsRef.current||[]).forEach(function(sl,i){ if(sl&&sl.st==="generating"&&sl.jobId) kandidati.push({vrsta:"ds",idx:i,jobId:sl.jobId,startedAt:sl.genStartedAt}); });
+        (pqSlotsRef.current||[]).forEach(function(sl,i){ if(sl&&sl.st==="generating"&&sl.jobId) kandidati.push({vrsta:"pq",idx:i,jobId:sl.jobId,startedAt:sl.genStartedAt}); });
+        for(var k=0;k<kandidati.length;k++){
+          var c=kandidati[k];
+          // Prvih 90 sekundi ne diramo - tada normalni poller sasvim sigurno radi.
+          if(c.startedAt&&Date.now()-c.startedAt<90000)continue;
+          var gotov=await fetchDoneJob(c.jobId);
+          if(!gotov)continue;
+          console.warn("[strazar] Posao "+c.jobId+" je GOTOV u bazi a spinner je jos radio - prikazujem analizu");
+          var jbs=safeActiveJobs();
+          if(c.vrsta==="a"){
+            var ftA=applyClosing(fmtText(gotov.serbian_text||""),"analiza",!!((slotsRef.current||[])[c.idx]&&(slotsRef.current||[])[c.idx].hasPart));
+            (function(ci,t,jid){upSlot(ci,function(sl){return sl.jobId===jid?Object.assign({},sl,{status:"done",analysis:t,jobId:null,lastJobId:jid,genStartedAt:null}):sl;});})(c.idx,ftA,c.jobId);
+            delete jbs["a"+(c.idx+1)];
+          }else if(c.vrsta==="ds"){
+            var ftD=fmtText(gotov.serbian_text||"");
+            (function(ci,t,jid){upDs(ci,function(sl){return sl.jobId===jid?Object.assign({},sl,{st:"done",an:t,jobId:null,genStartedAt:null}):sl;});})(c.idx,ftD,c.jobId);
+            delete jbs["ds"+(c.idx+1)];
+          }else{
+            var ftP=applyClosing(fmtText(gotov.serbian_text||""),"pitanja");
+            (function(ci,t,jid){upPq(ci,function(sl){return sl.jobId===jid?Object.assign({},sl,{st:"done",an:t,jobId:null,genStartedAt:null}):sl;});})(c.idx,ftP,c.jobId);
+            delete jbs["pq"+(c.idx+1)];
+          }
+          try{localStorage.setItem("activeJobs",JSON.stringify(jbs));}catch(eLS){}
+          toast2("Analiza je bila gotova - prikazana je ispod.");
+          notifyOps("spinner_zaglavljen","Posao je bio gotov u bazi a spinner je jos radio - strazar ga je prikazao.",{jobId:c.jobId,vrsta:c.vrsta,minuta:c.startedAt?Math.round((Date.now()-c.startedAt)/60000):null});
+        }
+      }catch(e){console.warn("[strazar]",e&&e.message);}
+    },45000);
+    return function(){clearInterval(iv);};
+  },[]);
+
   // Safety valve - kad polling tiho zakaca (slot ostane u "generating" zauvek),
   // radnica klikne "Proveri da li je gotovo" pa cemo da restartujemo polling sa
   // postojecim jobId. Prvi sledeci poll ce videti done status i UI ce se osveziti.
