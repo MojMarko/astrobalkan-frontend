@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, dropInventedPersons, nadjiPartneraPoZamenici, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, osobeMarkerBlok, dropInventedPersons, nadjiPartneraPoZamenici, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -1195,7 +1195,9 @@ function sunSignForDate(iso){
 // i sad i za Main Analizu (Jelena prijava 30.5: AI je za partnera 23.8 napisao Lav umesto
 // Devica iako je u podacima bila Devica - na cusp datumima AI cesto halucinira po opstoj
 // "Leo do 22.8, Devica od 23.8" definiciji ignorisuci stvarni datum/vreme rodjenja).
-async function buildPersonSignFacts(questionsText,clientName,clientBirthDate,partner){
+// osobeLista (Marko 4.9. tura 2): kad je radnica vec videla i potvrdila listu osoba iz
+// pitanja (tabela "Osobe iz pitanja"), koristi se TA lista umesto ponovnog AI citanja.
+async function buildPersonSignFacts(questionsText,clientName,clientBirthDate,partner,osobeLista){
   var lines=[];
   var cn=(clientName||"").trim();
   var seen={};
@@ -1212,7 +1214,7 @@ async function buildPersonSignFacts(questionsText,clientName,clientBirthDate,par
     }
   }
   try{
-    var persons=await parsePersonsFromPitanja(questionsText||"");
+    var persons=Array.isArray(osobeLista)?osobeValidne(osobeLista):await parsePersonsFromPitanja(questionsText||"");
     var pLabels=personLabels(persons);
     persons.forEach(function(p,pi){
       if(!p||!p.datum||seen[p.datum])return;
@@ -1349,6 +1351,39 @@ function ClientHistoryBox(props){
   );
 }
 
+// OSOBE IZ PITANJA (Marko 4.9. tura 2): radnica vidi sta je AI izvukao iz pitanja (ko je
+// ko, koji datum) PRE klika na Generisi, i moze da ispravi, obrise ili doda osobu.
+// Generisanje koristi ISKLJUCIVO ovu listu - najjaci lek za "mesa datume".
+function OsobeBox(props){
+  var box={padding:"8px 10px",background:"rgba(220,180,80,0.08)",border:"1px solid rgba(220,180,80,0.35)",borderRadius:"6px",marginBottom:"10px",fontSize:"11px"};
+  var lista=Array.isArray(props.osobe)?props.osobe:null;
+  function setP(i,f,v){var nv=lista.slice();nv[i]=Object.assign({},nv[i]);nv[i][f]=v;props.onChange(nv);}
+  var naslov=React.createElement("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px",flexWrap:"wrap"}},
+    React.createElement("span",{style:{fontWeight:600,color:"var(--gd2)"}},"👥 Osobe iz pitanja"),
+    React.createElement("span",{style:{color:"var(--mt)",flex:1}},props.loading?"AI čita ko je ko...":(lista&&lista.length?lista.length+" sa datumom":"")),
+    React.createElement("button",{type:"button",className:"btn bol bsm",onClick:props.onReload,disabled:!!props.loading},"↻ Pročitaj ponovo")
+  );
+  if(props.loading&&!lista)return React.createElement("div",{style:box},naslov,React.createElement("div",{style:{color:"var(--mt)"}},React.createElement("span",{className:"spin"})," AI čita ko je ko u pitanjima (10-40 s)..."));
+  if(!lista)return React.createElement("div",{style:box},naslov,React.createElement("div",{style:{color:"var(--mt)"}},"Lista se puni čim prestaneš da kucaš."));
+  return React.createElement("div",{style:box},naslov,
+    props.stale&&React.createElement("div",{style:{color:"#d8b048",marginBottom:"6px"}},"⚠ Pitanja su izmenjena posle čitanja — klikni „Pročitaj ponovo“ ili ispravi ručno."),
+    lista.length===0&&React.createElement("div",{style:{color:"var(--mt)",marginBottom:"6px"}},"Nema osoba sa datumom rođenja u pitanjima. Ako je klijent dao nečiji datum, dodaj osobu ručno."),
+    lista.map(function(p,i){
+      return React.createElement("div",{key:i,style:{display:"flex",gap:"4px",alignItems:"center",marginBottom:"5px",flexWrap:"wrap",padding:"4px 6px",background:"rgba(0,0,0,0.15)",borderRadius:"5px"}},
+        React.createElement("input",{value:p.odnos||"",onChange:function(e){setP(i,"odnos",e.target.value);},placeholder:"odnos (sin, ćerka, muž...)",style:{flex:"1 1 110px",minWidth:"90px"}}),
+        React.createElement("input",{value:p.ime||"",onChange:function(e){setP(i,"ime",e.target.value);},placeholder:"ime",style:{flex:"1 1 80px",minWidth:"70px"}}),
+        React.createElement("div",{style:{flex:"2 1 170px"}},React.createElement(DateInput3,{value:p.datum||"",onChange:function(v){setP(i,"datum",v);}})),
+        React.createElement("input",{type:"time",value:p.vreme||"",onChange:function(e){setP(i,"vreme",e.target.value);},style:{flex:"0 1 100px"}}),
+        React.createElement("button",{type:"button",className:"btn brd bsm",title:"Ukloni osobu",onClick:function(){var nv=lista.slice();nv.splice(i,1);props.onChange(nv);}},"✕"),
+        !p.datum&&React.createElement("div",{style:{flexBasis:"100%",color:"#d8b048"}},"Bez datuma se ova osoba NE koristi u analizi.")
+      );
+    }),
+    React.createElement("div",{style:{display:"flex",gap:"6px",alignItems:"center",marginTop:"4px",flexWrap:"wrap"}},
+      React.createElement("button",{type:"button",className:"btn bol bsm",onClick:function(){props.onChange((lista||[]).concat([{ime:"",odnos:"",datum:"",vreme:"",mesto:""}]));}},"+ Dodaj osobu"),
+      React.createElement("span",{style:{color:"var(--mt)"}},"AI koristi SAMO ove osobe i datume. Proveri ko je ko.")
+    )
+  );
+}
 function GeneratingProgress(props){
   var [now,setNow]=useState(Date.now());
   useEffect(function(){
@@ -1470,6 +1505,7 @@ export default function App(){
   // asinhrono pa brzi dupli klik prodje kroz oba poziva i napravi 2 job-a (Zorica 4.6,
   // Suzana 6.6). Ref se postavlja sinhrono - drugi klik u istom tick-u vidi true.
   var genBusyRef=useRef({});
+  var osobeTimers=useRef({}); // debounce za citanje osoba iz pitanja (tabela "Osobe iz pitanja")
   useEffect(function(){try{localStorage.setItem("ab_slots",JSON.stringify(slots));}catch(e){}},[slots]);
   useEffect(function(){try{localStorage.setItem("ab_dsSlots",JSON.stringify(dsSlots));}catch(e){}},[dsSlots]);
   useEffect(function(){try{localStorage.setItem("ab_pqSlots",JSON.stringify(pqSlots));}catch(e){}},[pqSlots]);
@@ -2135,6 +2171,8 @@ export default function App(){
           toast2("⚠ U poruci postoji vreme ali parser ga nije prepoznao - proveri rucno.");
         }
         var newClient=Object.assign({},s.client,p.klijent||{},{pitanja:p.pitanja||""});
+        // Odmah procitaj ko je ko u pitanjima - radnica vidi tabelu osoba pre klika Generisi.
+        ucitajOsobe("a",idx,newClient.pitanja,false);
         // Klijenti cesto ostave mejl u samoj poruci. Vadimo ga regexom (pouzdanije
         // od AI parsera - adresa ima strog oblik) i to samo ako radnica jos nije
         // rucno upisala neki, da joj se unos ne prepise.
@@ -2549,7 +2587,9 @@ export default function App(){
     // Preskace se za namerni regenerate (slot je "done" - radnica svesno ponavlja).
     if(sl.client.ime&&sl.client.datum&&sl.status!=="done"){
       try{
-        var rDup=await fetchSafe(API+"/api/clients",null,6000);
+        // Pretraga po imenu i datumu NA SERVERU (tura 2): ranije se skidala cela lista od
+        // 2000+ klijenata na svaki klik Generisi, samo da se nadje jedan covek.
+        var rDup=await fetchSafe(API+"/api/clients?q="+encodeURIComponent(sl.client.ime)+"&birth_date="+encodeURIComponent(sl.client.datum),null,6000);
         if(rDup.ok){
           var dDup=await rDup.json();
           var dupCl=(dDup.clients||[]).find(function(c){
@@ -2593,9 +2633,13 @@ export default function App(){
     // Auto-extract additional persons from pitanja and compute their charts
     var extraPersons=[];
     var extraCharts=[];
+    var potvrdjene=null;
     if(hasPitanjaText){
       try{
-        extraPersons=await parsePersonsFromPitanja(sl.client.pitanja);
+        // Radnica je videla i potvrdila listu (tabela "Osobe iz pitanja") - ona je konacna.
+        // Bez nje (lista se jos ucitava ili je zastarela) AI cita ponovo kao ranije.
+        potvrdjene=potvrdjeneOsobe(sl,sl.client.pitanja);
+        extraPersons=potvrdjene?potvrdjene.slice():await parsePersonsFromPitanja(sl.client.pitanja);
         // Max 4 karte: svaka je do 45s poziv - 5+ osoba je guralo pripremu preko
         // 8-min ventila. Osobe preko limita svejedno dobiju Suncev znak kroz
         // DODATNE DATUME na backendu.
@@ -2843,8 +2887,10 @@ export default function App(){
     // AI napisao Lav). Ovaj blok ide POSLE pitanja da bude blizu generation.
     try{
       var partnerForFacts=(sl.hasPart&&sl.partner&&sl.partner.datum)?sl.partner:null;
-      var mainFacts=await buildPersonSignFacts(pitanjaTxt2||"",sl.client.ime,sl.client.datum,partnerForFacts);
+      var mainFacts=await buildPersonSignFacts(pitanjaTxt2||"",sl.client.ime,sl.client.datum,partnerForFacts,potvrdjene);
       if(mainFacts)usr+=mainFacts;
+      // Konacna lista osoba iz pitanja - backend po ovom bloku ne dodaje osobe regexom.
+      if(potvrdjene)usr+=osobeMarkerBlok(potvrdjene);
     }catch(eF){console.warn("main astro facts:",eF.message);}
     var ri=idx;
     try{
@@ -3135,6 +3181,34 @@ export default function App(){
   // povuci pri generisanju", pa je saznavala TEK posle generisanja. Sad se lista
   // ranijih analiza povlaci cim izabere klijenta (light=1: samo tip+datum, bez
   // punih tekstova - brzo i jeftino na mobilnom).
+  // OSOBE IZ PITANJA (Marko 4.9. tura 2): AI procita ko je ko cim se pitanja upisu ili
+  // promene (2 s posle poslednjeg kucanja), radnica vidi listu pre klika i moze da je
+  // ispravi. Generisanje koristi SAMO tu listu (vidi doGen/doDsGen/doPqGen).
+  // kind: "a" (analiza), "ds" (downsell), "pq" (pitanja). Lista se pamti uz tekst
+  // (osobeZa) pa se zna kad je zastarela.
+  function osobeUp(kind,idx,fn){(kind==="a"?upSlot:kind==="ds"?upDs:upPq)(idx,fn);}
+  function ucitajOsobe(kind,idx,text,force){
+    var t=String(text||"").trim();
+    if(t.length<10){osobeUp(kind,idx,function(s){return Object.assign({},s,{osobe:[],osobeZa:t,osobeLoading:false});});return;}
+    if(force){try{delete PPFP_CACHE[t];}catch(e){}}
+    osobeUp(kind,idx,function(s){return Object.assign({},s,{osobeLoading:true,osobeZa:t});});
+    parsePersonsFromPitanja(t).then(function(arr){
+      osobeUp(kind,idx,function(s){if(s.osobeZa!==t)return s;return Object.assign({},s,{osobe:osobeValidne(arr),osobeLoading:false});});
+    },function(){
+      osobeUp(kind,idx,function(s){return s.osobeZa!==t?s:Object.assign({},s,{osobe:s.osobe||[],osobeLoading:false});});
+    });
+  }
+  function zakaziOsobe(kind,idx,text){
+    var k=kind+idx;
+    if(osobeTimers.current[k])clearTimeout(osobeTimers.current[k]);
+    osobeTimers.current[k]=setTimeout(function(){ucitajOsobe(kind,idx,text,false);},3000);
+  }
+  // Potvrdjena lista za generisanje: samo ako je ucitana bas za tekuci tekst pitanja.
+  function potvrdjeneOsobe(sl,text){
+    if(!sl||!Array.isArray(sl.osobe))return null;
+    if(sl.osobeZa!==String(text||"").trim())return null;
+    return osobeValidne(sl.osobe);
+  }
   async function loadClientHistory(kind,idx,clientId){
     if(!clientId)return;
     var up=kind==="ds"?upDs:upPq;
@@ -3199,7 +3273,9 @@ export default function App(){
         "Sada napisi NOVU prognozu počev od "+todayStr+" nadalje. Ne pominji prošle datume kao budućnost.";
       if(hasDsPitanja)usrContent+="\n\nDODATNA PITANJA KLIJENTA (OBAVEZNO ODGOVORI NA SVAKO, BEZ IZUZETKA):\n"+ds.pitanja+"\n\nOdgovori na svako pitanje posebno, u sekciji 'Odgovori na tvoja pitanja'. Pitanja su SUSTINA ovog Downsell-a — bez odgovora na pitanja analiza je bezvredna. Koristi 'bice' i 'ce', nikad 'mozda'.";
       var dsName=ds.clientName.trim()||"";
-      try{var dsFacts=await buildPersonSignFacts(ds.pitanja||"",dsName,ds.clientBirthDate);if(dsFacts)usrContent+=dsFacts;}catch(eF){console.warn("ds astro facts:",eF.message);}
+      var dsOsobe=potvrdjeneOsobe(ds,ds.pitanja);
+      try{var dsFacts=await buildPersonSignFacts(ds.pitanja||"",dsName,ds.clientBirthDate,null,dsOsobe);if(dsFacts)usrContent+=dsFacts;}catch(eF){console.warn("ds astro facts:",eF.message);}
+      if(dsOsobe)usrContent+=osobeMarkerBlok(dsOsobe);
       // Tacne danasnje pozicije planeta - Downsell prompt trazi konkretne tranzite,
       // a bez ovoga AI izmislja pozicije iz training data (pogresne godine/znakovi).
       // "***" prefiks je bitan: backend extractPitanjaSection sece pitanja sekciju na
@@ -3278,7 +3354,9 @@ export default function App(){
         "Sada odgovori na klijentova pitanja ispod, koristeci NOVE prognoze pocev od "+todayStr+" nadalje.\n\n"+
         "CLIENT QUESTIONS:\n"+pq.quest;
       var pqName=pq.clientName.trim()||"";
-      try{var pqFacts=await buildPersonSignFacts(pq.quest||"",pqName,pq.clientBirthDate);if(pqFacts)pqUsr+=pqFacts;}catch(eF){console.warn("pq astro facts:",eF.message);}
+      var pqOsobe=potvrdjeneOsobe(pq,pq.quest);
+      try{var pqFacts=await buildPersonSignFacts(pq.quest||"",pqName,pq.clientBirthDate,null,pqOsobe);if(pqFacts)pqUsr+=pqFacts;}catch(eF){console.warn("pq astro facts:",eF.message);}
+      if(pqOsobe)pqUsr+=osobeMarkerBlok(pqOsobe);
       // Tacne danasnje pozicije planeta - bez ovoga AI izmislja trenutno nebo.
       // "***" prefiks: da backend extractPitanjaSection ne uvuce blok u pitanja sekciju.
       try{var pqTr=localTransitPositions();if(pqTr.length>0)pqUsr+="\n\n*** TRENUTNE POZICIJE PLANETA DANAS ("+todayStr+", tacno izracunato) ***\n"+pqTr.map(function(t){return t.planet+": "+t.sign+" "+t.deg+"°"+(t.retrograde?" R":"");}).join("\n")+"\nKoristi ISKLJUCIVO ove pozicije za trenutno nebo. NIKAD ne navodi trenutnu poziciju planete koje nema u ovoj listi.";}catch(eT){}
@@ -4026,7 +4104,10 @@ export default function App(){
           ),
           React.createElement(PlaceStatus,{person:s.client,onPick:function(opt){pickPlaceOption(idx,"client",opt);}}),
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Napomena (opciono)"),React.createElement("textarea",{value:s.client.napomena||"",onChange:function(e){upC("napomena",e.target.value);},placeholder:"Ukoliko osoba ne zeli analizu za posao ili ljubav, napomeni da ne radim za posao ili ljubav",style:{minHeight:"60px"}})),
-          React.createElement("div",{className:"fld"},React.createElement("label",null,"Pitanja klijenta (opciono)"),React.createElement("textarea",{value:s.client.pitanja,onChange:function(e){upC("pitanja",e.target.value);},placeholder:"Npr: Da li cu se udati za trenutnog partnera?"}))
+          React.createElement("div",{className:"fld"},React.createElement("label",null,"Pitanja klijenta (opciono)"),React.createElement("textarea",{value:s.client.pitanja,onChange:function(e){var v=e.target.value;upC("pitanja",v);zakaziOsobe("a",idx,v);},placeholder:"Npr: Da li cu se udati za trenutnog partnera?"})),
+          (s.client.pitanja||"").trim().length>=10&&React.createElement(OsobeBox,{osobe:s.osobe,loading:s.osobeLoading,stale:Array.isArray(s.osobe)&&s.osobeZa!==(s.client.pitanja||"").trim(),
+            onChange:function(nv){upSlot(idx,function(sl){return Object.assign({},sl,{osobe:nv});});},
+            onReload:function(){ucitajOsobe("a",idx,s.client.pitanja,true);}})
         ),
         React.createElement("div",{className:"card"},
           React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:s.hasPart?"9px":"0"}},
@@ -4432,7 +4513,10 @@ export default function App(){
             ),
             ds.clientId&&React.createElement(ClientHistoryBox,{hist:ds.hist,loading:ds.histLoading,onOpen:function(x){openAnalysis({id:x.id,preview:true,clientName:ds.clientName,date:x.date,types:[x.job_type]});}}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza"+(ds.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:ds.paste,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{paste:v});});},style:{minHeight:"110px"},placeholder:ds.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu klijenta..."})),
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:ds.pitanja,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{pitanja:v});});},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta (opciono)"),React.createElement("textarea",{value:ds.pitanja,onChange:function(e){var v=e.target.value;upDs(dsIdx,function(s){return Object.assign({},s,{pitanja:v});});zakaziOsobe("ds",dsIdx,v);},placeholder:"Upisi pitanja klijenta ako ih ima...",style:{minHeight:"60px"}})),
+            (ds.pitanja||"").trim().length>=10&&React.createElement(OsobeBox,{osobe:ds.osobe,loading:ds.osobeLoading,stale:Array.isArray(ds.osobe)&&ds.osobeZa!==(ds.pitanja||"").trim(),
+              onChange:function(nv){upDs(dsIdx,function(s){return Object.assign({},s,{osobe:nv});});},
+              onReload:function(){ucitajOsobe("ds",dsIdx,ds.pitanja,true);}}),
             React.createElement("button",{className:"btn bgd bfull",onClick:function(){doDsGen(dsIdx);},disabled:ds.st==="generating"||(!ds.paste.trim()&&!ds.clientId)},
               ds.st==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generiši Analizu Perioda"
             )
@@ -4500,7 +4584,10 @@ export default function App(){
             ),
             pq.clientId&&React.createElement(ClientHistoryBox,{hist:pq.hist,loading:pq.histLoading,onOpen:function(x){openAnalysis({id:x.id,preview:true,clientName:pq.clientName,date:x.date,types:[x.job_type]});}}),
             React.createElement("div",{className:"fld"},React.createElement("label",null,"Prethodna analiza klijenta"+(pq.clientId?" (opciono - istorijat se povlaci automatski)":"")),React.createElement("textarea",{value:pq.prev,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{prev:v});});},placeholder:pq.clientId?"Opciono - mozes ostaviti prazno":"Nalepi prethodnu analizu...",style:{minHeight:"100px"}})),
-            React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pq.quest,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{quest:v});});},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
+            React.createElement("div",{className:"fld"},React.createElement("label",null,"Dodatna pitanja klijenta"),React.createElement("textarea",{value:pq.quest,onChange:function(e){var v=e.target.value;upPq(pqIdx,function(s){return Object.assign({},s,{quest:v});});zakaziOsobe("pq",pqIdx,v);},placeholder:"Upisi pitanja klijenta...",style:{minHeight:"80px"}})),
+            (pq.quest||"").trim().length>=10&&React.createElement(OsobeBox,{osobe:pq.osobe,loading:pq.osobeLoading,stale:Array.isArray(pq.osobe)&&pq.osobeZa!==(pq.quest||"").trim(),
+              onChange:function(nv){upPq(pqIdx,function(s){return Object.assign({},s,{osobe:nv});});},
+              onReload:function(){ucitajOsobe("pq",pqIdx,pq.quest,true);}}),
             React.createElement("button",{className:"btn bgd bfull",onClick:function(){doPqGen(pqIdx);},disabled:pq.st==="generating"||(!pq.prev.trim()&&!pq.clientId)||!pq.quest.trim()},
               pq.st==="generating"?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," Generisem..."):"Generisi Odgovore"
             )
