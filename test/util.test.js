@@ -648,3 +648,25 @@ describe('nadjiPartneraPoZamenici - partner oznacen samo zamenicom', () => {
     expect(nadjiPartneraPoZamenici('4.2.1821 on', '1985-01-01')).toBe(null);
   });
 });
+
+import { osobeValidne, osobeMarkerBlok } from '../src/lib/util.js';
+describe('Osobe iz pitanja (tabela koju radnica potvrdjuje, tura 2)', () => {
+  it('osobeValidne zadrzava samo osobe sa ispravnim datumom i cisti polja', () => {
+    const v = osobeValidne([
+      { ime: ' Marko ', odnos: 'sin', datum: '2010-05-12', vreme: '', mesto: '' },
+      { ime: 'Bez datuma', odnos: 'cerka', datum: '' },
+      { ime: 'Buducnost', odnos: 'sin', datum: '2999-01-01' },
+      { ime: 'Prastar', odnos: 'deda', datum: '1850-01-01' },
+      null
+    ]);
+    expect(v).toEqual([{ ime: 'Marko', odnos: 'sin', datum: '2010-05-12', vreme: '', mesto: '' }]);
+    expect(osobeValidne(null)).toEqual([]);
+  });
+  it('osobeMarkerBlok pise linije koje backend ume da procita i marker za preskakanje regexa', () => {
+    const b = osobeMarkerBlok([{ ime: 'Marko', odnos: 'sin', datum: '2010-05-12', vreme: '14:30', mesto: 'Nis' }]);
+    expect(b).toContain('*** OSOBE IZ PITANJA (POTVRDILA RADNICA) ***');
+    expect(b).toContain('- Marko (sin), rodjen/a 12.05.2010 u 14:30, Nis');
+    const prazan = osobeMarkerBlok([]);
+    expect(prazan).toContain('nema osoba sa datumom');
+  });
+});

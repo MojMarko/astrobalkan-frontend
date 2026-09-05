@@ -656,3 +656,32 @@ export function nadjiPartneraPoZamenici(tekst, klijentDatum){
   if (kandidati.length !== 1) return null;
   return kandidati[0];
 }
+
+// ==================== OSOBE U ANALIZI (Marko 4.9. tura 2) ====================
+// Radnica pre klika na Generisi vidi ko je ko sa kojim datumom (sta je AI izvukao iz
+// pitanja) i moze da ispravi, obrise ili doda osobu. Generisanje koristi ISKLJUCIVO tu
+// listu - to je najjaci lek za "mesa datume": greska ne moze ni da udje u analizu.
+// Samo osobe sa ispravnim datumom rodjenja (1900..danas) ulaze u analizu.
+export function osobeValidne(lista){
+  if(!Array.isArray(lista))return [];
+  var maxIso=new Date().toISOString().slice(0,10);
+  return lista.filter(function(p){
+    if(!p||!p.datum||!/^\d{4}-\d{2}-\d{2}$/.test(p.datum))return false;
+    var y=parseInt(p.datum.slice(0,4),10);
+    return y>=1900&&p.datum<=maxIso;
+  }).map(function(p){
+    return {ime:String(p.ime||"").trim(),odnos:String(p.odnos||"").trim(),datum:p.datum,vreme:String(p.vreme||"").trim(),mesto:String(p.mesto||"").trim()};
+  });
+}
+// Blok za prompt. Backend po ovom markeru NE dodaje osobe regexom iz pitanja (radnica
+// je listu vec potvrdila, mozda i obrisala pogresnu osobu). Format linija je isti kao
+// u ostalim blokovima da ga zaglavlje i cuvar datuma umeju da procitaju.
+export function osobeMarkerBlok(lista){
+  var v=osobeValidne(lista);
+  var linije=v.map(function(p){
+    return "- "+(p.ime||"Osoba")+(p.odnos?" ("+p.odnos+")":"")+", rodjen/a "+p.datum.split("-").reverse().join(".")+(p.vreme?" u "+p.vreme:"")+(p.mesto?", "+p.mesto:"");
+  });
+  return "\n\n*** OSOBE IZ PITANJA (POTVRDILA RADNICA) ***\n"+
+    (linije.length?linije.join("\n"):"(nema osoba sa datumom rodjenja u pitanjima)")+
+    "\nOvo je KONACNA lista osoba iz pitanja sa datumima. Nijedna druga osoba iz pitanja NEMA datum rodjenja - za nju ne navodi datum, uzrast ni znak.\n";
+}
