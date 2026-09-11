@@ -3136,12 +3136,22 @@ export default function App(){
   function mergeClientMatches(local,q,birthDate){
     var out=local.slice(), seen={};
     // stavke iz analiza nemaju id - kljuc je ime, da se ne dupliraju
-    out.forEach(function(c){seen[c.id||("ime:"+String(c.name||"").toLowerCase())]=true;});
+    out.forEach(function(c,i){seen[c.id||("ime:"+String(c.name||"").toLowerCase())]=i+1;});
     if(srvSearch.q&&(q||"").trim().toLowerCase().indexOf(srvSearch.q.toLowerCase())===0){
       srvSearch.results.forEach(function(c){
         if(!c||!c.name)return;
         var k=c.id||("ime:"+String(c.name).toLowerCase());
-        if(!seen[k]){seen[k]=true;out.push(c);}
+        if(!seen[k]){seen[k]=out.length+1;out.push(c);return;}
+        // MEJL IZ PRETRAGE (Marko 11.9.): puna lista klijenata se skida BEZ mejla
+        // (lean odgovor, da ne trosi mobilni internet), a serverska pretraga ga
+        // vraca. Kesirana stavka je do sada pobedjivala i mejl se gubio - zato je
+        // radnica morala rucno da ga kuca. Sada dopunjavamo sto kesu nedostaje.
+        var i=seen[k]-1, stara=out[i];
+        if(stara&&(c.email||c.sun_sign||c.asc_sign))out[i]=Object.assign({},stara,{
+          email:stara.email||c.email||null,
+          sun_sign:stara.sun_sign||c.sun_sign||null,
+          asc_sign:stara.asc_sign||c.asc_sign||null
+        });
       });
     }
     // Datum rodjenja suzava na TACNU osobu (polje "Datum rodjenja klijenta (za uparivanje)"
@@ -3219,7 +3229,22 @@ export default function App(){
       var h=(d&&d.history)||[];
       // najnovije prvo (backend vraca hronoloski)
       h=h.slice().reverse();
-      up(idx,function(s){return s.clientId===clientId?Object.assign({},s,{hist:h,histLoading:false}):s;});
+      // MEJL SE SAM POPUNJAVA (Marko 11.9.): kad klijent vec ima uradjenu analizu,
+      // adresa je u bazi - radnica ne sme ponovo da je kuca. Backend vraca ceo red
+      // klijenta, a ako je polje email prazno, i poslednju adresu na koju mu je
+      // analiza STVARNO poslata. Vec upisanu adresu NE diramo (radnica ju je mozda
+      // ispravila), popunjavamo samo prazno polje.
+      var izBaze=validEmail((d&&d.client&&d.client.email)||"")||validEmail((d&&d.last_emailed_to)||"");
+      var ref=kind==="ds"?dsSlotsRef:pqSlotsRef;
+      var sad=(ref&&ref.current&&ref.current[idx])||null;
+      var bilaPrazna=!String((sad&&sad.clientEmail)||"").trim();
+      up(idx,function(s){
+        if(s.clientId!==clientId)return s;
+        var patch={hist:h,histLoading:false};
+        if(izBaze&&!String(s.clientEmail||"").trim())patch.clientEmail=izBaze;
+        return Object.assign({},s,patch);
+      });
+      if(izBaze&&bilaPrazna)toast2("\u2709 Email povu\u010den iz baze: "+izBaze);
     }catch(e){
       console.warn("loadClientHistory:",e&&e.message);
       up(idx,function(s){return Object.assign({},s,{histLoading:false});});
