@@ -685,3 +685,62 @@ export function osobeMarkerBlok(lista){
     (linije.length?linije.join("\n"):"(nema osoba sa datumom rodjenja u pitanjima)")+
     "\nOvo je KONACNA lista osoba iz pitanja sa datumima. Nijedna druga osoba iz pitanja NEMA datum rodjenja - za nju ne navodi datum, uzrast ni znak.\n";
 }
+
+// ==================== "NIJE ODGOVORENO NA PITANJA" - LAZNI ALARM ====================
+// Marko 11.9.: "softver izbaci 'nije odgovoreno na pitanja', a radnice procitaju
+// analizu i vide da je sve odgovoreno".
+// Uzrok: provera je trazila DOSLOVAN naslov "Odgovori na tvoja pitanja". Kad ga AI
+// napise drugacije ("Sada cu odgovoriti na tvoja pitanja", "Odgovori na vasa
+// pitanja") ili ga uopste ne napise a pitanja obradi kao blokove
+// (pitanje na svojoj liniji sa "?", pa odgovor ispod), provera je brojala NULA
+// odgovora i radnica je dobijala crveno upozorenje za ispravnu analizu.
+// Sada se gleda SADRZAJ - da li blokovi pitanje+odgovor postoje - a ne naslov.
+export function jeQaNaslovLinija(l){
+  var s=String(l==null?"":l).trim();
+  if(!s||s.length>140)return false;
+  var low=s.toLowerCase();
+  return low.indexOf("odgovor")>=0&&low.indexOf("pitanj")>=0;
+}
+// Blok = linija koja se zavrsava sa "?" i ispod koje stoji odgovor (bar 200 znakova
+// pre sledeceg pitanja). Prag od 200 znakova odvaja pravi odgovor od retorickog
+// pitanja usred pasusa.
+export function brojQaBlokova(text){
+  var lines=String(text==null?"":text).split(/\n/);
+  var n=0;
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i].trim();
+    if(l.length<10||!/\?\s*$/.test(l))continue;
+    var duzina=0;
+    for(var j=i+1;j<lines.length;j++){
+      var nx=lines[j].trim();
+      if(nx.length>=10&&/\?\s*$/.test(nx))break;
+      duzina+=nx.length;
+      if(duzina>=200)break;
+    }
+    if(duzina>=200)n++;
+  }
+  return n;
+}
+// Broj odgovorenih pitanja u analizi: ako postoji naslov sekcije, broje se upitnici
+// u njoj; ako naslova nema, broje se blokovi pitanje+odgovor kroz ceo tekst.
+var QA_NASLOV_DOSLOVNO=/odgovori\s+na\s+(tvoja\s+)?pitanja/i;
+export function brojOdgovorenihPitanja(text){
+  var t=String(text==null?"":text);
+  var lines=t.split(/\n/);
+  var start=-1;
+  for(var i=0;i<lines.length;i++){
+    // Od POCETKA naslovne linije: ako AI naslov i prvo pitanje stavi u isti red
+    // ("Odgovori na tvoja pitanja. Da li ces se udati?"), odgovor se ne sme izgubiti.
+    if(jeQaNaslovLinija(lines[i])){start=i===0?0:lines.slice(0,i).join("\n").length+1;break;}
+  }
+  if(start<0){
+    // Rezerva: stari doslovan naslov bilo gde u tekstu (npr. usred pasusa).
+    var dm=t.match(QA_NASLOV_DOSLOVNO);
+    if(dm)start=dm.index+dm[0].length;
+  }
+  if(start<0)return brojQaBlokova(t);
+  var rest=t.slice(start);
+  var m=rest.match(/\n\s*(hvala\s+ti\s+puno|zaklju[cč]ak|na\s+kraju|astrolog\s+(suzana|marija))/i);
+  var sekcija=m?rest.slice(0,m.index):rest;
+  return (sekcija.replace(/\?{2,}/g,"?").match(/\?/g)||[]).length;
+}

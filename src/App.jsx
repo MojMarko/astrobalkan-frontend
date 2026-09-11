@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, osobeMarkerBlok, dropInventedPersons, nadjiPartneraPoZamenici, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, osobeMarkerBlok, dropInventedPersons, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -3446,7 +3446,9 @@ export default function App(){
   // Sluzi kao defenzivna mreza kad AI preskoci neko pitanje.
   function countClientQuestions(pitanjaText){
     if(!pitanjaText)return 0;
-    var t=String(pitanjaText).trim();
+    // "Kada?? Zasto???" je JEDNO pitanje - visestruki upitnik se sazima, inace je
+    // brojac pitanja bio veci od broja odgovora i bez ijedne stvarne greske.
+    var t=String(pitanjaText).trim().replace(/\?{2,}/g,"?");
     // Primarno: broj '?' u tekstu klijenta
     var qMarks=(t.match(/\?/g)||[]).length;
     if(qMarks>0)return qMarks;
@@ -3454,20 +3456,11 @@ export default function App(){
     var sentences=t.split(/[.!?\n]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>5;});
     return sentences.length;
   }
+  // Marko 11.9.: ranije je ovo vracalo 0 cim naslov "Odgovori na tvoja pitanja" nije
+  // bio doslovno napisan - pa je radnica dobijala "odgovoreno 0/5" za analizu u kojoj
+  // je svako pitanje uredno obradjeno. Sada broji STVARNE blokove pitanje+odgovor.
   function countAnswersInAnalysis(analysisText){
-    if(!analysisText)return 0;
-    var t=String(analysisText);
-    // Nadji pocetak Q&A sekcije (varijante zaglavlja)
-    var headerRe=/odgovori\s+na\s+(tvoja\s+)?pitanja/i;
-    var hMatch=t.match(headerRe);
-    if(!hMatch)return 0;
-    var start=hMatch.index+hMatch[0].length;
-    // Kraj sekcije: sledeci veliki naslov (Hvala/Zakljucak) ili kraj teksta
-    var rest=t.slice(start);
-    var endRe=/\n\s*(hvala\s+ti\s+puno|zakljucak|na\s+kraju|astrolog\s+(suzana|marija))/i;
-    var eMatch=rest.match(endRe);
-    var qaSection=eMatch?rest.slice(0,eMatch.index):rest;
-    return (qaSection.match(/\?/g)||[]).length;
+    return brojOdgovorenihPitanja(analysisText);
   }
 
   function pollJob(jobId,slotIdx,tabKey,meta){
@@ -4275,7 +4268,7 @@ export default function App(){
             (/^\[UPOZORENJE/.test(s.analysis||"")||s.qaWarn)&&React.createElement("div",{style:{padding:"10px 12px",margin:"8px 0",background:"rgba(220,80,80,.15)",border:"1px solid rgba(220,80,80,.5)",borderRadius:"8px",color:"#ffb0b0",fontSize:"13px",lineHeight:1.4}},
               React.createElement("strong",null,"⚠ Proveri pre slanja klijentu!"),
               /^\[UPOZORENJE/.test(s.analysis||"")&&React.createElement("div",{style:{marginTop:"4px",fontSize:"12px"}},(s.analysis.match(/^\[UPOZORENJE[^\]]*\]/)||[""])[0].replace(/^\[UPOZORENJE:?\s*/,"").replace(/\]$/,"")),
-              s.qaWarn&&React.createElement("div",{style:{marginTop:"4px",fontSize:"12px"}},"AI je odgovorio na priblizno "+s.qaWarn+" pitanja klijenta. Proveri sekciju \"Odgovori na tvoja pitanja\" pre slanja — moguce je da nedostaje neko pitanje.")
+              s.qaWarn&&React.createElement("div",{style:{marginTop:"4px",fontSize:"12px"}},"AI je odgovorio na priblizno "+s.qaWarn+" pitanja klijenta. Proveri deo sa odgovorima pre slanja — moguce je da nedostaje neko pitanje.")
             ),
             React.createElement("div",{className:"aout"},stripUpoz(s.analysis))
           ),

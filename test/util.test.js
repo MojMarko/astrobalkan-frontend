@@ -670,3 +670,53 @@ describe('Osobe iz pitanja (tabela koju radnica potvrdjuje, tura 2)', () => {
     expect(prazan).toContain('nema osoba sa datumom');
   });
 });
+
+// ============================================================================
+// LAZNI ALARM "nije odgovoreno na pitanja" (Marko 11.9.)
+// Radnice su dobijale crveni baner "AI je odgovorio na 0/5 pitanja" za analizu u
+// kojoj je SVAKO pitanje uredno obradjeno - samo zato sto AI nije napisao doslovan
+// naslov "Odgovori na tvoja pitanja". Stvarni slucajevi iz baze: Biljana 08.09,
+// Miroslav 05.09, Hristina 08.09, Zdenka 07.09 (4-10 blokova pitanje+odgovor).
+// ============================================================================
+import { brojOdgovorenihPitanja } from '../src/lib/util.js';
+
+describe("brojOdgovorenihPitanja", () => {
+  const ODG = "x".repeat(260);
+  const bezNaslova = [
+    "Biljana, tvoja karta pokazuje snaznu volju.",
+    "",
+    "Kakva je buducnost i zdravlje tvog brata, rodjenog 08.05.1984?",
+    "Tvoj brat ima Sunce u Biku. " + ODG,
+    "",
+    "Kakva je buducnost tvoje necake, rodjene 07.11.2007?",
+    "Tvoja necaka ima Sunce u Skorpiji. " + ODG,
+    "",
+    "Hoces li se sa bivsim muzem pomiriti?",
+    "Postoji stvarna vuca ka pomirenju. " + ODG,
+    "",
+    "Hvala ti puno na poverenju."
+  ].join("\n");
+
+  it("broji blokove pitanje+odgovor i kad naslova nema", () => {
+    expect(brojOdgovorenihPitanja(bezNaslova)).toBe(3);
+  });
+
+  it("prihvata naslov u slobodnoj formi", () => {
+    const t = "Sada cu odgovoriti na tvoja pitanja jedno po jedno.\n\nDa li ces naci posao?\nHoces, u martu.\n";
+    expect(brojOdgovorenihPitanja(t)).toBe(1);
+  });
+
+  it("prihvata i stari doslovan naslov usred pasusa", () => {
+    const t = "Neki tekst. Odgovori na tvoja pitanja. Da li ces se udati? Hoces.";
+    expect(brojOdgovorenihPitanja(t)).toBe(1);
+  });
+
+  it("vraca 0 kad odgovora stvarno nema", () => {
+    expect(brojOdgovorenihPitanja("Marko, tvoja karta pokazuje. " + "y".repeat(900))).toBe(0);
+  });
+
+  it("visestruki upitnik ne broji kao vise odgovora", () => {
+    const t = "Odgovori na tvoja pitanja\n\nSta ce biti sa brakom??\nBice bolje.\n";
+    expect(brojOdgovorenihPitanja(t)).toBe(1);
+  });
+});
