@@ -884,7 +884,10 @@ async function parseMsg(text,provider){
       // max_tokens 8192 (bilo 4096): v4-flash trosi reasoning tokene iz istog budzeta,
       // pa je JSON za duze poruke bio ISECEN na pola ("AI odgovor nije valjan JSON",
       // Suzana 6.7. prijava - JSON stao na '"partn').
-      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:8192,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})},95000);
+      // 140s (bilo 95s) - Marko 14.9. uvece: DeepSeek je stao da odgovara, backend je
+      // posle isteka vremena prelazio na Gemini, ali je aplikacija vec odustala na 95s.
+      // Radnica je videla gresku i NIKAD nije dobila rezervni odgovor koji je stizao.
+      var r=await fetchSafe("https://astrobalkan-backend.onrender.com/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_tokens:8192,system:systemPrompt,messages:[{role:"user",content:"Izvuci podatke iz sledece poruke:\n\n"+text}],provider:provider||undefined})},140000);
       d=await r.json();
       if(d.content&&d.content[0]&&d.content[0].text)break;
       var errLow=(d.error&&(d.error.message||"")).toLowerCase();
