@@ -667,6 +667,9 @@ function PlaceStatus(props){
   if(st==="ambiguous"&&opts.length>0){
     return React.createElement("div",{style:{padding:"4px 0"}},
       React.createElement("div",{style:{fontSize:"11px",color:"#b87010",marginBottom:"4px"}},"⚠ Vise rezultata - izaberi:"),
+      // Jelena 05.10. ("nece da izbaci sve zemlje"): bez polja Zemlja pretraga je
+      // sira, pa ume da ponudi mesta iz dalekih drzava. Reci radnici sta da uradi.
+      !person.zemlja&&React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"4px",lineHeight:1.5}},"Ako nijedno ne odgovara, upiši i polje „Zemlja“ — pretraga je tada mnogo tačnija."),
       React.createElement("select",{style:{width:"100%",padding:"6px",fontSize:"12px",borderRadius:"4px"},onChange:function(e){var i=parseInt(e.target.value);if(!isNaN(i)&&opts[i])props.onPick(opts[i]);},defaultValue:""},
         React.createElement("option",{value:"",disabled:true},"-- izaberi mesto --"),
         opts.map(function(o,i){return React.createElement("option",{key:i,value:i},o.displayName);})
