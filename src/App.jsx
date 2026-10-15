@@ -3914,6 +3914,9 @@ export default function App(){
       subject:mailNaslov(o.tip,o.ime),
       body:sastaviTeloMaila(tekst,o&&o.tip),
       jobId:(o&&o.jobId)||null,
+      // Jedan kljuc po prozoru za slanje: ponovljeni pokusaji nose ISTI kljuc, pa
+      // server/Resend prepoznaju isti mejl i klijent ga nikad ne dobije dvaput.
+      sendKey:"mail-"+((o&&o.jobId)||"nojob")+"-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),
       sending:false
     });
   }
@@ -3961,22 +3964,29 @@ export default function App(){
     if(!String(mail.body||"").trim()){toast2("Tekst mejla ne sme biti prazan.");return;}
     upMail({sending:true});
     try{
-      // 60s: Render free tier ume da spava, a mejl sa 20k znakova nije trenutan
-      var r=await fetchSafe(API+"/api/email/send-analysis",{
+      // PONAVLJANJE (Suzana 15.10. "Nece da salje na e mail" - "Failed to fetch"):
+      // slanje je bilo JEDAN pokusaj bez ponavljanja, dok generisanje i ocitavanje
+      // odavno ponavljaju. Kad se server na tren ne javi (restart, budjenje), radnica
+      // je videla sirovu gresku iako bi mejl prosao sekund kasnije. Sad ponavljamo kao
+      // i sve ostalo, a isti sendKey garantuje da klijent ne dobije mejl dvaput.
+      var r=await fetchWithRetry(API+"/api/email/send-analysis",{
         method:"POST",
         headers:{"Content-Type":"application/json","x-user-id":user.id||"","x-user-role":user.role||""},
-        body:JSON.stringify({to:to,subject:mail.subject,text:mail.body,job_id:mail.jobId})
-      },60000);
+        body:JSON.stringify({to:to,subject:mail.subject,text:mail.body,job_id:mail.jobId,send_key:mail.sendKey||""})
+      },{attempts:4,timeoutMs:60000,onRetry:function(n,ukupno,cekanje){
+        toast2("Server se ne javlja \u2014 poku\u0161avam ponovo ("+(n+1)+"/"+ukupno+") za "+Math.round(cekanje/1000)+" s. Ne zatvaraj prozor.");
+      }});
       var d=null;try{d=await r.json();}catch(e){}
       if(!r.ok){toast2((d&&d.error)||"Mejl nije poslat. Probaj ponovo.");upMail({sending:false});return;}
       var mailJobId=mail.jobId;
       setMail(null);
-      toast2("\u2705 Mejl poslat na "+to+". Klikni \u201EPoruka za Messenger\u201C da klijentu javi\u0161 da proveri Spam.");
+      if(d&&d.vec_poslato)toast2("\u2705 Mejl je ve\u0107 bio poslat na "+to+" (prvi poku\u0161aj je pro\u0161ao). Nije poslat duplo.");
+      else toast2("\u2705 Mejl poslat na "+to+". Klikni \u201EPoruka za Messenger\u201C da klijentu javi\u0161 da proveri Spam.");
       if(d&&d.id)pratiIsporuku(d.id,to,mailJobId);
       // Baza pamti da je poslato - osvezi da radnica odmah vidi oznaku
       if(tab==="baza")loadBaza(true);
     }catch(e){
-      toast2("Gre\u0161ka pri slanju: "+e.message);
+      toast2("Server nije odgovorio ni posle 4 poku\u0161aja. Tekst je sa\u010duvan u Bazi \u2014 sa\u010dekaj minut pa klikni \u201EPo\u0161alji mail\u201C ponovo. ("+e.message+")");
       upMail({sending:false});
     }
   }
