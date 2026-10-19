@@ -3962,7 +3962,7 @@ export default function App(){
     if(!to){toast2("Email adresa klijenta nije ispravna.");return;}
     if(!String(mail.subject||"").trim()){toast2("Naslov ne sme biti prazan.");return;}
     if(!String(mail.body||"").trim()){toast2("Tekst mejla ne sme biti prazan.");return;}
-    upMail({sending:true});
+    upMail({sending:true,lastError:""});
     try{
       // PONAVLJANJE (Suzana 15.10. "Nece da salje na e mail" - "Failed to fetch"):
       // slanje je bilo JEDAN pokusaj bez ponavljanja, dok generisanje i ocitavanje
@@ -3977,7 +3977,7 @@ export default function App(){
         toast2("Server se ne javlja \u2014 poku\u0161avam ponovo ("+(n+1)+"/"+ukupno+") za "+Math.round(cekanje/1000)+" s. Ne zatvaraj prozor.");
       }});
       var d=null;try{d=await r.json();}catch(e){}
-      if(!r.ok){toast2((d&&d.error)||"Mejl nije poslat. Probaj ponovo.");upMail({sending:false});return;}
+      if(!r.ok){var gr=(d&&d.error)||"Server je odbio slanje. Probaj ponovo.";toast2(gr);upMail({sending:false,lastError:gr});return;}
       var mailJobId=mail.jobId;
       setMail(null);
       if(d&&d.vec_poslato)toast2("\u2705 Mejl je ve\u0107 bio poslat na "+to+" (prvi poku\u0161aj je pro\u0161ao). Nije poslat duplo.");
@@ -3986,8 +3986,9 @@ export default function App(){
       // Baza pamti da je poslato - osvezi da radnica odmah vidi oznaku
       if(tab==="baza")loadBaza(true);
     }catch(e){
-      toast2("Server nije odgovorio ni posle 4 poku\u0161aja. Tekst je sa\u010duvan u Bazi \u2014 sa\u010dekaj minut pa klikni \u201EPo\u0161alji mail\u201C ponovo. ("+e.message+")");
-      upMail({sending:false});
+      var gm="Server nije odgovorio ni posle 4 poku\u0161aja ("+e.message+"). Tekst je sa\u010duvan u Bazi \u2014 sa\u010dekaj minut pa klikni \u201EPoku\u0161aj ponovo\u201C.";
+      toast2(gm);
+      upMail({sending:false,lastError:gm});
     }
   }
 
@@ -4816,6 +4817,15 @@ export default function App(){
                     React.createElement("div",{className:"acard-date"},a.date)
                   ),
                   (a.ownerName||a.owner)&&React.createElement("div",{style:{fontSize:"9.5px",color:"var(--gd)",marginTop:"2px",fontStyle:"italic"}},"Generisao: "+(a.ownerName||a.owner)),
+                  // TRAG SLANJA (Marko 19.10., Snezana): radnica je bila sigurna da je poslala,
+                  // klijent nije dobio, a nigde nije pisalo da li je mejl uopste otisao.
+                  // Zeleno = Resend je primio mejl; crveno = pokusano, nije proslo; nista =
+                  // nije slato preko softvera (Messenger ili jos nije).
+                  a.emailedAt
+                    ?React.createElement("div",{style:{fontSize:"10px",color:"#3a8a3a",marginTop:"2px"}},"\u2709 Poslato "+a.emailedAt+(a.emailedTo?" \u2192 "+a.emailedTo:""))
+                    :(/^NEUSPEH/.test(a.emailedStatus||"")
+                      ?React.createElement("div",{style:{fontSize:"10px",color:"#ffb0b0",marginTop:"2px"}},"\u2716 Slanje NIJE pro\u0161lo \u2014 "+String(a.emailedStatus).replace(/^NEUSPEH\s*/,""))
+                      :null),
                   a.mesto&&React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginTop:"1px"}},a.mesto),
                   React.createElement("div",{className:"acard-prev"},fmtText(a.analysis||""))
                 );
@@ -5029,10 +5039,15 @@ export default function App(){
           React.createElement("textarea",{value:mail.body,disabled:mail.sending,onChange:function(e){upMail({body:e.target.value});},style:{minHeight:"38vh",lineHeight:1.7,fontSize:"13px"}}),
           React.createElement("div",{style:{fontSize:"10.5px",color:"var(--mt)",marginTop:"3px"}},String(mail.body||"").length+" znakova")
         ),
+        // TRAJNA PORUKA O GRESCI (Marko 19.10., Snezana): kratka poruka u dnu ekrana
+        // se na telefonu lako propusti, pa je radnica bila sigurna da je poslala.
+        // Greska sada stoji u prozoru, crveno, dok se ne pokusa ponovo.
+        mail.lastError&&React.createElement("div",{style:{marginTop:"8px",padding:"9px 11px",background:"rgba(220,80,80,.15)",border:"1px solid rgba(220,80,80,.5)",borderRadius:"8px",color:"#ffb0b0",fontSize:"12.5px",lineHeight:1.45}},
+          React.createElement("b",null,"\u2716 Mejl NIJE poslat. "),mail.lastError),
         React.createElement("div",{className:"abar",style:{marginTop:"6px"}},
           React.createElement("button",{className:"btn bgd",style:{flex:1},disabled:mail.sending||!validEmail(mail.to),onClick:posaljiMail},
-            mail.sending?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," \u0160aljem..."):"\u2709 Po\u0161alji"),
-          React.createElement("button",{className:"btn bol bsm",disabled:mail.sending,onClick:function(){setMail(null);}},"Otka\u017ei")
+            mail.sending?React.createElement(React.Fragment,null,React.createElement("span",{className:"spin"})," \u0160aljem..."):(mail.lastError?"\u21bb Poku\u0161aj ponovo":"\u2709 Po\u0161alji")),
+          React.createElement("button",{className:"btn bol bsm",disabled:mail.sending,onClick:function(){if(mail.lastError&&!window.confirm("Mejl NIJE poslat. Sigurno zatvaras bez slanja?"))return;setMail(null);}},"Otka\u017ei")
         )
       )
     ),
