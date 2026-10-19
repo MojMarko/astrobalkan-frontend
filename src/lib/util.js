@@ -696,6 +696,82 @@ export function osobeValidne(lista){
     return {ime:String(p.ime||"").trim(),odnos:String(p.odnos||"").trim(),datum:p.datum,vreme:String(p.vreme||"").trim(),mesto:String(p.mesto||"").trim()};
   });
 }
+// ODNOS IZ TEKSTA JE JACI OD AI-JA (Suzana 19.10. "umesto sin on napise partner a
+// datum sina"): klijent napise "sin 28.09.2022", AI vrati odnos "partner" za dete od
+// tri godine, pa jos i dupli red sa istim datumom. Tri deterministicke brane:
+// 1. rec za odnos koja u tekstu stoji ispred datuma (do 60 znakova) pobedjuje AI;
+// 2. "partner/muz/supruga..." mladji od 16 godina nije partner - odnos se brise da
+//    ga radnica upise;
+// 3. dva reda sa istim datumom su ista osoba - ostaje bogatiji red.
+var OD_MAPA=[
+  [/^(sin|sina|sinu)$/,"sin"],[/^(k?[ćc]erk[aeiou]|k[ćc]i)$/,"ćerka"],[/^brat[aeu]?$/,"brat"],[/^sestr[aeiou]$/,"sestra"],
+  [/^(mu[zž][aeu]?|suprug[aeu]?)$/,"muž"],[/^([zž]en[aeu]|supruga)$/,"supruga"],[/^(mam[aeu]|majk[aeiou])$/,"mama"],
+  [/^(tat[aeu]|otac|oca)$/,"tata"],[/^unuk[aeu]?$/,"unuk"],[/^unuk[ae]$/,"unuka"],[/^partner[kaeu]*$/,"partner"],
+  [/^prijatelj[icaeu]*$/,"prijatelj"],[/^snah[aeu]$/,"snaha"],[/^zet[aeu]?$/,"zet"],[/^tetk[aeiou]$/,"tetka"],
+  [/^stric[aeu]?$/,"stric"],[/^ujak[a]?$/,"ujak"],[/^kum[aeu]?$/,"kum"],[/^bab[aeu]$/,"baba"],[/^ded[aeu]$/,"deda"]
+];
+var OD_PARTNER=/^(partner|partnerka|mu[zž]|suprug|supruga|[zž]ena|de[čc]ko|devojka|verenik|verenica|momak)$/;
+function odKanon(rec){
+  var r=rnAscii(rec).replace(/\s+/g,"");
+  for(var i=0;i<OD_MAPA.length;i++){ if(OD_MAPA[i][0].test(r))return OD_MAPA[i][1]; }
+  return "";
+}
+function odnosIspredDatuma(raw, iso){
+  var pos=rnDatePositions(raw, iso);
+  if(pos.length===0)return "";
+  var relRe=new RegExp("("+RN_REL+")(?![a-zčćžšđ])","gi");
+  var found="";
+  pos.forEach(function(pp){
+    if(found)return;
+    var win=raw.slice(Math.max(0,pp-60),pp);
+    var mm,last=null;
+    relRe.lastIndex=0;
+    while((mm=relRe.exec(win)))last=mm[1];
+    if(last)found=odKanon(last);
+  });
+  return found;
+}
+export function ispraviOsobeIzTeksta(rawText, persons){
+  var raw=String(rawText||"");
+  var arr=Array.isArray(persons)?persons:[];
+  var ispravke=[];
+  var god=new Date().getFullYear();
+  var out=arr.map(function(p){
+    if(!p||!p.datum)return p;
+    var o={};for(var k in p)o[k]=p[k];
+    var izTeksta=raw?odnosIspredDatuma(raw,o.datum):"";
+    var aiOd=rnAscii(o.odnos||"");
+    if(izTeksta&&odKanon(o.odnos||"")!==izTeksta){
+      ispravke.push((o.ime||fmtDMYkratko(o.datum))+": AI rekao \u201e"+(o.odnos||"?")+"\u201c, u poruci pi\u0161e \u201e"+izTeksta+"\u201c \u2192 ispravljeno");
+      o.odnos=izTeksta;
+    }else if(OD_PARTNER.test(aiOd)){
+      var g=parseInt(String(o.datum).slice(0,4),10);
+      if(g>god-16){
+        ispravke.push(fmtDMYkratko(o.datum)+": AI rekao \u201e"+o.odnos+"\u201c, a osoba ima "+(god-g)+" god. \u2192 to nije partner, upi\u0161i odnos");
+        o.odnos="";
+      }
+    }
+    return o;
+  });
+  // dupli datumi = ista osoba; ostaje red sa vise popunjenih polja
+  var poDatumu={}, rez=[];
+  out.forEach(function(p){
+    if(!p||!p.datum){rez.push(p);return;}
+    var punoca=["ime","odnos","vreme","mesto"].filter(function(k){return String(p[k]||"").trim();}).length;
+    var i=poDatumu[p.datum];
+    if(i==null){poDatumu[p.datum]=rez.length;rez.push(p);return;}
+    var q=rez[i];
+    var punocaQ=["ime","odnos","vreme","mesto"].filter(function(k){return String(q[k]||"").trim();}).length;
+    // spoji: uzmi polja koja fale iz slabijeg reda
+    var jaci=punoca>punocaQ?p:q, slabiji=punoca>punocaQ?q:p, spoj={};
+    for(var k in jaci)spoj[k]=jaci[k];
+    ["ime","odnos","vreme","mesto"].forEach(function(k){ if(!String(spoj[k]||"").trim()&&String(slabiji[k]||"").trim())spoj[k]=slabiji[k]; });
+    rez[i]=spoj;
+    ispravke.push(fmtDMYkratko(p.datum)+": isti datum dva puta \u2192 spojeno u jednu osobu");
+  });
+  return {osobe:rez, ispravke:ispravke};
+}
+function fmtDMYkratko(iso){ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||"")); return m?(parseInt(m[3],10)+"."+parseInt(m[2],10)+"."+m[1]):String(iso||""); }
 // Blok za prompt. Backend po ovom markeru NE dodaje osobe regexom iz pitanja (radnica
 // je listu vec potvrdila, mozda i obrisala pogresnu osobu). Format linija je isti kao
 // u ostalim blokovima da ga zaglavlje i cuvar datuma umeju da procitaju.

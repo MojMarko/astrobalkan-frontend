@@ -764,3 +764,55 @@ describe("uskladiDatumSaTekstom", () => {
     expect(uskladiDatumSaTekstom(poruka, "").datum).toBe("");
   });
 });
+
+
+// ============================================================================
+// ODNOS IZ TEKSTA JE JACI OD AI-JA (Suzana 19.10. "umesto sin on napise partner a
+// datum sina"): klijent napisao "sin 28.09.2022", AI vratio "partner" za dete od 3
+// godine i jos jedan dupli red sa istim datumom.
+// ============================================================================
+import { ispraviOsobeIzTeksta } from '../src/lib/util.js';
+
+describe("ispraviOsobeIzTeksta", () => {
+  const tekst = "Moj suprug 06.01.1985, sin Marko 28.09.2022 u 07:49. Zanima me zdravlje sina.";
+
+  it("rec za odnos iz poruke pobedjuje AI (partner -> sin)", () => {
+    const r = ispraviOsobeIzTeksta(tekst, [
+      { ime: "", odnos: "partner", datum: "2022-09-28", vreme: "07:00", mesto: "" },
+      { ime: "", odnos: "suprug", datum: "1985-01-06", vreme: "", mesto: "" }
+    ]);
+    const sin = r.osobe.find(p => p.datum === "2022-09-28");
+    expect(sin.odnos).toBe("sin");
+    expect(r.osobe.find(p => p.datum === "1985-01-06").odnos).toBe("suprug");
+    expect(r.ispravke.length).toBe(1);
+  });
+
+  it("dupli datum se spaja u jednu osobu, polja se dopune", () => {
+    const r = ispraviOsobeIzTeksta(tekst, [
+      { ime: "", odnos: "", datum: "2022-09-28", vreme: "07:49", mesto: "" },
+      { ime: "", odnos: "partner", datum: "2022-09-28", vreme: "", mesto: "" }
+    ]);
+    expect(r.osobe.filter(p => p.datum === "2022-09-28").length).toBe(1);
+    const o = r.osobe[0];
+    expect(o.odnos).toBe("sin");
+    expect(o.vreme).toBe("07:49");
+  });
+
+  it("partner mladji od 16 godina bez reci u tekstu -> odnos se brise", () => {
+    const god = new Date().getFullYear();
+    const r = ispraviOsobeIzTeksta("neki tekst bez datuma", [
+      { ime: "", odnos: "partner", datum: (god - 3) + "-05-05", vreme: "", mesto: "" }
+    ]);
+    expect(r.osobe[0].odnos).toBe("");
+    expect(r.ispravke.length).toBe(1);
+  });
+
+  it("ispravan odnos ostaje netaknut, bez poruka", () => {
+    const r = ispraviOsobeIzTeksta(tekst, [
+      { ime: "Marko", odnos: "sin", datum: "2022-09-28", vreme: "07:49", mesto: "" },
+      { ime: "", odnos: "muž", datum: "1985-01-06", vreme: "", mesto: "" }
+    ]);
+    expect(r.ispravke.length).toBe(0);
+    expect(r.osobe.length).toBe(2);
+  });
+});

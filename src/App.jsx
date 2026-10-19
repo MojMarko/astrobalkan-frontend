@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, osobeMarkerBlok, dropInventedPersons, uskladiDatumSaTekstom, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, ispraviOsobeIzTeksta, osobeMarkerBlok, dropInventedPersons, uskladiDatumSaTekstom, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -3244,7 +3244,12 @@ export default function App(){
     if(force){try{delete PPFP_CACHE[t];}catch(e){}}
     osobeUp(kind,idx,function(s){return Object.assign({},s,{osobeLoading:true,osobeZa:t});});
     parsePersonsFromPitanja(t).then(function(arr){
-      osobeUp(kind,idx,function(s){if(s.osobeZa!==t)return s;return Object.assign({},s,{osobe:osobeValidne(arr),osobeLoading:false});});
+      // ODNOS IZ TEKSTA POBEDJUJE AI (Suzana 19.10. "umesto sin napise partner"):
+      // deterministicka ispravka odnosa, uzrasta i duplih redova pre nego sto
+      // radnica i AI vide listu.
+      var isp=ispraviOsobeIzTeksta(t,osobeValidne(arr));
+      if(isp.ispravke.length)toast2("\u26a0 Osobe iz pitanja \u2014 ispravljeno po tekstu poruke: "+isp.ispravke.join("; ")+". Proveri tabelu!");
+      osobeUp(kind,idx,function(s){if(s.osobeZa!==t)return s;return Object.assign({},s,{osobe:isp.osobe,osobeLoading:false});});
     },function(){
       osobeUp(kind,idx,function(s){return s.osobeZa!==t?s:Object.assign({},s,{osobe:s.osobe||[],osobeLoading:false});});
     });
