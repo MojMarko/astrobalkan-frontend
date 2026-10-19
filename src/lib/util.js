@@ -584,6 +584,29 @@ export function dateAppearsInText(rawText, iso){
   }
   return false;
 }
+// DATUM KLIJENTA/PARTNERA MORA DA POSTOJI U PORUCI (Suzana 19.10. "pise pogresne
+// datume kako on hoce"): klijent je napisao "Moj datum 15.04.1980", a AI je ocitao
+// 15.4.1989 - radnica je gresku primetila tek na kraju i ispravljala rucno. Datum
+// rodjenja je uvek doslovno u poruci, pa ga deterministicki proveravamo:
+// - ako ocitani datum stoji u poruci -> u redu;
+// - ako ne stoji, a u poruci postoji datum sa ISTIM danom i mesecom a drugom godinom
+//   -> to je prava vrednost (AI je promasio godinu), vracamo je kao ispravku;
+// - ako nema nicega slicnog -> datum je izmisljen/pogresan, radnica mora da proveri.
+export function uskladiDatumSaTekstom(rawText, iso){
+  var raw=String(rawText||"");
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));
+  if(!m||!raw.trim())return {datum:iso||"",ispravljen:false,nijeUTekstu:false};
+  if(dateAppearsInText(raw,iso))return {datum:iso,ispravljen:false,nijeUTekstu:false};
+  var mm=parseInt(m[2],10), d=parseInt(m[3],10);
+  var re=new RegExp("(^|[^0-9])0?"+d+"[.,/\\-\\s]{1,3}0?"+mm+"[.,/\\-\\s]{1,3}((?:19|20)\\d{2})([^0-9]|$)","g");
+  var godine=[],x;
+  while((x=re.exec(raw))){ if(godine.indexOf(x[2])<0)godine.push(x[2]); }
+  // tacno jedan kandidat sa istim danom i mesecom = nedvosmislena ispravka
+  if(godine.length===1&&godine[0]!==m[1]){
+    return {datum:godine[0]+"-"+m[2]+"-"+m[3],ispravljen:true,originalni:iso,nijeUTekstu:false};
+  }
+  return {datum:iso,ispravljen:false,nijeUTekstu:true};
+}
 // Izbaci osobe cijeg datuma nema u tekstu. Vraca {osobe, izbacene}.
 export function dropInventedPersons(rawText, persons){
   var arr=Array.isArray(persons)?persons:[];

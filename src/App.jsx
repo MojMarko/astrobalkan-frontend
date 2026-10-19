@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, osobeMarkerBlok, dropInventedPersons, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, osobeMarkerBlok, dropInventedPersons, uskladiDatumSaTekstom, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -2204,6 +2204,22 @@ export default function App(){
           if(emIzPoruke)newClient.email=emIzPoruke;
         }
         var newPartner=p.imaPartnera?Object.assign({},s.partner,p.partner||{}):s.partner;
+        // DATUMI MORAJU DA POSTOJE U PORUCI (Suzana 19.10. "pise pogresne datume kako
+        // on hoce" - 15.04.1980 ocitano kao 15.4.1989): deterministicka provera protiv
+        // sirovog teksta, ista logika kao za osobe iz pitanja. Jednoznacna ispravka se
+        // primeni odmah, nejasan datum se glasno prijavi.
+        [["klijenta",newClient],["partnera",newPartner]].forEach(function(par){
+          var ko=par[0],os=par[1];
+          if(!os||!os.datum)return;
+          var u=uskladiDatumSaTekstom(pasteText,os.datum);
+          if(u.ispravljen){
+            os.datum=u.datum;
+            toast2("\u26a0 AI je za "+ko+" o\u010ditao "+fmtDMYFromISO(u.originalni)+", a u poruci pi\u0161e "+fmtDMYFromISO(u.datum)+" \u2014 ISPRAVLJENO na ono \u0161to pi\u0161e u poruci. Proveri!");
+            notifyOps("datum_ispravljen_iz_teksta","AI ocitao "+u.originalni+", poruka kaze "+u.datum+" ("+ko+")",{clientName:os.ime||""});
+          }else if(u.nijeUTekstu){
+            toast2("\u26a0 Datum "+ko+" "+fmtDMYFromISO(os.datum)+" NE POSTOJI nigde u poruci \u2014 AI ga je mo\u017eda izmislio. Proveri datum pre generisanja!");
+          }
+        });
         // Auto geocode (paralelno, ne ceka analizu)
         var geoClientP=geocodePerson(newClient);
         var geoPartnerP=p.imaPartnera?geocodePerson(newPartner):Promise.resolve(newPartner);

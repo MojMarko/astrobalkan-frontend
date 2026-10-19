@@ -720,3 +720,47 @@ describe("brojOdgovorenihPitanja", () => {
     expect(brojOdgovorenihPitanja(t)).toBe(1);
   });
 });
+
+
+// ============================================================================
+// DATUM MORA DA POSTOJI U PORUCI (Suzana 19.10. "pise pogresne datume kako on hoce")
+// Klijent napisao "Moj datum 15.04.1980", AI ocitao 15.4.1989. Datum rodjenja je uvek
+// doslovno u poruci, pa se ocitana vrednost proverava protiv teksta.
+// ============================================================================
+import { uskladiDatumSaTekstom } from '../src/lib/util.js';
+
+describe("uskladiDatumSaTekstom", () => {
+  const poruka = "Nemanja, Beograd 06:20\nMoj datum\n15.04.1980\nJelena -\n06.09.1990\nderota.nemanja@gmail.com";
+
+  it("ispravlja promasenu godinu na onu koja pise u poruci (slucaj Nemanja)", () => {
+    const u = uskladiDatumSaTekstom(poruka, "1989-04-15");
+    expect(u.ispravljen).toBe(true);
+    expect(u.datum).toBe("1980-04-15");
+    expect(u.originalni).toBe("1989-04-15");
+  });
+
+  it("datum koji stoji u poruci ostaje netaknut", () => {
+    const u = uskladiDatumSaTekstom(poruka, "1990-09-06");
+    expect(u.ispravljen).toBe(false);
+    expect(u.nijeUTekstu).toBe(false);
+    expect(u.datum).toBe("1990-09-06");
+  });
+
+  it("datum kog nema nigde u poruci se prijavljuje, ne menja", () => {
+    const u = uskladiDatumSaTekstom(poruka, "1975-03-22");
+    expect(u.ispravljen).toBe(false);
+    expect(u.nijeUTekstu).toBe(true);
+    expect(u.datum).toBe("1975-03-22");
+  });
+
+  it("dva razlicita kandidata = ne pogadja, samo prijavi", () => {
+    const u = uskladiDatumSaTekstom("sin 15.04.2010, cerka 15.04.2012", "2015-04-15");
+    expect(u.ispravljen).toBe(false);
+    expect(u.nijeUTekstu).toBe(true);
+  });
+
+  it("prazan tekst ili prazan datum ne diraju nista", () => {
+    expect(uskladiDatumSaTekstom("", "1980-04-15").datum).toBe("1980-04-15");
+    expect(uskladiDatumSaTekstom(poruka, "").datum).toBe("");
+  });
+});
