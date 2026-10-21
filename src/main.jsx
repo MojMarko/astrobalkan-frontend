@@ -41,13 +41,14 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       sampleRate: 1.0,
       // Performance monitoring iskljucen (trosi posebnu kvotu)
       tracesSampleRate: 0,
-      // Session Replay:
-      //   replaysSessionSampleRate=1.0 - PRIVREMENO 100% sesija za verifikaciju (2.6 setup).
-      //   Vraticemo na 0.1 (10%) kad potvrdimo da snimak stiti u dashboard.
-      //   replaysOnErrorSampleRate=1.0 - SVE sesije sa greskama (cuva 30s pre greske)
-      //   Free tier: 50 replays/mesec - vodi racuna da ne prekoracimo dok je 100%.
-      replaysSessionSampleRate: 1.0,
-      replaysOnErrorSampleRate: 1.0,
+      // Session Replay (free tier: 50 snimaka mesecno):
+      // SNIMANJE SESIJA UGASENO (Marko 21.10.: Sentry javio 41/50 replay-a potroseno za
+      // 5 dana). Vrednost 1.0 je bila PRIVREMENA za proveru podesavanja 2.6. i nikad nije
+      // vracena - snimala se svaka sesija svake radnice, a snimke nismo ni gledali.
+      // Sada: obicne sesije se ne snimaju (0), a kad se desi greska snima se svaka peta
+      // (0.2) - 50 mesecno je onda dovoljno, a greske i dalje imaju snimak za uvid.
+      replaysSessionSampleRate: 0,
+      replaysOnErrorSampleRate: 0.2,
       sendDefaultPii: true,
       ignoreErrors: [
         // Browser ekstenzije/ad blockeri (nije nasa greska)
