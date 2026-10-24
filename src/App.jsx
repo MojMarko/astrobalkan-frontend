@@ -4726,11 +4726,11 @@ export default function App(){
         // Toggle: Aktivne / Korpa
         React.createElement("div",{style:{display:"flex",gap:"6px",marginBottom:"10px"}},
           React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},"📁 Aktivne ("+(totalAnalyses||analyses.length)+")"),
-          React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":"")),
+          user.role==="admin"&&React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":"")),
           user.role==="admin"&&React.createElement("button",{className:"btn bol bsm",style:{marginLeft:"auto"},disabled:csvBusy,onClick:preuzmiCsv,title:"Preuzmi CSV sa mejlovima i znakovima klijenata (za slanje ponuda)"},csvBusy?"⏳":"⬇ Mejlovi CSV")
         ),
         // KORPA view
-        bazaView==="trash"&&(function(){
+        bazaView==="trash"&&user.role==="admin"&&(function(){
           if(trashItems.length===0)return React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"🗑"),React.createElement("p",null,"Korpa je prazna."));
           return React.createElement(React.Fragment,null,
             React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},trashItems.length+" obrisanih analiza. Mozes ih vratiti ili trajno obrisati."),
@@ -5139,7 +5139,8 @@ export default function App(){
               if(all.length===1){cpText(fmtText(stripUpoz(all[0].analysis||"")));toast2("Kopirano 1 analiza!");}
               else{var txt=all.map(function(a){return fmtText(stripUpoz(a.analysis||""));}).join("\n\n---\n\n");cpText(txt);toast2("Kopirano "+all.length+" analiza!");}
             }},"\uD83D\uDCCB Sve za "+((viewAn.clientName||"").split(" - ")[0]||"klijenta")),
-            (user.role==="admin"||(viewAn.owner&&user.email&&viewAn.owner===user.email))&&React.createElement("button",{className:"btn brd bsm",onClick:function(){
+            // BRISANJE SAMO ADMIN (Marko 24.10.): radnice ne smeju da brisu uradjene klijente.
+            user.role==="admin"&&React.createElement("button",{className:"btn brd bsm",onClick:function(){
               if(!window.confirm("Premestiti analizu u korpu? Mozes je vratiti kasnije iz Korpe."))return;
               var id=viewAn.id;
               fetchSafe(API+"/api/analyses/"+id,{method:"DELETE",headers:{"x-user-id":user.id||"","x-user-role":user.role||""}})
