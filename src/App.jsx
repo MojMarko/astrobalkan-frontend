@@ -3994,7 +3994,7 @@ export default function App(){
         method:"POST",
         headers:{"Content-Type":"application/json","x-user-id":user.id||"","x-user-role":user.role||""},
         body:JSON.stringify({to:to,subject:mail.subject,text:mail.body,job_id:mail.jobId,send_key:mail.sendKey||""})
-      },{attempts:4,timeoutMs:60000,onRetry:function(n,ukupno,cekanje){
+      },{attempts:5,timeoutMs:60000,onRetry:function(n,ukupno,cekanje){
         toast2("Server se ne javlja \u2014 poku\u0161avam ponovo ("+(n+1)+"/"+ukupno+") za "+Math.round(cekanje/1000)+" s. Ne zatvaraj prozor.");
       }});
       var d=null;try{d=await r.json();}catch(e){}
@@ -4007,10 +4007,42 @@ export default function App(){
       // Baza pamti da je poslato - osvezi da radnica odmah vidi oznaku
       if(tab==="baza")loadBaza(true);
     }catch(e){
-      var gm="Server nije odgovorio ni posle 4 poku\u0161aja ("+e.message+"). Tekst je sa\u010duvan u Bazi \u2014 sa\u010dekaj minut pa klikni \u201EPoku\u0161aj ponovo\u201C.";
+      // MEJL JE MOZDA IPAK OTISAO (Suzana 26.10. "Nece da salje na e mail"): mejl je
+      // stvarno poslat u 11:36 (Resend: isporucen), ali je odgovor servera nestao u
+      // mreznom prekidu na telefonu, pa su svi pokusaji pali i prozor je crveno
+      // pisao "Mejl NIJE poslat". Pre nego sto to kazemo radnici, pitamo server da
+      // li je mejl za ovaj posao vec zabelezen kao poslat - ako jeste, to je uspeh.
+      toast2("Server se ne javlja \u2014 proveravam da li je mejl ipak oti\u0161ao...");
+      var vecOtislo=await proveriDaLiJePoslato(mail.jobId,to);
+      if(vecOtislo){
+        setMail(null);
+        toast2("\u2705 Mejl JE poslat na "+to+" (prvi poku\u0161aj je pro\u0161ao, samo potvrda nije stigla). Nije poslat duplo.");
+        if(tab==="baza")loadBaza(true);
+        return;
+      }
+      var gm="Server nije odgovorio ni posle 5 poku\u0161aja ("+e.message+"). Tekst je sa\u010duvan u Bazi \u2014 proveri internet, sa\u010dekaj minut pa klikni \u201EPoku\u0161aj ponovo\u201C. Ako je mejl ipak oti\u0161ao, softver \u0107e to prepoznati i NE\u0106E ga poslati dvaput.";
       toast2(gm);
       upMail({sending:false,lastError:gm});
     }
+  }
+  // Pita server (bez Resend-a, samo baza) da li je mejl za posao vec poslat na tu
+  // adresu. Nekoliko pokusaja u razmaku, jer mreza na telefonu ume da se vrati tek
+  // posle minut. Vraca true samo kad server potvrdi; svaka greska = "ne znamo".
+  async function proveriDaLiJePoslato(jobId,to){
+    if(!jobId)return false;
+    var cekanja=[0,5000,15000,30000];
+    for(var i=0;i<cekanja.length;i++){
+      if(cekanja[i])await new Promise(function(res){setTimeout(res,cekanja[i]);});
+      try{
+        var r=await fetchSafe(API+"/api/email/sent?job_id="+encodeURIComponent(jobId),
+          {headers:{"x-user-id":user.id||"","x-user-role":user.role||""}},15000);
+        if(!r.ok)continue;
+        var d=await r.json();
+        if(d&&d.sent&&String(d.emailed_to||"").toLowerCase()===String(to||"").toLowerCase())return true;
+        if(d&&d.sent===false&&i>=2)return false; // server se javlja i kaze da nije - ne cekaj dalje
+      }catch(_){}
+    }
+    return false;
   }
 
   // Drugo citanje iste poruke: radnica ne mora nista da kopira, softver koristi
