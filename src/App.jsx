@@ -4973,8 +4973,9 @@ export default function App(){
               React.createElement("div",{style:{fontWeight:600}},"\uD83D\uDC64 "+r.ime+(r.role==="admin"?" (admin)":"")+" \u00b7 "+r.broj_uredjaja+" uredjaj(a) \u00b7 "+r.broj_ip+" IP adres(a) \u00b7 "+r.prijave+" prijava"),
               React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginBottom:"4px"}},"Poslednji rad: "+(r.poslednji_rad?new Date(r.poslednji_rad).toLocaleString("sr-RS",{timeZone:"Europe/Belgrade"}):"-")),
               r.uredjaji.map(function(d,i){
-                return React.createElement("div",{key:i,style:{fontSize:"10.5px",padding:"3px 0",borderTop:"1px solid rgba(255,255,255,.07)"}},
-                  React.createElement("span",{style:{fontFamily:"monospace"}},d.ip),"  \u00b7  "+d.uredjaj+"  \u00b7  od "+new Date(d.prvi_put).toLocaleDateString("sr-RS",{timeZone:"Europe/Belgrade"})+" do "+new Date(d.poslednji_put).toLocaleString("sr-RS",{timeZone:"Europe/Belgrade",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+(d.prijave?"  \u00b7  prijava: "+d.prijave:""));
+                return React.createElement("div",{key:i,style:{fontSize:"10.5px",padding:"4px 0",borderTop:"1px solid rgba(255,255,255,.07)"}},
+                  React.createElement("div",{style:{fontWeight:600}},"\uD83D\uDCF1 "+d.uredjaj+"  \u00b7  od "+new Date(d.prvi_put).toLocaleDateString("sr-RS",{timeZone:"Europe/Belgrade"})+" do "+new Date(d.poslednji_put).toLocaleString("sr-RS",{timeZone:"Europe/Belgrade",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+(d.prijave?"  \u00b7  prijava: "+d.prijave:"")),
+                  React.createElement("div",{style:{fontFamily:"monospace",fontSize:"10px",color:"var(--mt)"}},"IP: "+((d.ipAdrese&&d.ipAdrese.length?d.ipAdrese:[d.ip]).join(", "))));
               })
             );
           })
