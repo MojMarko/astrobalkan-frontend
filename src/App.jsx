@@ -1656,6 +1656,7 @@ export default function App(){
   var [csvBusy,setCsvBusy]=useState(false);
   // Baza mejlova u admin panelu (null = jos nije ucitana)
   var [adminEmails,setAdminEmails]=useState(null);
+  var [adminPristupi,setAdminPristupi]=useState(null);
   var [adminEmailsErr,setAdminEmailsErr]=useState("");
   // Ekran za slanje mejla klijentu (null = zatvoren)
   var [mail,setMail]=useState(null);
@@ -1740,7 +1741,9 @@ export default function App(){
       .then(function(){bazaBusyRef.current=false;});
   }
   function loadBazaStats(){
-    fetchSafe(API+"/api/analyses/stats",null,20000)
+    // SAMO ADMIN (Marko 27.10.): radnice ne vide ko je koliko uradio.
+    if(!user||user.role!=="admin")return;
+    fetchSafe(API+"/api/analyses/stats",{headers:{"x-user-id":user.id||""}},20000)
       .then(function(r){return r.json();})
       .then(function(d){if(d&&d.users)setBazaStats(d.users);})
       .catch(function(e){console.warn("Baza stats failed:",e.message);});
@@ -1813,6 +1816,7 @@ export default function App(){
   useEffect(function(){
     if(tab==="admin"&&user&&user.role==="admin") loadAdminUsers();
     if(tab==="admin"&&user&&user.role==="admin")loadAdminEmails();
+    if(tab==="admin"&&user&&user.role==="admin")loadAdminPristupi();
     // force=true (Jelena 23.7.): radnica zavrsi analizu pa ODMAH otvori Downsell/Pitanja -
     // 30s kes je jos drzao staru listu bez novog klijenta ("ne pronadje ga u bazi").
     if(tab&&(tab.indexOf("downsell")===0||tab.indexOf("pitanja")===0)) loadClients(true);
@@ -1955,6 +1959,15 @@ export default function App(){
       if(!r.ok){setAdminEmails([]);setAdminEmailsErr(d&&d.error||"Greska pri ucitavanju.");return;}
       setAdminEmails(d.emails||[]);
     }catch(e){setAdminEmails([]);setAdminEmailsErr("Server nedostupan - probaj ponovo za minut.");}
+  }
+  // PRISTUPI (Marko 27.10.): ko se sa kog uredjaja i IP adrese prijavljuje i radi.
+  async function loadAdminPristupi(){
+    try{
+      var r=await fetchSafe(API+"/api/admin/pristupi",{headers:{"x-user-id":user.id}},20000);
+      var d=await r.json();
+      if(!r.ok){setAdminPristupi({error:(d&&d.error)||("HTTP "+r.status)});return;}
+      setAdminPristupi({radnice:d.radnice||[]});
+    }catch(e){setAdminPristupi({error:e.message});}
   }
   async function loadAdminUsers(){
     try{
@@ -4753,11 +4766,14 @@ export default function App(){
       })(),
 
       // BAZA
-      tab==="baza"&&React.createElement("div",{className:"sec"},
+      tab==="baza"&&React.createElement("div",{className:"sec",onCopy:user.role==="admin"?undefined:function(e){
+          // Radnica: sta god kopira iz Baze, mejl adrese se izbacuju iz kopije.
+          try{var t=String(window.getSelection&&window.getSelection()||"");if(/@/.test(t)){e.clipboardData.setData("text/plain",t.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g,"[mejl sakriven]"));e.preventDefault();}}catch(_){}
+        }},
         React.createElement("div",{className:"stitle"},bazaView==="trash"?"🗑 Korpa":"Baza Analiza"),
         // Toggle: Aktivne / Korpa
         React.createElement("div",{style:{display:"flex",gap:"6px",marginBottom:"10px"}},
-          React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},"📁 Aktivne ("+(totalAnalyses||analyses.length)+")"),
+          React.createElement("button",{className:"tab "+(bazaView==="active"?"on":""),onClick:function(){setBazaView("active");}},user.role==="admin"?"📁 Aktivne ("+(totalAnalyses||analyses.length)+")":"📁 Aktivne"),
           user.role==="admin"&&React.createElement("button",{className:"tab "+(bazaView==="trash"?"on":""),onClick:function(){setBazaView("trash");loadTrash();}},"🗑 Korpa"+(trashItems.length>0?" ("+trashItems.length+")":"")),
           user.role==="admin"&&React.createElement("button",{className:"btn bol bsm",style:{marginLeft:"auto"},disabled:csvBusy,onClick:preuzmiCsv,title:"Preuzmi CSV sa mejlovima i znakovima klijenata (za slanje ponuda)"},csvBusy?"⏳":"⬇ Mejlovi CSV")
         ),
@@ -4809,7 +4825,7 @@ export default function App(){
         // obrisano se ne racuna), ne vise racunato iz ucitanog parceta liste.
         // Klik na pill = server-side filter liste po toj radnici.
         (function(){
-          if(bazaStats.length===0)return null;
+          if(user.role!=="admin"||bazaStats.length===0)return null;
           return React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"10px"}},
             bazaStats.map(function(p){
               var active=bazaUserFilter===p.userId;
@@ -4859,7 +4875,11 @@ export default function App(){
                   }},"\u21BB Osve\u017Ei Bazu"))
                 :React.createElement("div",{className:"empty"},React.createElement("div",{className:"ico"},"\uD83D\uDCC1"),React.createElement("p",null,(q||bazaDateFilter||bazaUserFilter)?"Nema rezultata":"Jos nema sacuvanih analiza.")))
             :React.createElement(React.Fragment,null,
-              React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},
+              // Radnice ne vide ukupne brojeve Baze (Marko 27.10.) - samo koliko je
+              // pronadjeno kad nesto traze.
+              user.role!=="admin"
+                ?((q||bazaDateFilter)?React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},"Prikazano "+analyses.length+(q?" za \""+q+"\"":"")+(dateLabel?" uradjeno "+dateLabel:"")):null)
+                :React.createElement("p",{style:{fontSize:"11px",color:"var(--mt)",marginBottom:"10px"}},
                 (bazaUserFilter||q||bazaDateFilter)
                   ?(totalAnalyses+" analiza"+(filterLabel?" od "+filterLabel:"")+(dateLabel?" uradjeno "+dateLabel:"")+(q?" za \""+q+"\"":"")+(analyses.length<totalAnalyses?" (prikazano "+analyses.length+")":""))
                   :(analyses.length<totalAnalyses?analyses.length+" od "+totalAnalyses+" analiza":totalAnalyses+" analiza")),
@@ -4874,8 +4894,12 @@ export default function App(){
                   // klijent nije dobio, a nigde nije pisalo da li je mejl uopste otisao.
                   // Zeleno = Resend je primio mejl; crveno = pokusano, nije proslo; nista =
                   // nije slato preko softvera (Messenger ili jos nije).
+                  // MEJL SE NE KOPIRA (Marko 27.10.): radnica je dugim pritiskom mogla da
+                  // iskopira adresu i sakupi celu bazu mejlova. Server radnici vec salje
+                  // maskiranu adresu (mi\u2022\u2022\u2022@gmail.com); ovde je jos i neselektabilna.
                   a.emailedAt
-                    ?React.createElement("div",{style:{fontSize:"10px",color:"#3a8a3a",marginTop:"2px"}},"\u2709 Poslato "+a.emailedAt+(a.emailedTo?" \u2192 "+a.emailedTo:""))
+                    ?React.createElement("div",{style:{fontSize:"10px",color:"#3a8a3a",marginTop:"2px"}},"\u2709 Poslato "+a.emailedAt+(a.emailedTo?" \u2192 ":""),
+                        a.emailedTo?React.createElement("span",{style:user.role==="admin"?null:{userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none"}},a.emailedTo):null)
                     :(/^NEUSPEH/.test(a.emailedStatus||"")
                       ?React.createElement("div",{style:{fontSize:"10px",color:"#ffb0b0",marginTop:"2px"}},"\u2716 Slanje NIJE pro\u0161lo \u2014 "+String(a.emailedStatus).replace(/^NEUSPEH\s*/,""))
                       :null),
@@ -4883,14 +4907,14 @@ export default function App(){
                   React.createElement("div",{className:"acard-prev"},fmtText(a.analysis||""))
                 );
               }),
-              analyses.length<totalAnalyses&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"8px"},onClick:function(){loadBaza(false);}},"\u2B07 U\u010Ditaj jo\u0161 ("+analyses.length+" od "+totalAnalyses+")")
+              analyses.length<totalAnalyses&&React.createElement("button",{className:"btn bol bfull",style:{marginTop:"8px"},onClick:function(){loadBaza(false);}},user.role==="admin"?"\u2B07 U\u010Ditaj jo\u0161 ("+analyses.length+" od "+totalAnalyses+")":"\u2B07 U\u010Ditaj jo\u0161")
             );
         })()
         );})()
       ),
 
       // PROMPT
-      tab==="prompt"&&React.createElement("div",{className:"sec"},
+      tab==="prompt"&&user.role==="admin"&&React.createElement("div",{className:"sec"},
         React.createElement("div",{className:"stitle"},"Promptovi"),
         React.createElement("div",{className:"tabs"},
           React.createElement("button",{className:"tab "+(editPr==="main"?"on":""),onClick:function(){setEditPr("main");}},"Glavni"),
@@ -4925,6 +4949,25 @@ export default function App(){
           // nuData.country ostaje "sr" iz pocetnog stanja.
           React.createElement("div",{className:"fld"},React.createElement("label",null,"Lozinka"),React.createElement("input",{type:"password",value:nuData.pw,onChange:function(e){setNuData(function(p){return Object.assign({},p,{pw:e.target.value});});}})),
           React.createElement("button",{className:"btn bgd bfull",onClick:addAdminUser},"\u002B Dodaj")
+        ),
+        // PRISTUPI: uredjaji i IP adrese po radnici (Marko 27.10.)
+        React.createElement("div",{className:"card card-hi"},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"9px"}},
+            React.createElement("div",{className:"ct",style:{marginBottom:0}},"\uD83D\uDCF1 Pristupi (uredjaji i IP adrese, 90 dana)"),
+            React.createElement("button",{className:"btn bol bsm",onClick:loadAdminPristupi},"\u21bb Osve\u017ei")),
+          !adminPristupi?React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)"}},"U\u010ditavam..."):
+          adminPristupi.error?React.createElement("div",{style:{fontSize:"11px",color:"#ffb0b0"}},adminPristupi.error):
+          adminPristupi.radnice.length===0?React.createElement("div",{style:{fontSize:"11px",color:"var(--mt)"}},"Jo\u0161 nema zabele\u017eenih pristupa."):
+          adminPristupi.radnice.map(function(r){
+            return React.createElement("div",{key:r.userId,style:{marginBottom:"10px",padding:"8px 10px",border:"1px solid rgba(255,255,255,.12)",borderRadius:"8px"}},
+              React.createElement("div",{style:{fontWeight:600}},"\uD83D\uDC64 "+r.ime+(r.role==="admin"?" (admin)":"")+" \u00b7 "+r.broj_uredjaja+" uredjaj(a) \u00b7 "+r.broj_ip+" IP adres(a) \u00b7 "+r.prijave+" prijava"),
+              React.createElement("div",{style:{fontSize:"10px",color:"var(--mt)",marginBottom:"4px"}},"Poslednji rad: "+(r.poslednji_rad?new Date(r.poslednji_rad).toLocaleString("sr-RS",{timeZone:"Europe/Belgrade"}):"-")),
+              r.uredjaji.map(function(d,i){
+                return React.createElement("div",{key:i,style:{fontSize:"10.5px",padding:"3px 0",borderTop:"1px solid rgba(255,255,255,.07)"}},
+                  React.createElement("span",{style:{fontFamily:"monospace"}},d.ip),"  \u00b7  "+d.uredjaj+"  \u00b7  od "+new Date(d.prvi_put).toLocaleDateString("sr-RS",{timeZone:"Europe/Belgrade"})+" do "+new Date(d.poslednji_put).toLocaleString("sr-RS",{timeZone:"Europe/Belgrade",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+(d.prijave?"  \u00b7  prijava: "+d.prijave:""));
+              })
+            );
+          })
         ),
         // BAZA MEJLOVA: svi klijenti koji su ostavili email - za Markove kasnije
         // ponude. Podaci zive u Supabase (tabela clients, kolona email); ovde je
