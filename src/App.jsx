@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect, useRef } from "react";
 import * as Sentry from '@sentry/react';
-import { prettifyPitanja, fetchWithRetry, fetchSafe, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, ispraviOsobeIzTeksta, osobeMarkerBlok, dropInventedPersons, uskladiDatumSaTekstom, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
+import { prettifyPitanja, fetchWithRetry, fetchSafe, setApiHeaders, conventionalSunSign, findNamePos, bindDatesToNames, repairTruncatedJson, resolveTypoYear, personLabels, recoverNamesFromText, osobeValidne, ispraviOsobeIzTeksta, osobeMarkerBlok, dropInventedPersons, uskladiDatumSaTekstom, nadjiPartneraPoZamenici, brojOdgovorenihPitanja, validEmail, nadjiEmailUTekstu, mailNaslov, ocistiZaMejl, ubaciPonudu12m } from './lib/util.js';
 import * as AstroEngine from 'astronomy-engine';
 
 // Safe read za activeJobs iz localStorage. Ako je JSON pokvaren (npr. browser
@@ -1619,6 +1619,13 @@ export default function App(){
   });
   var [clientsLoadedAt,setClientsLoadedAt]=useState(0);
   async function loadClients(force){
+    // CELA LISTA SAMO ADMINU (Marko 27.10.): radnica klijente trazi pretragom na
+    // serveru; spisak koji je ranije stajao u telefonu se brise.
+    if(!user||user.role!=="admin"){
+      if(clientsCache.length){setClientsCache([]);}
+      try{localStorage.removeItem("ab_clients");}catch(e){}
+      return;
+    }
     // Refresh ako je proteklo > 30 sek od poslednjeg ucitavanja (ili force)
     var age=Date.now()-clientsLoadedAt;
     if(!force&&clientsLoadedAt>0&&age<30000)return;
@@ -1688,8 +1695,8 @@ export default function App(){
   useEffect(function(){
     stoGet("custPr",{sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}}).then(function(local){
       setCustPr(local);
-      // Load from backend (overrides local)
-      fetchSafe(API+"/api/prompts").then(function(r){return r.json();}).then(function(d){
+      // Load from backend (overrides local) - tek kad znamo ko je prijavljen (ruta trazi nalog)
+      stoGet("session",null).then(function(u){if(!u)return null;return fetchSafe(API+"/api/prompts",{headers:{"x-user-id":u.id||""}});}).then(function(r){return r?r.json():{};}).then(function(d){
         if(d.prompts&&Object.keys(d.prompts).length>0){
           var merged={sr:Object.assign({main:"",ds:"",pitanja:""},local.sr||{},d.prompts.sr||{}),hr:Object.assign({main:"",ds:"",pitanja:""},local.hr||{},d.prompts.hr||{})};
           setCustPr(merged);stoSet("custPr",merged);
@@ -1711,6 +1718,8 @@ export default function App(){
   // - brojevi po radnici stizu iz /api/analyses/stats (Postgres agregat,
   //   obrisano se NIKAD ne racuna) - tacni istog trenutka posle brisanja
   var [bazaStats,setBazaStats]=useState([]);
+  // Svaki poziv serveru nosi ko je prijavljen (server sve rute sa podacima zakljucava).
+  useEffect(function(){setApiHeaders(user?{"x-user-id":user.id||"","x-user-role":user.role||""}:{});},[user]);
   var BAZA_PAGE=50;
   var bazaBusyRef=useRef(false);
   function bazaQuery(off){
@@ -1727,7 +1736,7 @@ export default function App(){
     var off=reset?0:analyses.length;
     if(reset)setBazaLoading(true);
     fetchWithRetry(API+"/api/analyses?"+bazaQuery(off),{},{attempts:reset?4:2})
-      .then(function(r){return r.json();})
+      .then(function(r){return r.json().then(function(d){if(!r.ok&&d&&d.error)toast2(d.error);return r.ok?d:{};});})
       .then(function(d){
         setBazaErr(false);setBazaLoading(false);
         if(d.analyses)setAnalyses(function(prev){return reset?d.analyses:prev.concat(d.analyses);});
@@ -3172,6 +3181,7 @@ export default function App(){
         if(/^\d{4}-\d{2}-\d{2}$/.test(bd))url+="&birth_date="+encodeURIComponent(bd);
         var r=await fetchSafe(url,{cache:"no-store"},12000);
         var d=await r.json();
+        if(!r.ok){toast2((d&&d.error)||("Pretraga nije uspela (HTTP "+r.status+")."));setSrvSearch({q:qq,results:[]});return;}
         setSrvSearch({q:qq,results:(d&&d.clients)||[]});
       }catch(e){console.warn("searchClientsServer:",e&&e.message);}
     },350);

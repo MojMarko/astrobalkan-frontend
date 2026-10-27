@@ -369,6 +369,17 @@ export function bindDatesToNames(rawText, persons){
 // "Ocitava, ne uradi analizu" - tacno taj scenario).
 // Ukupno worst case ~2 min - dovoljno da preživi cold start, dovoljno kratko da
 // radnica ne ceka unedogled bez ikakvog feedback-a.
+// ZAGLAVLJE SA NALOGOM NA SVAKOM POZIVU (Marko 27.10.): server sada za sve rute sa
+// podacima trazi prijavljen nalog. Umesto da se x-user-id dodaje na 40 mesta, oba
+// pomocnika ga dodaju sami; aplikacija ga postavi pri prijavi (setApiHeaders).
+let defaultHeaders = {};
+export function setApiHeaders(h){ defaultHeaders = Object.assign({}, h || {}); }
+function withDefaultHeaders(options){
+  const o = Object.assign({}, options || {});
+  o.headers = Object.assign({}, defaultHeaders, o.headers || {});
+  return o;
+}
+
 export async function fetchWithRetry(url, options, attemptsOrOpts){
   let attempts, onRetry, perAttemptTimeoutMs;
   if (typeof attemptsOrOpts === 'object' && attemptsOrOpts !== null) {
@@ -391,7 +402,7 @@ export async function fetchWithRetry(url, options, attemptsOrOpts){
     const controller = new AbortController();
     const timeoutId = setTimeout(function(){ controller.abort(); }, perAttemptTimeoutMs);
     try {
-      const fetchOptions = Object.assign({}, options || {}, { signal: controller.signal });
+      const fetchOptions = Object.assign(withDefaultHeaders(options), { signal: controller.signal });
       const r = await fetch(url, fetchOptions);
       clearTimeout(timeoutId);
       if (r.ok) return r;
@@ -424,7 +435,7 @@ export async function fetchSafe(url, options, timeoutMs){
   const controller = new AbortController();
   const timeoutId = setTimeout(function(){ controller.abort(); }, ms);
   try {
-    const fetchOptions = Object.assign({}, options || {}, { signal: controller.signal });
+    const fetchOptions = Object.assign(withDefaultHeaders(options), { signal: controller.signal });
     const r = await fetch(url, fetchOptions);
     clearTimeout(timeoutId);
     return r;
