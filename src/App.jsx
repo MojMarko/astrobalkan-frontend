@@ -4035,6 +4035,9 @@ export default function App(){
       // mreznom prekidu na telefonu, pa su svi pokusaji pali i prozor je crveno
       // pisao "Mejl NIJE poslat". Pre nego sto to kazemo radnici, pitamo server da
       // li je mejl za ovaj posao vec zabelezen kao poslat - ako jeste, to je uspeh.
+      // Trag u Sentry-ju (Suzana 28.10. "dve iz Baze nisu poslate", a server nema ni
+      // jedan pokusaj): bez ovoga se ne vidi ni da je pokusano ni zasto je palo.
+      try{Sentry.withScope(function(sc){sc.setTag("source","posaljiMail");sc.setContext("mail",{to:to,jobId:mail.jobId||null,online:navigator.onLine});Sentry.captureException(e);});}catch(_){}
       toast2("Server se ne javlja \u2014 proveravam da li je mejl ipak oti\u0161ao...");
       var vecOtislo=await proveriDaLiJePoslato(mail.jobId,to);
       if(vecOtislo){
