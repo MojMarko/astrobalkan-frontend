@@ -3950,11 +3950,14 @@ export default function App(){
   // uredi sta hoce i klikne Posalji - mejl ide sa kontakt@astrologsuzana.com.
   function otvoriMail(o){
     var em=validEmail(o&&o.email);
-    if(!em){toast2("Upi\u0161i email klijenta pre slanja.");return;}
+    // Iz Baze sme da se otvori i bez poznate adrese - radnica je upise u prozoru
+    // (Suzana 28.10. "iz Baze ne mogu da posaljem": dugme se nije ni prikazivalo
+    // kad klijent nije imao sacuvan mejl, pa je slala kroz Gmail).
+    if(!em&&!(o&&o.dozvoliPrazno)){toast2("Upi\u0161i email klijenta pre slanja.");return;}
     var tekst=String(o&&o.tekst||"").trim();
     if(!tekst){toast2("Nema teksta analize za slanje.");return;}
     setMail({
-      to:em,
+      to:em||"",
       subject:mailNaslov(o.tip,o.ime),
       body:sastaviTeloMaila(tekst,o&&o.tip),
       jobId:(o&&o.jobId)||null,
@@ -5246,13 +5249,16 @@ export default function App(){
             }},"\uD83D\uDDD1 U korpu"),
             (function(){
               var dos=(viewAnDos&&viewAnDos.clientName===viewAn.clientName)?viewAnDos.client:null;
-              var em=dos&&dos.email;
-              if(!em)return null;
+              var em=(dos&&dos.email)||"";
+              // DUGME UVEK POSTOJI (Marko 28.10.): ranije se nije prikazivalo kad klijent
+              // nema sacuvan mejl, pa radnica iz Baze nije mogla da posalje nista.
+              // Bez mejla se otvara prozor sa praznim poljem "Za" - radnica ga upise.
               var tip=/pitanja/i.test(viewAn.clientName||"")?"pitanja":/downsell/i.test(viewAn.clientName||"")?"downsell":"analiza";
               return React.createElement("button",{className:"btn bpu bsm",onClick:function(){
                 if(stillLoading){toast2("Sa\u010dekaj sekund \u2014 u\u010ditavam ceo tekst analize.");return;}
-                otvoriMail({email:em,ime:(viewAn.clientName||"").split(" - ")[0],tekst:cleanText,tip:tip,jobId:viewAn.id||null});
-              }},"\uD83D\uDCE7 Po\u0161alji");
+                otvoriMail({email:em,dozvoliPrazno:true,ime:(viewAn.clientName||"").split(" - ")[0],tekst:cleanText,tip:tip,jobId:viewAn.id||null});
+                if(!em)toast2("Klijent nema sa\u010duvan mejl \u2014 upi\u0161i adresu u polje \u201EZa\u201C pa klikni Po\u0161alji.");
+              }},em?"\uD83D\uDCE7 Po\u0161alji":"\uD83D\uDCE7 Po\u0161alji (upi\u0161i mejl)");
             })(),
             React.createElement("button",{className:"btn bol bsm",title:"Kopira poruku za Messenger: analiza je na mejlu, proveri Spam",onClick:kopirajSpamPoruku},"\uD83D\uDCCB Spam poruka"),
             React.createElement("button",{className:"btn bol bsm",onClick:function(){setViewAn(null);setViewAnAll(null);setViewAnDos(null);}},"Zatvori")
