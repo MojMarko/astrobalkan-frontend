@@ -491,8 +491,14 @@ export function repairTruncatedJson(s){
 // Namerno labava provera - ista kao cleanEmail na backendu. Svrha je da odbije
 // ono sto radnica ukuca u polje kad klijent nema mejl ("nema", "-", "ne zeli"),
 // a NE da sudi o egzoticnim ali validnim adresama. Vraca ociscenu adresu ili "".
+// NASA SLOVA U ADRESI (Suzana 29.10., Vesna Popovic): ukucano "vesnapopović930@gmail.com"
+// sa ć - server je odbio slanje, klijentkinja nije dobila analizu. Mejl adrese nikad
+// nemaju š/đ/č/ć/ž, pa ih pretvaramo u s/dj/c/c/z i pre provere i pre slanja.
+export function latinizujMejl(e){
+  return String(e||"").replace(/đ/g,"dj").replace(/Đ/g,"dj").normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
 export function validEmail(v){
-  var e=String(v==null?"":v).trim().toLowerCase();
+  var e=latinizujMejl(String(v==null?"":v).trim().toLowerCase());
   if(!e||e.length>254)return "";
   return /^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/.test(e)?e:"";
 }

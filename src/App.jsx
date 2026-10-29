@@ -4007,6 +4007,8 @@ export default function App(){
     if(!mail||mail.sending)return;
     var to=validEmail(mail.to);
     if(!to){toast2("Email adresa klijenta nije ispravna.");return;}
+    // Nasa slova u adresi (ć, š, đ...) su greska u kucanju - ispravljeno, radnica vidi sta ide.
+    if(to!==String(mail.to||"").trim().toLowerCase()){upMail({to:to});toast2("Adresa je imala na\u0161a slova \u2014 ispravljena u "+to);}
     if(!String(mail.subject||"").trim()){toast2("Naslov ne sme biti prazan.");return;}
     if(!String(mail.body||"").trim()){toast2("Tekst mejla ne sme biti prazan.");return;}
     upMail({sending:true,lastError:""});

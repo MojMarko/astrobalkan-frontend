@@ -816,3 +816,16 @@ describe("ispraviOsobeIzTeksta", () => {
     expect(r.osobe.length).toBe(2);
   });
 });
+
+// NASA SLOVA U ADRESI (Suzana 29.10.): ć/č/š/ž/đ u mejlu su uvek greska u kucanju.
+import { validEmail as validEmailT } from '../src/lib/util.js';
+describe('validEmail - nasa slova', () => {
+  it('pretvara ć/š/đ/ž u ASCII', () => {
+    expect(validEmailT('vesnapopović930@gmail.com')).toBe('vesnapopovic930@gmail.com');
+    expect(validEmailT('Đorđe.Šašić@Example.com')).toBe('djordje.sasic@example.com');
+    expect(validEmailT('žarko@mail.rs')).toBe('zarko@mail.rs');
+  });
+  it('obicnu adresu ne menja', () => {
+    expect(validEmailT('Marko.Gostic@gmail.com')).toBe('marko.gostic@gmail.com');
+  });
+});
