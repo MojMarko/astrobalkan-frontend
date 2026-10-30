@@ -1619,13 +1619,9 @@ export default function App(){
   });
   var [clientsLoadedAt,setClientsLoadedAt]=useState(0);
   async function loadClients(force){
-    // CELA LISTA SAMO ADMINU (Marko 27.10.): radnica klijente trazi pretragom na
-    // serveru; spisak koji je ranije stajao u telefonu se brise.
-    if(!user||user.role!=="admin"){
-      if(clientsCache.length){setClientsCache([]);}
-      try{localStorage.removeItem("ab_clients");}catch(e){}
-      return;
-    }
+    // VRACENO (Marko 30.10. "nece da izbacuje ljude u Downsellu i Pitanjima"): lista
+    // je ponovo dostupna i radnicama - ona je bez mejlova (ime, datum, mesto, broj
+    // analiza), a predlozi dok kucas moraju da budu trenutni, ne 1-2 s sa servera.
     // Refresh ako je proteklo > 30 sek od poslednjeg ucitavanja (ili force)
     var age=Date.now()-clientsLoadedAt;
     if(!force&&clientsLoadedAt>0&&age<30000)return;
