@@ -637,8 +637,10 @@ var SPAM_PORUKA="Samo da javim va\u0161a analiza je upravo poslata na va\u0161u 
  +"Ako ne znate kako da na\u0111ete Spam na telefonu evo obja\u0161njenja?\n\n"
  +"Otvorite Gmail aplikaciju, onda dodirnite tri crtice (\u2630) u gornjem levom uglu i izaberite \"Ne\u017eeljena po\u0161ta / Spam\".\n\n"
  +"Kada prona\u0111ete poruku, kliknite \u201ENije spam\u201C i tako \u0107e vam sve slede\u0107e poruke stizati direktno u sandu\u010de.\n\n"
- +"Poslato je sa adrese kontakt@astrologsuzana.com\n\n"
- +"Slobodno odgovorite na taj mejl ako imate dodatnih pitanja. \u2764\uFE0F";
+ // Marko 9.11.: ukinuta recenica "Slobodno odgovorite na taj mejl ako imate dodatnih
+ // pitanja" - klijenti su je citali kao besplatno pravo na jos pitanja i zatrpavali
+ // radnice. Dodatna pitanja su placen dodatak (nudi se u samom mejlu).
+ +"Poslato je sa adrese kontakt@astrologsuzana.com \u2764\uFE0F";
 
 // Telo mejla koje radnica dobija u polju za uredjivanje.
 // stripUpoz: interni [UPOZORENJE...] blok je poruka RADNICI i nikad ne sme da
