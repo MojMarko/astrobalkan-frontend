@@ -912,8 +912,14 @@ async function parseMsg(text,provider,hint){
       var ms=e.message||"";
       if(ms.indexOf("abort")>=0||ms.indexOf("Abort")>=0){
         ms="AI je trajao preko 95s i otkazan je.";
-      }else if(ms.indexOf("Failed to fetch")>=0||ms.indexOf("NetworkError")>=0){
-        ms="Server trenutno nije dostupan (verovatno se budi).";
+      }else if(ms.indexOf("Failed to fetch")>=0||ms.indexOf("NetworkError")>=0||ms.indexOf("Load failed")>=0){
+        // MREZA, NE AI (Suzana 10.11. "nece da ocita"): telefon nije stigao do servera
+        // (server i DeepSeek su radili), a poruka je glasila "DeepSeek nije dostupan"
+        // i nudila Gemini - koji ide preko istog servera, pa ni on ne bi prosao.
+        lastError={message:"Nema veze sa serverom \u2014 proveri internet na telefonu (WiFi ili mobilni) pa klikni \u201EPrepoznaj\u201C ponovo.",__network:true};
+        console.error("parseMsg network error attempt "+(attempt+1)+":",e.message);
+        await new Promise(function(res){setTimeout(res,2000);});
+        continue;
       }
       lastError={message:ms};
       console.error("parseMsg network error attempt "+(attempt+1)+":",e.message);
@@ -925,7 +931,8 @@ async function parseMsg(text,provider,hint){
     var errObj=(d&&d.error)||lastError||{};
     var errMsg=errObj.message||"Nepoznata";
     var lowMsg=(errMsg||"").toLowerCase();
-    var isOverload=!!errObj._overload||lowMsg.indexOf("overload")>=0||lowMsg.indexOf("too busy")>=0||lowMsg.indexOf("try again")>=0||lowMsg.indexOf("rate limit")>=0||lowMsg.indexOf("nije dostupan")>=0;
+    var isNetwork=!!errObj.__network;
+    var isOverload=!isNetwork&&(!!errObj._overload||lowMsg.indexOf("overload")>=0||lowMsg.indexOf("too busy")>=0||lowMsg.indexOf("try again")>=0||lowMsg.indexOf("rate limit")>=0||lowMsg.indexOf("nije dostupan")>=0);
     if(isOverload){
       errMsg="DeepSeek trenutno nije dostupan.";
     }
@@ -935,7 +942,7 @@ async function parseMsg(text,provider,hint){
     // GEMINI_API_KEY podesen (Suzana 2.7. 11:13). Default je zato TRUE — dugme
     // "Pokušaj sa Gemini" se nudi uvek osim kad server EKSPLICITNO kaze false.
     var gemAvail=errObj._gemini_available===false?false:true;
-    return {__error:errMsg,__overload:isOverload,__geminiAvailable:gemAvail};
+    return {__error:errMsg,__overload:isOverload,__network:isNetwork,__geminiAvailable:gemAvail};
   }
   var t=(d.content&&d.content[0]&&d.content[0].text)||"";
   if(!t){
@@ -2058,6 +2065,9 @@ export default function App(){
         if(p.__overload){
           // Sacuvaj paste tako da Gemini retry moze ponovo da ga koristi
           upSlot(idx,function(s){return Object.assign({},s,{status:"idle",parseOverload:{message:p.__error,geminiAvailable:p.__geminiAvailable},rawPaste:s.paste||s.rawPaste});});
+        }else if(p.__network){
+          upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
+          toast2("\uD83D\uDCF6 "+p.__error);
         }else{
           upSlot(idx,function(s){return Object.assign({},s,{status:"idle"});});
           toast2(p.__error+" Pokušaj sa kraćim paste-om ili klikni 'Ručno' i unesi podatke direktno.");
