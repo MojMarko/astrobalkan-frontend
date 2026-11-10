@@ -2705,27 +2705,38 @@ export default function App(){
     var extraPersons=[];
     var extraCharts=[];
     var potvrdjene=null;
+    var sveOsobe=null; // cela lista osoba iz pitanja (pre secenja na 4), da se AI ne zove drugi put
     if(hasPitanjaText){
       try{
         // Radnica je videla i potvrdila listu (tabela "Osobe iz pitanja") - ona je konacna.
         // Bez nje (lista se jos ucitava ili je zastarela) AI cita ponovo kao ranije.
         potvrdjene=potvrdjeneOsobe(sl,sl.client.pitanja);
         extraPersons=potvrdjene?potvrdjene.slice():await parsePersonsFromPitanja(sl.client.pitanja);
+        sveOsobe=extraPersons.slice();
         // Max 4 karte: svaka je do 45s poziv - 5+ osoba je guralo pripremu preko
         // 8-min ventila. Osobe preko limita svejedno dobiju Suncev znak kroz
         // DODATNE DATUME na backendu.
         if(extraPersons.length>4)extraPersons=extraPersons.slice(0,4);
-        for(var ipi=0;ipi<extraPersons.length;ipi++){
-          var pp=extraPersons[ipi];
-          // Skip if this person is the same as the client (avoid duplicate)
-          if(sl.client.datum&&pp.datum===sl.client.datum&&(pp.ime||"").toLowerCase().trim()===(sl.client.ime||"").toLowerCase().trim())continue;
-          // Skip if this person is the partner (already in pTxt)
-          if(sl.partner&&sl.partner.datum&&pp.datum===sl.partner.datum)continue;
-          try{
-            var pCh=await callAstroAPI(pp.datum,pp.vreme||"",pp.mesto||sl.client.mesto||"Beograd");
-            if(pCh)extraCharts.push({person:pp,chart:pCh,hasTime:!!pp.vreme,hasPlace:!!pp.mesto});
-          }catch(eX){console.warn("Extra chart failed for "+(pp.ime||"?")+":",eX.message);}
-        }
+        // PARALELNO I SA ROKOM (Suzana 10.11. "generise 20 min i prekine"): karte dodatnih
+        // osoba su se racunale jedna po jedna, svaka do 45 s, pa je priprema sa 3-4 osobe
+        // na sporom serveru prelazila 8-min ventil i ekran se vracao na pocetak. Sada sve
+        // karte krecu odjednom i ceka se najvise 40 s ukupno; osoba cija karta ne stigne
+        // svejedno dobija Suncev znak kroz DODATNE DATUME na backendu.
+        var zaKartu=extraPersons.filter(function(pp){
+          if(sl.client.datum&&pp.datum===sl.client.datum&&(pp.ime||"").toLowerCase().trim()===(sl.client.ime||"").toLowerCase().trim())return false; // isti kao klijent
+          if(sl.partner&&sl.partner.datum&&pp.datum===sl.partner.datum)return false; // partner je vec u pTxt
+          return true;
+        });
+        var karte=await Promise.race([
+          Promise.all(zaKartu.map(function(pp){
+            return callAstroAPI(pp.datum,pp.vreme||"",pp.mesto||sl.client.mesto||"Beograd")
+              .then(function(pCh){return pCh?{person:pp,chart:pCh,hasTime:!!pp.vreme,hasPlace:!!pp.mesto}:null;})
+              .catch(function(eX){console.warn("Extra chart failed for "+(pp.ime||"?")+":",eX.message);return null;});
+          })),
+          new Promise(function(res){setTimeout(function(){res(null);},40000);})
+        ]);
+        if(karte)karte.forEach(function(k){if(k)extraCharts.push(k);});
+        else console.warn("doGen: karte dodatnih osoba nisu stigle za 40 s - nastavljam bez njih");
         console.log("doGen: extra persons computed:",extraCharts.length);
       }catch(ePP){console.warn("parsePersonsFromPitanja failed:",ePP.message);}
     }
@@ -2958,7 +2969,9 @@ export default function App(){
     // AI napisao Lav). Ovaj blok ide POSLE pitanja da bude blizu generation.
     try{
       var partnerForFacts=(sl.hasPart&&sl.partner&&sl.partner.datum)?sl.partner:null;
-      var mainFacts=await buildPersonSignFacts(pitanjaTxt2||"",sl.client.ime,sl.client.datum,partnerForFacts,potvrdjene);
+      // Lista osoba je vec procitana gore (extraPersons) - ne zovi AI drugi put
+      // (drugo citanje je na sporom DeepSeek-u dodavalo jos do 1,5 min pripreme).
+      var mainFacts=await buildPersonSignFacts(pitanjaTxt2||"",sl.client.ime,sl.client.datum,partnerForFacts,potvrdjene||sveOsobe);
       if(mainFacts)usr+=mainFacts;
       // Konacna lista osoba iz pitanja - backend po ovom bloku ne dodaje osobe regexom.
       if(potvrdjene)usr+=osobeMarkerBlok(potvrdjene);
