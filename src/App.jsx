@@ -1696,6 +1696,7 @@ export default function App(){
   var [viewAnAll,setViewAnAll]=useState(null); // pun set analiza za "Sve za klijenta" kopiju (prefetch pri otvaranju)
   var [nuData,setNuData]=useState({name:"",email:"",pw:"",country:"sr"});
   var [activeJobs,setActiveJobs]=useState({});
+  var pollBeat=useRef({}); // poslednji otkucaj svakog pollera (kljuc: a1/ds1/pq1...)
 
   useEffect(function(){
     stoGet("custPr",{sr:{main:"",ds:"",pitanja:""},hr:{main:"",ds:"",pitanja:""}}).then(function(local){
@@ -3031,6 +3032,7 @@ export default function App(){
     var dsKey="ds"+(idx+1);
     var dsInterval=setInterval(async function(){
       try{
+        pollBeat.current[dsKey]=Date.now();
         var jbs=safeActiveJobs();
         if(!jbs[dsKey]){
           // Entry moze faliti jer je radnica otkazala (slot idle) ILI jer je registry
@@ -3080,7 +3082,7 @@ export default function App(){
               notifyOps("qa_skipped_downsell","Downsell moguce preskocena pitanja: "+nAds+"/"+nQds,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("DS Q&A check:",eQ&&eQ.message);}
-          upDs(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null,lastJobId:jobId}):s;});
+          upDs(idx,function(s){return (s.jobId===jobId||(s.st==="generating"&&!s.jobId))?Object.assign({},s,{an:ft,st:"done",jobId:null,lastJobId:jobId}):s;});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
@@ -3111,6 +3113,7 @@ export default function App(){
     var pqKey="pq"+(idx+1);
     var pqInterval=setInterval(async function(){
       try{
+        pollBeat.current[pqKey]=Date.now();
         var jbs=safeActiveJobs();
         if(!jbs[pqKey]){
           var pqStill=false,pqGenStart=null;
@@ -3158,7 +3161,9 @@ export default function App(){
               notifyOps("qa_skipped_pitanja","D.Pitanja moguce preskocena pitanja: "+nApq+"/"+nQpq,{jobId:jobId,questionsSnippet:String(questionsText||"").slice(0,250)});
             }
           }catch(eQ){console.warn("PQ Q&A check:",eQ&&eQ.message);}
-          upPq(idx,function(s){return s.jobId===jobId?Object.assign({},s,{an:ft,st:"done",jobId:null,lastJobId:jobId}):s;});
+          // Suzana 11.11. (D. Pitanja 2, spiner 18 min iako je posao gotov u 5): ako slot
+          // generise a nema jobId (izgubljen), on ceka bas ovaj posao - prikazi rezultat.
+          upPq(idx,function(s){return (s.jobId===jobId||(s.st==="generating"&&!s.jobId))?Object.assign({},s,{an:ft,st:"done",jobId:null,lastJobId:jobId}):s;});
           setAnalyses(function(prev){
             if(prev.some(function(a){return a.jobId===jobId;}))return prev;
             var now=new Date();
@@ -3558,6 +3563,7 @@ export default function App(){
     var MAX_POLLS=440; // ~22 min na 3s interval - usaglaseno sa JOB_HARD_LIMIT_MS
     var interval=setInterval(async function(){
       try{
+        if(tabKey)pollBeat.current[tabKey]=Date.now();
         // Check if job already completed (prevent duplicate saves)
         var jobs=safeActiveJobs();
         if(tabKey&&!jobs[tabKey]){
@@ -3654,7 +3660,7 @@ export default function App(){
             // Prikazi u slotu SAMO ako slot jos ceka OVAJ posao (jobId match). Ako je
             // radnica u medjuvremenu pokrenula NOVU generaciju (slot.jobId=drugi) ili
             // ocistila slot (jobId null), ne diramo prikaz - analiza je svakako u Bazi.
-            upSlot(slotIdx,function(s){return s.jobId===jobId?Object.assign({},s,{status:"done",analysis:finalText,jobId:null,lastJobId:jobId,qaWarn:qaWarnVal}):s;});
+            upSlot(slotIdx,function(s){return (s.jobId===jobId||(s.status==="generating"&&!s.jobId))?Object.assign({},s,{status:"done",analysis:finalText,jobId:null,lastJobId:jobId,qaWarn:qaWarnVal}):s;});
           }
           // Save to analyses only if not already saved
           setAnalyses(function(prev){
@@ -3733,6 +3739,17 @@ export default function App(){
   // (24 min ranije). Razlog: prebacila tab pa polling pauziran.
   // Fix: kad se tab vrati, IZBROJ sve active jobove iz localStorage i RESTARTUJ
   // polling za svaki. Prvi poll ce odmah videti done status.
+  function restartPollerZa(key,j){
+    if(!j||!j.id)return;
+    var idx=j.idx!==undefined?j.idx:null;
+    if(key.indexOf("ds")===0&&idx!==null){
+      startDsPoll(idx,j.id,(j.clientName||"").replace(/^Downsell - /,""),null,"");
+    }else if(key.indexOf("pq")===0&&idx!==null){
+      startPqPoll(idx,j.id,(j.clientName||"").replace(/^D\. Pitanja - /,""),null,"");
+    }else{
+      pollJob(j.id,idx,key);
+    }
+  }
   useEffect(function(){
     var onVisible=function(){
       if(document.hidden)return;
@@ -3741,24 +3758,30 @@ export default function App(){
       var count=Object.keys(jobs).length;
       if(count===0)return;
       console.log("[visibility] Tab returned, force-checking",count,"active job(s)");
-      Object.keys(jobs).forEach(function(key){
-        var j=jobs[key];
-        if(!j||!j.id)return;
-        var idx=j.idx!==undefined?j.idx:null;
-        if(key.indexOf("ds")===0&&idx!==null){
-          startDsPoll(idx,j.id,(j.clientName||"").replace(/^Downsell - /,""),null,"");
-        }else if(key.indexOf("pq")===0&&idx!==null){
-          startPqPoll(idx,j.id,(j.clientName||"").replace(/^D\. Pitanja - /,""),null,"");
-        }else{
-          pollJob(j.id,idx,key);
-        }
-      });
+      Object.keys(jobs).forEach(function(key){restartPollerZa(key,jobs[key]);});
     };
     document.addEventListener("visibilitychange",onVisible);
     window.addEventListener("focus",onVisible);
+    // STRAZAR (Suzana 11.11. "generise 37 min, na kraju nije uspela", a posao gotov za
+    // 5 min): ako poller nekog aktivnog posla nije otkucao 45 s (telefon ga je ugasio u
+    // pozadini, a tab se "nije vratio"), ozivi ga. Prvi otkucaj odmah vidi "gotovo".
+    var strazar=setInterval(function(){
+      if(document.hidden)return;
+      var jobs;
+      try{jobs=safeActiveJobs();}catch(e){return;}
+      Object.keys(jobs).forEach(function(key){
+        var last=pollBeat.current[key]||0;
+        if(Date.now()-last>45000){
+          console.warn("[strazar] poller za "+key+" ne kuca "+Math.round((Date.now()-last)/1000)+" s - restart");
+          pollBeat.current[key]=Date.now();
+          restartPollerZa(key,jobs[key]);
+        }
+      });
+    },30000);
     return function(){
       document.removeEventListener("visibilitychange",onVisible);
       window.removeEventListener("focus",onVisible);
+      clearInterval(strazar);
     };
   },[]);
 
@@ -3817,6 +3840,22 @@ export default function App(){
   // Safety valve - kad polling tiho zakaca (slot ostane u "generating" zauvek),
   // radnica klikne "Proveri da li je gotovo" pa cemo da restartujemo polling sa
   // postojecim jobId. Prvi sledeci poll ce videti done status i UI ce se osveziti.
+  function forceCheckDs(idx){
+    var s=dsSlots[idx]||{};var key="ds"+(idx+1);var jbs=safeActiveJobs();
+    var jid=s.jobId||(jbs[key]&&jbs[key].id);
+    if(!jid){toast2("Nema aktivnog posla.");return;}
+    if(!jbs[key])jbs[key]={id:jid,clientName:"Downsell - "+(s.clientName||""),tab:"downsell"+(idx+1),idx:idx,startedAt:s.genStartedAt||Date.now()};
+    localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    startDsPoll(idx,jid,s.clientName||"",null,"");toast2("Proveravam status...");
+  }
+  function forceCheckPq(idx){
+    var s=pqSlots[idx]||{};var key="pq"+(idx+1);var jbs=safeActiveJobs();
+    var jid=s.jobId||(jbs[key]&&jbs[key].id);
+    if(!jid){toast2("Nema aktivnog posla.");return;}
+    if(!jbs[key])jbs[key]={id:jid,clientName:"D. Pitanja - "+(s.clientName||""),tab:"pitanja"+(idx+1),idx:idx,startedAt:s.genStartedAt||Date.now()};
+    localStorage.setItem("activeJobs",JSON.stringify(jbs));
+    startPqPoll(idx,jid,s.clientName||"",null,"");toast2("Proveravam status...");
+  }
   function forceCheckAnaliza(idx){
     var s=slots[idx];
     if(!s||!s.jobId){toast2("Nema aktivnog job-a.");return;}
@@ -3897,7 +3936,7 @@ export default function App(){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
     if(skipConfirm){
       var sA=slots[idx]||{};
-      var doneA=await fetchDoneJob(sA.jobId);
+      var doneA=await fetchDoneJob(sA.jobId||((safeActiveJobs()["a"+(idx+1)]||{}).id));
       if(doneA){
         var ftA=applyClosing(fmtText(doneA.serbian_text||""),"analiza",!!sA.hasPart);
         upSlot(idx,function(s){return Object.assign({},s,{status:"done",analysis:ftA,jobId:null,lastJobId:sA.jobId,genStartedAt:null});});
@@ -3916,7 +3955,7 @@ export default function App(){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
     if(skipConfirm){
       var sD=dsSlots[idx]||{};
-      var doneD=await fetchDoneJob(sD.jobId);
+      var doneD=await fetchDoneJob(sD.jobId||((safeActiveJobs()["ds"+(idx+1)]||{}).id));
       if(doneD){
         var ftD=fmtText(doneD.serbian_text||"");
         upDs(idx,function(s){return Object.assign({},s,{an:ftD,st:"done",jobId:null,lastJobId:sD.jobId,genStartedAt:null});});
@@ -3935,7 +3974,7 @@ export default function App(){
     if(!skipConfirm&&!window.confirm("Otkazati prikaz? Backend mozda i dalje radi - ako se zavrsi, analiza ce biti u Bazi."))return;
     if(skipConfirm){
       var sP=pqSlots[idx]||{};
-      var doneP=await fetchDoneJob(sP.jobId);
+      var doneP=await fetchDoneJob(sP.jobId||((safeActiveJobs()["pq"+(idx+1)]||{}).id));
       if(doneP){
         var ftP=applyClosing(fmtText(doneP.serbian_text||""),"pitanja");
         upPq(idx,function(s){return Object.assign({},s,{an:ftP,st:"done",jobId:null,lastJobId:sP.jobId,genStartedAt:null});});
@@ -4714,7 +4753,7 @@ export default function App(){
           (ds.an||ds.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(ds.an),ci:ds.ci,setCi:function(fn){upDs(dsIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             ds.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onCancel:function(skip){cancelStuckDs(dsIdx,skip);},onStop:function(){stopGenDs(dsIdx);}})
+              ?React.createElement(GeneratingProgress,{startedAt:ds.genStartedAt,statusText:ds.an,onForceCheck:function(){forceCheckDs(dsIdx);},onCancel:function(skip){cancelStuckDs(dsIdx,skip);},onStop:function(){stopGenDs(dsIdx);}})
               :React.createElement("div",{className:"aout"},ds.an),
             React.createElement("div",{className:"abar"},
               ds.ci<getChunks(ds.an).length
@@ -4785,7 +4824,7 @@ export default function App(){
           (pq.an||pq.st==="generating")&&React.createElement(React.Fragment,null,
             React.createElement(ChunkTracker,{ch:getChunks(pq.an),ci:pq.ci,setCi:function(fn){upPq(pqIdx,function(s){return Object.assign({},s,{ci:typeof fn==="function"?fn(s.ci):fn});});}}),
             pq.st==="generating"
-              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onCancel:function(skip){cancelStuckPq(pqIdx,skip);},onStop:function(){stopGenPq(pqIdx);}})
+              ?React.createElement(GeneratingProgress,{startedAt:pq.genStartedAt,statusText:pq.an,onForceCheck:function(){forceCheckPq(pqIdx);},onCancel:function(skip){cancelStuckPq(pqIdx,skip);},onStop:function(){stopGenPq(pqIdx);}})
               :React.createElement("div",{className:"aout"},pq.an),
             React.createElement("div",{className:"abar"},
               pq.ci<getChunks(pq.an).length
