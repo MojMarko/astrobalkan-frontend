@@ -624,6 +624,52 @@ export function uskladiDatumSaTekstom(rawText, iso){
   }
   return {datum:iso,ispravljen:false,nijeUTekstu:true};
 }
+// DATUMI BEZ IMENA (Suzana 24.11. "Ne ocitava dodatne datume"): klijentkinja je
+// napisala "26.7.1990, 28.5.1993 i 18.10.2010. Datumi dece, da pogledate." - bez imena.
+// AI je iste datume jednom vratio kao tri osobe, a drugi put prazno ([]), pa je tabela
+// "Osobe iz pitanja" bila prazna. Deterministicka mreza: datum iz teksta koji AI nije
+// vratio, a uz koji stoji rec za dete/rodjaka/rodjenje, dodaje se kao osoba bez imena
+// (odnos iz te reci: dete/sin/cerka/...). Datumi dogadjaja (smrt, operacija, "od 5.6.2026")
+// i buduci datumi se ne diraju. Vraca {osobe, dodate}.
+var ODNOS_CUE=/(dec[aeiu]|dete|deteta|sin[aeu]?|k?[ćc]erk[aeiou]|unuk[aeu]?|brat[aeu]?|sestr[aeiou]|mu[žz][aeu]?|suprug[aeu]?|partner[ka]*|mam[aeu]|majk[aeiou]|tat[aeu]|otac|ro[đd]j?en[aie]?|datum[aie]? ro[đd]j?enja)/i;
+var EVENT_CUE=/umr[loa]|premin|smrt|sahran|pogin|ven[cč]a[nl]|razvod|razvel|razveden|operacij|operis|datum\s+kada|\bod\s*$/i;
+function odnosIzOkoline(w){
+  var x=w.toLowerCase();
+  if(/k?[ćc]erk/.test(x))return "ćerka";
+  if(/\bsin[aeu]?\b/.test(x))return "sin";
+  if(/dec[aeiu]|dete/.test(x))return "dete";
+  if(/unuk/.test(x))return "unuk";
+  if(/brat/.test(x))return "brat";
+  if(/sestr/.test(x))return "sestra";
+  if(/mu[žz]|suprug\b/.test(x))return "muž";
+  if(/partner/.test(x))return "partner";
+  return "";
+}
+export function dopuniOsobeIzDatuma(rawText, persons){
+  var arr=Array.isArray(persons)?persons.slice():[];
+  var raw=String(rawText||"");
+  if(!raw.trim())return {osobe:arr, dodate:[]};
+  var maxIso=new Date().toISOString().slice(0,10);
+  var ima={};arr.forEach(function(p){if(p&&p.datum)ima[p.datum]=true;});
+  var cueUTekstu=ODNOS_CUE.test(raw);
+  var dodate=[];
+  var re=/(^|[^0-9])(\d{1,2})[.\/\-](\d{1,2})[.\/\-]((?:19|20)\d{2})(?![0-9])/g,m;
+  while((m=re.exec(raw))!==null){
+    var d=parseInt(m[2],10),mo=parseInt(m[3],10),y=parseInt(m[4],10);
+    if(d<1||d>31||mo<1||mo>12)continue;
+    var iso=y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    if(iso>maxIso||ima[iso])continue;
+    var start=m.index+m[1].length,end=m.index+m[0].length;
+    var pre=raw.slice(Math.max(0,start-80),start), okolina=raw.slice(Math.max(0,start-80),Math.min(raw.length,end+60));
+    if(EVENT_CUE.test(pre.slice(-25)))continue;           // "od 5.6.2024", "umro 3.3.2020"
+    if(!(ODNOS_CUE.test(okolina)||(arr.length===0&&cueUTekstu)))continue;
+    // odnos: prvo rec ISPRED datuma ("sin 12.03.2005"), pa iza, pa iz celog teksta
+    var odnos=odnosIzOkoline(raw.slice(Math.max(0,start-40),start))||odnosIzOkoline(raw.slice(end,end+30))||(arr.length===0?odnosIzOkoline(raw):"");
+    var os={ime:"",odnos:odnos,datum:iso,vreme:"",mesto:""};
+    arr.push(os);dodate.push(os);ima[iso]=true;
+  }
+  return {osobe:arr, dodate:dodate};
+}
 // Izbaci osobe cijeg datuma nema u tekstu. Vraca {osobe, izbacene}.
 export function dropInventedPersons(rawText, persons){
   var arr=Array.isArray(persons)?persons:[];

@@ -829,3 +829,26 @@ describe('validEmail - nasa slova', () => {
     expect(validEmailT('Marko.Gostic@gmail.com')).toBe('marko.gostic@gmail.com');
   });
 });
+
+// DATUMI BEZ IMENA (Suzana 24.11.): AI preskoci "datumi dece: ..." - mreza ih dodaje.
+import { dopuniOsobeIzDatuma } from '../src/lib/util.js';
+describe('dopuniOsobeIzDatuma', () => {
+  const t='26.7.1990,28.5.1993 i 18.10.2010.Datumi dece,da pogledate.Meni samo analizu sl.god.';
+  it('AI vratio prazno -> tri deteta iz datuma', () => {
+    const r=dopuniOsobeIzDatuma(t,[]);
+    expect(r.osobe.map(p=>p.datum)).toEqual(['1990-07-26','1993-05-28','2010-10-18']);
+    expect(r.osobe.every(p=>p.odnos==='dete')).toBe(true);
+  });
+  it('AI vratio sve -> nista se ne dodaje', () => {
+    const ai=[{ime:'',odnos:'',datum:'1990-07-26'},{ime:'',odnos:'',datum:'1993-05-28'},{ime:'',odnos:'',datum:'2010-10-18'}];
+    expect(dopuniOsobeIzDatuma(t,ai).dodate).toEqual([]);
+  });
+  it('datum dogadjaja i buduci datum se ne dodaju', () => {
+    expect(dopuniOsobeIzDatuma('Od 15.4.2024 sam na bolovanju, muz mi je umro 3.3.2020. Da li cu naci posao?',[]).dodate).toEqual([]);
+    expect(dopuniOsobeIzDatuma('Deca: od 5.6.2030 krecu u skolu',[]).dodate).toEqual([]);
+  });
+  it('odnos iz reci pored datuma', () => {
+    const r=dopuniOsobeIzDatuma('Sin 12.03.2005, cerka 01.09.2010. Kako su?',[]);
+    expect(r.osobe.map(p=>p.odnos)).toEqual(['sin','ćerka']);
+  });
+});
