@@ -1644,7 +1644,14 @@ export default function App(){
       // znao da posluzi STARU listu klijenata iz kesa - radnica onda "ne pronalazi
       // ljude u bazi" iako su tamo. Pretraga po imenu se nikad nije kesirala jer
       // ima jedinstven URL - zato je u Pitanjima nalazila, a u Downsellu ne.
-      var r=await fetchSafe(API+"/api/clients?t="+Date.now(),{cache:"no-store"});
+      // 60 s (bilo 30): lista ima 3.700+ klijenata (~700 KB) - na sporom mobilnom
+      // internetu 30 s nije bilo dovoljno, pa je radnica ostajala bez predloga
+      // (Jelena 24.11. "ne izbacuje klijente kojih ima u bazi kad radim downsell").
+      var r=await fetchSafe(API+"/api/clients?t="+Date.now(),{cache:"no-store"},60000);
+      if(!r.ok){
+        var dErr=null;try{dErr=await r.json();}catch(_){}
+        throw new Error("HTTP "+r.status+(dErr&&dErr.error?" "+dErr.error:""));
+      }
       var d=await r.json();
       var lista=(d&&d.clients)||[];
       // Prazna lista je skoro sigurno greska (baza ima 2000+ klijenata) - ne brisi
@@ -1655,6 +1662,7 @@ export default function App(){
       try{localStorage.setItem("ab_clients",JSON.stringify({at:Date.now(),c:lista}));}catch(eLS){}
     }catch(e){
       console.warn("loadClients failed:",e.message);
+      try{Sentry.withScope(function(sc){sc.setTag("source","loadClients");sc.setContext("lista",{kes:clientsCache.length,online:navigator.onLine});Sentry.captureException(e);});}catch(_){}
       // Server ne odgovara (Render se budi): uzmi poslednju sacuvanu listu sa telefona
       // umesto da radnica gleda prazan spisak i zakljuci da klijenta nema.
       if(clientsCache.length===0){
@@ -3210,11 +3218,15 @@ export default function App(){
       try{
         var url=API+"/api/clients?q="+encodeURIComponent(qq);
         if(/^\d{4}-\d{2}-\d{2}$/.test(bd))url+="&birth_date="+encodeURIComponent(bd);
-        var r=await fetchSafe(url,{cache:"no-store"},12000);
+        var r=await fetchSafe(url,{cache:"no-store"},20000);
         var d=await r.json();
-        if(!r.ok){toast2((d&&d.error)||("Pretraga nije uspela (HTTP "+r.status+")."));setSrvSearch({q:qq,results:[]});return;}
+        if(!r.ok){toast2((d&&d.error)||("Pretraga nije uspela (HTTP "+r.status+")."));setSrvSearch({q:qq,results:[]});try{Sentry.captureMessage("searchClientsServer HTTP "+r.status,{level:"warning",tags:{source:"searchClients"}});}catch(_){}return;}
         setSrvSearch({q:qq,results:(d&&d.clients)||[]});
-      }catch(e){console.warn("searchClientsServer:",e&&e.message);}
+      }catch(e){
+        console.warn("searchClientsServer:",e&&e.message);
+        try{Sentry.withScope(function(sc){sc.setTag("source","searchClients");sc.setContext("pretraga",{q:qq,online:navigator.onLine,kes:clientsCache.length});Sentry.captureException(e);});}catch(_){}
+        toast2("\uD83D\uDCF6 Pretraga klijenata nije pro\u0161la (internet). Poku\u0161aj ponovo za par sekundi.");
+      }
     },350);
   }
   // Spoji lokalne i serverske pogotke, bez duplikata (server je dopuna, ne zamena).
