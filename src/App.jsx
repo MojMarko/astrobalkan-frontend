@@ -4992,8 +4992,13 @@ export default function App(){
                   // MEJL SE NE KOPIRA (Marko 27.10.): radnica je dugim pritiskom mogla da
                   // iskopira adresu i sakupi celu bazu mejlova. Server radnici vec salje
                   // maskiranu adresu (mi\u2022\u2022\u2022@gmail.com); ovde je jos i neselektabilna.
-                  a.emailedAt
-                    ?React.createElement("div",{style:{fontSize:"10px",color:"#3a8a3a",marginTop:"2px"}},"\u2709 Poslato "+a.emailedAt+(a.emailedTo?" \u2192 ":""),
+                  // NIJE STIGLO (Marko 26.11.): server sam proverava isporuku - bounced/suppressed/
+                  // complained znaci da je mejl otisao, ali klijent ga NIJE dobio (adresa ne postoji
+                  // ili je ranije odbila). Crveno, da radnica proveri adresu i posalje ponovo.
+                  a.emailedAt&&/^(bounced|suppressed|complained)$/.test(a.emailedStatus||"")
+                    ?React.createElement("div",{style:{fontSize:"10px",color:"#ffb0b0",marginTop:"2px",fontWeight:600}},"\u2716 Poslato "+a.emailedAt+", ali NIJE stiglo klijentu \u2014 "+(a.emailedStatus==="complained"?"klijent prijavio kao spam":"adresa ne postoji / odbija mejl")+(a.emailedTo?" ("+a.emailedTo+"). Proveri adresu i po\u0161alji ponovo.":""))
+                  :a.emailedAt
+                    ?React.createElement("div",{style:{fontSize:"10px",color:"#3a8a3a",marginTop:"2px"}},"\u2709 Poslato "+a.emailedAt+(a.emailedStatus==="delivered"?" (isporu\u010deno)":"")+(a.emailedTo?" \u2192 ":""),
                         a.emailedTo?React.createElement("span",{style:user.role==="admin"?null:{userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none"}},a.emailedTo):null)
                     :(/^NEUSPEH/.test(a.emailedStatus||"")
                       ?React.createElement("div",{style:{fontSize:"10px",color:"#ffb0b0",marginTop:"2px"}},"\u2716 Slanje NIJE pro\u0161lo \u2014 "+String(a.emailedStatus).replace(/^NEUSPEH\s*/,""))
