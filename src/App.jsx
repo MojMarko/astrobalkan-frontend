@@ -3238,6 +3238,10 @@ export default function App(){
         setSrvSearch({q:qq,results:(d&&d.clients)||[]});
       }catch(e){
         console.warn("searchClientsServer:",e&&e.message);
+        // Kad spisak klijenata vec stoji u telefonu, serverska pretraga je samo dopuna -
+        // njen prekid radnici nista ne menja (Sentry 27.11., iPhone: 'Load failed' dok
+        // je lista od 3.843 bila tu i klijent nadjen). Uzbuna i poruka samo bez spiska.
+        if(clientsCache.length>0)return;
         try{Sentry.withScope(function(sc){sc.setTag("source","searchClients");sc.setContext("pretraga",{q:qq,online:navigator.onLine,kes:clientsCache.length});Sentry.captureException(e);});}catch(_){}
         toast2("\uD83D\uDCF6 Pretraga klijenata nije pro\u0161la (internet). Poku\u0161aj ponovo za par sekundi.");
       }
