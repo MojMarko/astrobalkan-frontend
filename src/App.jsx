@@ -1628,6 +1628,7 @@ export default function App(){
   },[]);
   // Startuj sa poslednjom sacuvanom listom sa telefona - dok server odgovori (Render
   // se budi i do minut), radnica vec moze da pretrazuje umesto da vidi prazno.
+  var loadClientsRef=useRef({uToku:false,paoU:0}); // jedno preuzimanje liste odjednom + pauza posle pada
   var [clientsCache,setClientsCache]=useState(function(){
     try{var c=JSON.parse(localStorage.getItem("ab_clients")||"null");return (c&&c.c)||[];}catch(e){return [];}
   });
@@ -1639,6 +1640,14 @@ export default function App(){
     // Refresh ako je proteklo > 30 sek od poslednjeg ucitavanja (ili force)
     var age=Date.now()-clientsLoadedAt;
     if(!force&&clientsLoadedAt>0&&age<30000)return;
+    // JEDNO PREUZIMANJE ODJEDNOM (Sentry 27.11., Suzanin telefon: tri "Failed to fetch"
+    // u istoj sekundi): lista se zvala na SVAKI otkucaj slova, a dok prvo preuzimanje
+    // od ~700 KB jos traje, svaki sledeci otkucaj je pokretao novo - vise paralelnih
+    // preuzimanja na mobilnom internetu, pa padaju. Sad: dok jedno traje, nema drugog;
+    // posle neuspeha pauza od 60 s pre novog pokusaja (lista iz kesa radi u medjuvremenu).
+    if(loadClientsRef.current.uToku)return;
+    if(!force&&Date.now()-loadClientsRef.current.paoU<60000)return;
+    loadClientsRef.current.uToku=true;
     try{
       // ?t= (Marko 13.8.): bez parametra je URL uvek isti, pa je telefon (i CDN)
       // znao da posluzi STARU listu klijenata iz kesa - radnica onda "ne pronalazi
@@ -1662,7 +1671,10 @@ export default function App(){
       try{localStorage.setItem("ab_clients",JSON.stringify({at:Date.now(),c:lista}));}catch(eLS){}
     }catch(e){
       console.warn("loadClients failed:",e.message);
-      try{Sentry.withScope(function(sc){sc.setTag("source","loadClients");sc.setContext("lista",{kes:clientsCache.length,online:navigator.onLine});Sentry.captureException(e);});}catch(_){}
+      loadClientsRef.current.paoU=Date.now();
+      // U Sentry samo kad radnica OSTAJE bez liste (kes prazan) - kad lista postoji,
+      // neuspelo osvezavanje je nebitno i samo je pravilo laznu uzbunu Marku.
+      if(clientsCache.length===0){try{Sentry.withScope(function(sc){sc.setTag("source","loadClients");sc.setContext("lista",{kes:clientsCache.length,online:navigator.onLine});Sentry.captureException(e);});}catch(_){}}
       // Server ne odgovara (Render se budi): uzmi poslednju sacuvanu listu sa telefona
       // umesto da radnica gleda prazan spisak i zakljuci da klijenta nema.
       if(clientsCache.length===0){
@@ -1671,6 +1683,8 @@ export default function App(){
           if(cached&&cached.c&&cached.c.length>0){setClientsCache(cached.c);console.warn("loadClients: koristim sacuvanu listu ("+cached.c.length+")");}
         }catch(eLS2){}
       }
+    }finally{
+      loadClientsRef.current.uToku=false;
     }
   }
   var [editPr,setEditPr]=useState("main");
